@@ -27,8 +27,8 @@ test("shows external Help resources above About", () => {
 	expect(screen.getByRole("heading", { name: "Help", level: 2 })).toBeVisible();
 	const resources = screen.getByRole("region", { name: "Help resources" });
 	const expectedLinks = [
-		["Docs", "https://github.com/ssinss/kastard/blob/main/docs/en/index.mdx"],
-		["GitHub", "https://github.com/ssinss/kastard"],
+		["Docs", "https://github.com/somecatco/kastard/blob/main/docs/en/index.mdx"],
+		["GitHub", "https://github.com/somecatco/kastard"],
 		["Discord", "https://discord.gg/Z9eUBVFncN"],
 	] as const;
 

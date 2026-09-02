@@ -4,7 +4,7 @@
 
 Kastard is a desktop app for editing ComfyUI workflows locally and running them on remote GPU workers.
 
-[GitHub](https://github.com/ssinss/kastard) | [Docs](https://github.com/ssinss/kastard/blob/main/docs/en/index.mdx) | [Discord](https://discord.gg/Z9eUBVFncN)
+[GitHub](https://github.com/somecatco/kastard) | [Docs](https://github.com/somecatco/kastard/blob/main/docs/en/index.mdx) | [Discord](https://discord.gg/Z9eUBVFncN)
 
 ## Using this Worker
 

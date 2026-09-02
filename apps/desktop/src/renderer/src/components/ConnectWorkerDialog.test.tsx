@@ -38,7 +38,7 @@ test("shows concise Worker setup descriptions", () => {
 		within(dialog).getByRole("link", { name: "Open setup guide" }),
 	).toHaveAttribute(
 		"href",
-		"https://github.com/ssinss/kastard/blob/main/docs/en/run-worker-with-docker.mdx",
+		"https://github.com/somecatco/kastard/blob/main/docs/en/run-worker-with-docker.mdx",
 	);
 });
 

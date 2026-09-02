@@ -84,13 +84,13 @@ const HELP_RESOURCES = [
 	{
 		label: "Docs",
 		description: "Learn how to set up and use Kastard.",
-		href: "https://github.com/ssinss/kastard/blob/main/docs/en/index.mdx",
+		href: "https://github.com/somecatco/kastard/blob/main/docs/en/index.mdx",
 		icon: BookOpenIcon,
 	},
 	{
 		label: "GitHub",
 		description: "Browse the source code and report issues.",
-		href: "https://github.com/ssinss/kastard",
+		href: "https://github.com/somecatco/kastard",
 		icon: GithubIcon,
 	},
 	{

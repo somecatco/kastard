@@ -63,7 +63,7 @@ const TEMPLATE_LINKS = [
 	},
 ] as const;
 const OTHER_SERVER_GUIDE_URL =
-	"https://github.com/ssinss/kastard/blob/main/docs/en/run-worker-with-docker.mdx";
+	"https://github.com/somecatco/kastard/blob/main/docs/en/run-worker-with-docker.mdx";
 
 const PROVIDERS: ProviderOption[] = [
 	{
