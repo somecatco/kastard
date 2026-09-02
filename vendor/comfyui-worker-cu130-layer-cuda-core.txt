@@ -1,0 +1,10 @@
+# Generated from vendor/comfyui-worker-cu130-lock.txt by scripts/worker-runtime-layers.mjs.
+# Do not edit directly.
+nvidia-cublas==13.1.1.3 \
+    --hash=sha256:37936a16db8fe4ac1f065c2139360608a543a09275cb1a1af612e08cfa065436 \
+    --hash=sha256:b6cdce694e47ff6aadf0a69df1cab6628d696f5ff56e8d16af50309d855fa20f \
+    --hash=sha256:b7a210458267ac818974c53038fbec2e969d5c99f305ab15c72522fa9f001dd5
+nvidia-cudnn-cu13==9.20.0.48 \
+    --hash=sha256:0c45dd8eeb50b603f07995b1b300c62ffe6a1980482b82b3bcf94a4ca9d49304 \
+    --hash=sha256:af8139732b99c0118be65ea5aac97f0d46018f8c552889e49d2fb0c6261a4a24 \
+    --hash=sha256:e31454ae00094b0c55319d9d15b6fa2fc50a9e1c0f5c8c80fb75258234e731e1

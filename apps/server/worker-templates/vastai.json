@@ -1,0 +1,30 @@
+{
+	"templates": {
+		"cu128": {
+			"name": "kastard-worker-cu128",
+			"extra_filters": {
+				"cuda_max_good": {
+					"gte": 12.8
+				}
+			}
+		},
+		"cu130": {
+			"name": "kastard-worker-cu130",
+			"extra_filters": {
+				"cuda_max_good": {
+					"gte": 13.0
+				}
+			}
+		}
+	},
+	"desc": "Kastard Worker",
+	"env": "-p 22:22 -p 2222:2222",
+	"onstart": "",
+	"runtype": "args",
+	"args_str": "",
+	"ssh_direct": false,
+	"use_ssh": false,
+	"readme_visible": true,
+	"recommended_disk_space": 200,
+	"private": true
+}

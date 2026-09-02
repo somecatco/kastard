@@ -1,0 +1,92 @@
+ARG BUN_IMAGE=oven/bun:1.3.14
+ARG UV_IMAGE=astral/uv:0.12.4
+ARG WORKER_PLATFORM=linux/arm64
+
+FROM --platform=${WORKER_PLATFORM} ${BUN_IMAGE} AS bun
+FROM --platform=${WORKER_PLATFORM} ${UV_IMAGE} AS uv
+FROM --platform=${WORKER_PLATFORM} ubuntu:24.04
+
+ARG PYTHON_VERSION=3.13.12
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update \
+	&& apt-get install --yes --no-install-recommends \
+		build-essential \
+		ca-certificates \
+		cmake \
+		curl \
+		ffmpeg \
+		git \
+		git-lfs \
+		libegl1 \
+		libffi-dev \
+		libgl1 \
+		libglib2.0-0t64 \
+		libgomp1 \
+		libsndfile1 \
+		libsm6 \
+		libssl-dev \
+		libxext6 \
+		libxrender1 \
+		ninja-build \
+		pkg-config \
+		procps \
+		rsync \
+		tini \
+		unzip \
+		wget \
+		xz-utils \
+	&& rm -rf /var/lib/apt/lists/*
+
+COPY --from=uv /uv /usr/local/bin/uv
+COPY --from=uv /uvx /usr/local/bin/uvx
+
+ENV UV_PYTHON_INSTALL_DIR=/opt/kastard/python \
+	UV_CACHE_DIR=/var/cache/uv \
+	UV_LINK_MODE=copy
+RUN --mount=type=cache,target=/var/cache/uv \
+	uv python install "${PYTHON_VERSION}" \
+	&& uv venv --python "${PYTHON_VERSION}" --managed-python /opt/kastard/runtime
+
+COPY vendor/comfyui-worker-runtime-cpu.json /opt/kastard/runtime-manifest.json
+COPY vendor/comfyui-worker-cpu-lock.txt /opt/kastard/runtime-lock.txt
+COPY vendor/comfyui-worker-constraints-cpu.txt /opt/kastard/runtime-constraints.txt
+COPY scripts/verify-worker-runtime.py /opt/kastard/verify-worker-runtime.py
+RUN --mount=type=cache,target=/var/cache/uv \
+	uv pip sync \
+		--python /opt/kastard/runtime/bin/python \
+		--torch-backend cpu \
+		--require-hashes \
+		/opt/kastard/runtime-lock.txt \
+	&& uv pip check --python /opt/kastard/runtime/bin/python \
+	&& /opt/kastard/runtime/bin/python /opt/kastard/verify-worker-runtime.py \
+		cpu \
+		/opt/kastard/runtime-manifest.json \
+		/opt/kastard/runtime-lock.txt
+
+COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
+WORKDIR /app
+COPY LICENSE LICENSE
+COPY package.json bun.lock tsconfig.base.json ./
+COPY apps/desktop/package.json apps/desktop/package.json
+COPY apps/server/package.json apps/server/package.json
+COPY packages/common/package.json packages/common/package.json
+RUN bun install --frozen-lockfile --production --filter @kastard/server
+
+COPY apps/server/src apps/server/src
+COPY apps/server/tsconfig.json apps/server/tsconfig.json
+COPY packages/common/src packages/common/src
+
+ENV PORT=5278 \
+	PATH=/opt/kastard/runtime/bin:$PATH \
+	KASTARD_RUNTIME_PYTHON=/opt/kastard/runtime/bin/python \
+	KASTARD_RUNTIME_MANIFEST=/opt/kastard/runtime-manifest.json \
+	UV_CONSTRAINT=/opt/kastard/runtime-constraints.txt
+EXPOSE 22
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+	CMD ["bun", "-e", "const response = await fetch(`http://127.0.0.1:${process.env.PORT ?? 5278}/health`); if (!response.ok) process.exit(1)"]
+
+ENTRYPOINT ["/usr/bin/tini", "-s", "--"]
+WORKDIR /app/apps/server
+CMD ["bun", "run", "src/index.ts"]

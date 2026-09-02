@@ -1,0 +1,220 @@
+name: Release Editor
+
+on:
+  push:
+    tags:
+      - "editor-v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: editor-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build and notarize Apple Silicon DMG
+    runs-on: macos-26
+    timeout-minutes: 90
+    outputs:
+      artifact_name: ${{ steps.release.outputs.artifact_name }}
+      prerelease: ${{ steps.release.outputs.prerelease }}
+      release_name: ${{ steps.release.outputs.release_name }}
+    steps:
+      - name: Check out release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Verify release commit
+        run: |
+          if ! git merge-base --is-ancestor HEAD refs/remotes/origin/main; then
+            echo "::error::Release tags must point to a commit in main."
+            exit 1
+          fi
+
+      - name: Resolve release
+        id: release
+        run: node scripts/editor-release.mjs "$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Verify Apple secrets
+        env:
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          MAC_CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+        run: |
+          missing=0
+          for name in \
+            APPLE_API_ISSUER \
+            APPLE_API_KEY_BASE64 \
+            APPLE_API_KEY_ID \
+            APPLE_TEAM_ID \
+            MAC_CSC_LINK
+          do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Missing GitHub Actions secret: ${name}"
+              missing=1
+            fi
+          done
+          exit "$missing"
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.14
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Prepare App Store Connect API key
+        env:
+          APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+        run: |
+          key_path="${RUNNER_TEMP}/AuthKey_${APPLE_API_KEY_ID}.p8"
+          printf '%s' "$APPLE_API_KEY_BASE64" | base64 -D > "$key_path"
+          chmod 600 "$key_path"
+          if ! grep -q '^-----BEGIN PRIVATE KEY-----$' "$key_path" || \
+             ! grep -q '^-----END PRIVATE KEY-----$' "$key_path"; then
+            echo "::error::APPLE_API_KEY_BASE64 is not a valid Base64-encoded P8 key."
+            exit 1
+          fi
+          echo "APPLE_API_KEY=${key_path}" >> "$GITHUB_ENV"
+
+      - name: Build signed DMG
+        env:
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+        run: |
+          if [[ "$(uname -m)" != "arm64" ]]; then
+            echo "::error::The Editor release must run on an Apple Silicon runner."
+            exit 1
+          fi
+          bun run --cwd apps/desktop "${{ steps.release.outputs.build_script }}"
+
+      - name: Notarize final DMG
+        env:
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          ARTIFACT_NAME: ${{ steps.release.outputs.artifact_name }}
+          OUTPUT_DIRECTORY: ${{ steps.release.outputs.output_directory }}
+        run: |
+          dmg="apps/desktop/${OUTPUT_DIRECTORY}/${ARTIFACT_NAME}"
+          if [[ ! -f "$dmg" ]]; then
+            echo "::error::Expected DMG was not created: ${dmg}"
+            exit 1
+          fi
+          xcrun notarytool submit "$dmg" \
+            --key "$APPLE_API_KEY" \
+            --key-id "$APPLE_API_KEY_ID" \
+            --issuer "$APPLE_API_ISSUER" \
+            --wait
+          xcrun stapler staple "$dmg"
+
+      - name: Verify signed release
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APP_ID: ${{ steps.release.outputs.app_id }}
+          APP_NAME: ${{ steps.release.outputs.app_name }}
+          ARTIFACT_NAME: ${{ steps.release.outputs.artifact_name }}
+          BUILD_VERSION: ${{ steps.release.outputs.build_version }}
+          OUTPUT_DIRECTORY: ${{ steps.release.outputs.output_directory }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          app="apps/desktop/${OUTPUT_DIRECTORY}/mac-arm64/${APP_NAME}.app"
+          dmg="apps/desktop/${OUTPUT_DIRECTORY}/${ARTIFACT_NAME}"
+          plist="${app}/Contents/Info.plist"
+
+          if [[ ! -d "$app" ]]; then
+            echo "::error::Expected app bundle was not created: ${app}"
+            exit 1
+          fi
+
+          codesign --verify --deep --strict --verbose=2 "$app"
+          signature=$(codesign -dv --verbose=4 "$app" 2>&1)
+          if ! grep -q '^Authority=Developer ID Application:' <<< "$signature"; then
+            echo "::error::The app is not signed with a Developer ID Application certificate."
+            exit 1
+          fi
+          team_id=$(sed -n 's/^TeamIdentifier=//p' <<< "$signature")
+          if [[ "$team_id" != "$APPLE_TEAM_ID" ]]; then
+            echo "::error::The app signature does not match APPLE_TEAM_ID."
+            exit 1
+          fi
+
+          executable=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$plist")
+          if ! file "${app}/Contents/MacOS/${executable}" | grep -q 'arm64'; then
+            echo "::error::The packaged Editor executable is not arm64."
+            exit 1
+          fi
+          [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$plist")" == "$APP_ID" ]]
+          [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist")" == "$VERSION" ]]
+          [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$plist")" == "$BUILD_VERSION" ]]
+
+          xcrun stapler validate "$app"
+          spctl --assess --type execute --verbose=4 "$app"
+          codesign --verify --verbose=2 "$dmg"
+          xcrun stapler validate "$dmg"
+          spctl --assess --type open --context context:primary-signature --verbose=4 "$dmg"
+
+          cd "$(dirname "$dmg")"
+          shasum -a 256 "$ARTIFACT_NAME" > "${ARTIFACT_NAME}.sha256"
+
+      - name: Upload release assets
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: editor-release-${{ github.ref_name }}
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            apps/desktop/${{ steps.release.outputs.output_directory }}/${{ steps.release.outputs.artifact_name }}
+            apps/desktop/${{ steps.release.outputs.output_directory }}/${{ steps.release.outputs.artifact_name }}.sha256
+
+  release:
+    name: Create Draft Release
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download release assets
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: editor-release-${{ github.ref_name }}
+          path: release-assets
+
+      - name: Create Draft Release
+        working-directory: release-assets
+        env:
+          ARTIFACT_NAME: ${{ needs.build.outputs.artifact_name }}
+          GH_TOKEN: ${{ github.token }}
+          PRERELEASE: ${{ needs.build.outputs.prerelease }}
+          RELEASE_NAME: ${{ needs.build.outputs.release_name }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::A GitHub Release already exists for ${GITHUB_REF_NAME}."
+            exit 1
+          fi
+
+          args=(
+            --repo "$GITHUB_REPOSITORY"
+            --verify-tag
+            --draft
+            --title "$RELEASE_NAME"
+            --generate-notes
+          )
+          if [[ "$PRERELEASE" == "true" ]]; then
+            args+=(--prerelease --latest=false)
+          fi
+
+          gh release create "$GITHUB_REF_NAME" \
+            "${args[@]}" \
+            "$ARTIFACT_NAME" \
+            "${ARTIFACT_NAME}.sha256"

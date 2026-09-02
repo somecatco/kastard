@@ -1,0 +1,28 @@
+{
+	"templates": {
+		"cu128": {
+			"name": "kastard-worker-cu128"
+		},
+		"cu130": {
+			"name": "kastard-worker-cu130"
+		}
+	},
+	"containerDiskInGb": 50,
+	"volumeInGb": 200,
+	"volumeMountPath": "/workspace",
+	"ports": ["22/tcp", "2222/tcp"],
+	"portsConfig": [
+		{
+			"port": 22,
+			"name": "SSH Tunnel"
+		},
+		{
+			"port": 2222,
+			"name": "SSH"
+		}
+	],
+	"dockerEntrypoint": [],
+	"dockerStartCmd": [],
+	"isPublic": false,
+	"env": {}
+}

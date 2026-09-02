@@ -1,0 +1,91 @@
+---
+title: "Docker로 Worker 실행"
+description: "Docker를 지원하는 NVIDIA GPU 서버에 Worker를 배포하고 Kastard에 연결합니다."
+---
+
+<Note>
+  RunPod 또는 Vast.ai를 사용한다면 Kastard에서 제공하는 템플릿으로 Worker를 배포하세요.
+</Note>
+
+이 방법은 Docker를 지원하는 Linux `amd64` NVIDIA GPU 서버에 Worker를 직접 배포할 때 사용합니다.
+
+## 준비
+
+- Docker Engine 및 Docker Compose 2.30 이상
+- NVIDIA Container Toolkit
+- CUDA 12.8 이상을 지원하는 NVIDIA GPU 드라이버
+- Kastard가 실행되는 컴퓨터에서 접근할 수 있는 서버 주소와 TCP 포트
+
+기본 포트는 `5278`입니다. 인터넷을 통해 연결한다면 서버의 방화벽에서도 이 포트를 허용해야 합니다.
+
+## 1. Compose 파일 다운로드
+
+서버에서 Worker를 실행할 폴더를 만들고 Compose 파일을 다운로드합니다.
+
+```bash
+mkdir -p kastard-worker
+cd kastard-worker
+curl -fLO https://raw.githubusercontent.com/ssinss/kastard/main/compose.yaml
+```
+
+## 2. Worker 설정
+
+Compose 파일과 같은 폴더에 `.env` 파일을 만듭니다.
+
+```env
+KASTARD_WORKER_IMAGE=docker.io/somecatco/kastard-worker-cu128:latest
+KASTARD_PUBLIC_ADDRESS=REPLACE_ME:5278
+```
+
+- `KASTARD_WORKER_IMAGE`에는 사용할 Worker 이미지 주소를 입력합니다.
+- `KASTARD_PUBLIC_ADDRESS`에는 Kastard에서 접근할 서버의 IP 주소 또는 도메인과 포트를 입력합니다.
+
+- CUDA 12.8: `docker.io/somecatco/kastard-worker-cu128:latest`
+- CUDA 13.0: `docker.io/somecatco/kastard-worker-cu130:latest`
+
+위 설정은 CUDA 12.8 이미지를 사용합니다. 각 이미지는 해당 CUDA 버전 이상을 지원하는 NVIDIA GPU 드라이버가 필요합니다.
+
+## 3. Worker 실행
+
+```bash
+docker compose up --detach
+```
+
+처음 실행할 때는 Worker 이미지를 다운로드하므로 시간이 걸릴 수 있습니다.
+
+## 4. 연결 정보 확인
+
+```bash
+docker compose logs --follow worker
+```
+
+로그에서 다음 두 값을 확인합니다.
+
+```text
+Worker address: gpu.example.com:5278
+Authentication code: ABCD-EFGH-JKLM-NPQR
+```
+
+## 5. Kastard 연결
+
+1. Kastard에서 `Connect`를 엽니다.
+2. `Other server`를 선택합니다.
+3. 로그의 `Worker address`와 `Authentication code`를 입력합니다.
+4. `Connect`를 누릅니다.
+
+## Worker 관리
+
+설정된 이미지를 다시 받고 Worker를 재생성합니다. CUDA 버전을 바꾸려면 먼저 `.env`의 `KASTARD_WORKER_IMAGE`를 변경합니다.
+
+```bash
+docker compose pull
+docker compose up --detach
+```
+
+Worker를 중지하고 컨테이너를 제거합니다.
+
+```bash
+docker compose down
+```
+
+모델과 Custom Node를 포함한 Worker 데이터는 Docker 볼륨에 남습니다. `down --volumes`를 실행하면 이 데이터가 삭제됩니다.

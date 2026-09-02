@@ -1,0 +1,34 @@
+# check=skip=InvalidDefaultArgInFrom
+ARG RUNTIME_IMAGE
+FROM ${RUNTIME_IMAGE}
+
+ARG KASTARD_CHANNEL=development
+
+WORKDIR /app
+COPY LICENSE LICENSE
+COPY package.json bun.lock tsconfig.base.json ./
+COPY apps/desktop/package.json apps/desktop/package.json
+COPY apps/server/package.json apps/server/package.json
+COPY packages/common/package.json packages/common/package.json
+RUN bun install --frozen-lockfile --production --filter @kastard/server
+
+COPY apps/server/src apps/server/src
+COPY apps/server/tsconfig.json apps/server/tsconfig.json
+COPY --chmod=0755 apps/server/scripts/worker-entrypoint.sh /usr/local/bin/kastard-worker-entrypoint
+COPY packages/common/src packages/common/src
+
+ENV PORT=5278 \
+	KASTARD_CHANNEL=$KASTARD_CHANNEL \
+	PATH=/opt/kastard/runtime/bin:$PATH \
+	KASTARD_COMFYUI_ROOT=/workspace/kastard \
+	KASTARD_RUNTIME_PYTHON=/opt/kastard/runtime/bin/python \
+	KASTARD_RUNTIME_MANIFEST=/opt/kastard/runtime-manifest.json \
+	UV_CONSTRAINT=/opt/kastard/runtime-constraints.txt
+EXPOSE 22 2222
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+	CMD ["bun", "-e", "const response = await fetch(`http://127.0.0.1:${process.env.PORT ?? 5278}/health`); if (!response.ok) process.exit(1)"]
+
+ENTRYPOINT ["/usr/bin/tini", "-s", "--", "/usr/local/bin/kastard-worker-entrypoint"]
+WORKDIR /app/apps/server
+CMD ["bun", "run", "src/index.ts"]

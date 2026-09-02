@@ -1,0 +1,14 @@
+{
+	"profile": "cu130",
+	"cudaImage": "nvidia/cuda:13.0.2-devel-ubuntu24.04",
+	"cudaVersion": "13.0",
+	"pythonVersion": "3.13.12",
+	"torchVersion": "2.13.0+cu130",
+	"torchvisionVersion": "0.28.0+cu130",
+	"torchaudioVersion": "2.11.0+cu130",
+	"uvVersion": "0.12.4",
+	"dependencyLock": {
+		"path": "comfyui-worker-cu130-lock.txt",
+		"sha256": "89fed6ca7d79e51c51a727d7a5ce3758f28650ea73c9371a173281ab743d2130"
+	}
+}

@@ -1,0 +1,8 @@
+extends: ./electron-builder.yml
+appId: co.somecat.kastard.beta
+productName: Kastard Beta
+extraMetadata:
+  productName: Kastard Beta
+directories:
+  output: dist/beta
+artifactName: Kastard-Beta-${version}+${buildVersion}-${arch}.${ext}

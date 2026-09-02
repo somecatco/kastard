@@ -1,0 +1,10 @@
+# Generated from vendor/comfyui-worker-cu128-lock.txt by scripts/worker-runtime-layers.mjs.
+# Do not edit directly.
+nvidia-cublas-cu12==12.8.4.1 \
+    --hash=sha256:47e9b82132fa8d2b4944e708049229601448aaad7e6f296f630f2d1a32de35af \
+    --hash=sha256:8ac4e771d5a348c551b2a426eda6193c19aa630236b418086020df5ba9667142 \
+    --hash=sha256:b86f6dd8935884615a0683b663891d43781b819ac4f2ba2b0c9604676af346d0
+nvidia-cudnn-cu12==9.19.0.56 \
+    --hash=sha256:08caaf27fe556aca82a3ee3b5aa49a77e7de0cfcb7ff4e5c29da426387a8267e \
+    --hash=sha256:ac6ad90a075bb33a94f2b4cf4622eac13dd4dc65cf6dd9c7572a318516a36625 \
+    --hash=sha256:cec70596b9ce878fab83810c3f5a2e606d35f510e5fee579759e4cbc68a23750

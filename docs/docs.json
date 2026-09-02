@@ -1,0 +1,77 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "Kastard",
+  "description": "Kastard user guide",
+  "colors": {
+    "primary": "#0088FF"
+  },
+  "logo": {
+    "light": "/logo-light.png",
+    "dark": "/logo-dark.png"
+  },
+  "favicon": "/kastard.png",
+  "navbar": {
+    "links": [
+      {
+        "type": "github",
+        "href": "https://github.com/ssinss/kastard"
+      },
+      {
+        "type": "discord",
+        "href": "https://discord.gg/Z9eUBVFncN"
+      }
+    ]
+  },
+  "contextual": {
+    "options": [
+      "copy",
+      "view",
+      "chatgpt",
+      "claude",
+      "mcp",
+      "add-mcp",
+      "cursor",
+      "vscode"
+    ]
+  },
+  "navigation": {
+    "languages": [
+      {
+        "language": "en",
+        "default": true,
+        "groups": [
+          {
+            "group": "Introduction",
+            "pages": ["en/index"]
+          },
+          {
+            "group": "Getting Started",
+            "pages": ["en/getting-started", "en/run-worker-with-docker"]
+          },
+          {
+            "group": "Using Kastard",
+            "pages": ["en/edit-and-run-workflows", "en/add-models-and-custom-nodes"]
+          }
+        ]
+      },
+      {
+        "language": "ko",
+        "groups": [
+          {
+            "group": "소개",
+            "pages": ["ko/index"]
+          },
+          {
+            "group": "시작하기",
+            "pages": ["ko/getting-started", "ko/run-worker-with-docker"]
+          },
+          {
+            "group": "사용하기",
+            "pages": ["ko/edit-and-run-workflows", "ko/add-models-and-custom-nodes"]
+          }
+        ]
+      }
+    ]
+  }
+}

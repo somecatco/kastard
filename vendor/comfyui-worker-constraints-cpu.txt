@@ -1,0 +1,5 @@
+# Keep later custom-node installs compatible with the fixed CPU Worker runtime.
+torch==2.13.0
+torchvision==0.28.0
+torchaudio==2.11.0
+uv==0.12.4

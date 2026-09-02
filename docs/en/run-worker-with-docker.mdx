@@ -1,0 +1,91 @@
+---
+title: "Run a Worker with Docker"
+description: "Deploy a Worker to an NVIDIA GPU server that supports Docker and connect it to Kastard."
+---
+
+<Note>
+  If you use RunPod or Vast.ai, deploy a Worker using the template provided by Kastard.
+</Note>
+
+Use this method to deploy a Worker directly to a Linux `amd64` NVIDIA GPU server that supports Docker.
+
+## Requirements
+
+- Docker Engine with Docker Compose 2.30 or later
+- NVIDIA Container Toolkit
+- An NVIDIA GPU driver that supports CUDA 12.8 or later
+- A server address and TCP port that the computer running Kastard can reach
+
+The default port is `5278`. If you connect over the internet, allow this port through the server firewall.
+
+## 1. Download the Compose file
+
+Create a directory for the Worker on the server and download the Compose file.
+
+```bash
+mkdir -p kastard-worker
+cd kastard-worker
+curl -fLO https://raw.githubusercontent.com/ssinss/kastard/main/compose.yaml
+```
+
+## 2. Configure the Worker
+
+Create a `.env` file in the same directory as the Compose file.
+
+```env
+KASTARD_WORKER_IMAGE=docker.io/somecatco/kastard-worker-cu128:latest
+KASTARD_PUBLIC_ADDRESS=REPLACE_ME:5278
+```
+
+- Set `KASTARD_WORKER_IMAGE` to the Worker image you want to use.
+- Set `KASTARD_PUBLIC_ADDRESS` to the server IP address or domain and port that Kastard can reach.
+
+- CUDA 12.8: `docker.io/somecatco/kastard-worker-cu128:latest`
+- CUDA 13.0: `docker.io/somecatco/kastard-worker-cu130:latest`
+
+The configuration above uses the CUDA 12.8 image. Each image requires an NVIDIA GPU driver that supports its CUDA version or later.
+
+## 3. Start the Worker
+
+```bash
+docker compose up --detach
+```
+
+The first start may take some time while Docker downloads the Worker image.
+
+## 4. Find the connection details
+
+```bash
+docker compose logs --follow worker
+```
+
+Find these two values in the logs.
+
+```text
+Worker address: gpu.example.com:5278
+Authentication code: ABCD-EFGH-JKLM-NPQR
+```
+
+## 5. Connect Kastard
+
+1. Open `Connect` in Kastard.
+2. Select `Other server`.
+3. Enter the `Worker address` and `Authentication code` from the logs.
+4. Select `Connect`.
+
+## Manage the Worker
+
+Pull the configured image and recreate the Worker. To switch CUDA versions, first change `KASTARD_WORKER_IMAGE` in `.env`.
+
+```bash
+docker compose pull
+docker compose up --detach
+```
+
+Stop the Worker and remove its container.
+
+```bash
+docker compose down
+```
+
+Worker data, including models and Custom Nodes, remains in Docker volumes. Running `down --volumes` deletes this data.
