@@ -51,8 +51,8 @@ export type ConnectWorkerDialogProps = {
 };
 
 const VASTAI_TEMPLATE_LINKS =
-	import.meta.env.MODE === "beta"
-		? externalLinks.vastAi.beta
+	import.meta.env.MODE === "preview"
+		? externalLinks.vastAi.preview
 		: externalLinks.vastAi.production;
 const TEMPLATE_LINKS = [
 	{

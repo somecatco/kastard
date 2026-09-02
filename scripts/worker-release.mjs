@@ -2,6 +2,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { readSourceRevision, verifyProductionLineage } from "./release-lineage.mjs";
 
 const BUILD_NUMBER_PATTERN = /^[1-9]\d*$/;
 const VERSION_PATTERN = /^\d+\.\d+\.\d+$/;
@@ -15,9 +16,11 @@ function readWorkerPackage(root) {
 		throw new Error(`Cannot read ${path}: ${error.message}`);
 	}
 
-	const { buildNumber, version } = packageJson;
-	if (typeof version !== "string" || !VERSION_PATTERN.test(version)) {
-		throw new Error("apps/server/package.json must contain a stable semantic version.");
+	const { buildNumber, version: packageVersion } = packageJson;
+	if (typeof packageVersion !== "string" || !VERSION_PATTERN.test(packageVersion)) {
+		throw new Error(
+			"apps/server/package.json must contain a technical semantic version.",
+		);
 	}
 	if (
 		typeof buildNumber !== "string" ||
@@ -29,25 +32,36 @@ function readWorkerPackage(root) {
 		);
 	}
 
-	return { buildNumber, version };
+	return { buildNumber };
 }
 
-export function resolveWorkerRelease(root, tag) {
-	const { buildNumber, version } = readWorkerPackage(root);
-	const betaTag = `worker-v${version}-beta.${buildNumber}`;
-	const productionTag = `worker-v${version}`;
-	const channel =
-		tag === betaTag ? "beta" : tag === productionTag ? "production" : null;
-	if (channel === null) {
-		throw new Error(
-			`Tag ${JSON.stringify(tag)} does not match ${betaTag} or ${productionTag}.`,
-		);
+export function resolveWorkerRelease(root, tag, sourceRevision) {
+	const { buildNumber } = readWorkerPackage(root);
+	if (!/^[0-9a-f]{40}$/.test(sourceRevision)) {
+		throw new Error("The Worker source revision must be a full Git commit SHA.");
+	}
+	const previewTag = `worker-preview.${buildNumber}`;
+	if (tag === previewTag) {
+		return {
+			buildNumber,
+			channel: "preview",
+			productVersion: null,
+			sourceRevision,
+		};
 	}
 
+	const productionMatch = /^worker-v(\d+\.\d+\.\d+)$/.exec(tag);
+	if (productionMatch === null) {
+		throw new Error(
+			`Tag ${JSON.stringify(tag)} does not match ${previewTag} or worker-v{version}.`,
+		);
+	}
 	return {
 		buildNumber,
-		channel,
-		version,
+		channel: "production",
+		previewTag,
+		productVersion: productionMatch[1],
+		sourceRevision,
 	};
 }
 
@@ -58,9 +72,13 @@ function main() {
 	}
 
 	const scriptDirectory = dirname(fileURLToPath(import.meta.url));
-	const release = resolveWorkerRelease(resolve(scriptDirectory, ".."), tag);
-	const channel = release.channel === "beta" ? "Beta" : "Production";
-	console.log(`Worker ${channel} ${release.version} (${release.buildNumber})`);
+	const root = resolve(scriptDirectory, "..");
+	const release = resolveWorkerRelease(root, tag, readSourceRevision(root));
+	verifyProductionLineage(root, release);
+	for (const [key, value] of Object.entries(release)) {
+		const outputKey = key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
+		console.log(`${outputKey}=${value ?? ""}`);
+	}
 }
 
 const isDirectExecution =

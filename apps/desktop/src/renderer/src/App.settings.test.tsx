@@ -116,6 +116,7 @@ test("copies a sanitized debug snapshot from About", async () => {
 	expect(await within(application).findByText("0.1.0")).toBeVisible();
 	expect(await within(application).findByText("1")).toBeVisible();
 	expect(await within(application).findByText("Production")).toBeVisible();
+	expect(await within(application).findByText("a".repeat(40))).toBeVisible();
 	expect(within(application).getByText("macOS 25.0.0 · arm64")).toHaveClass(
 		"select-text",
 	);
@@ -129,7 +130,7 @@ test("copies a sanitized debug snapshot from About", async () => {
 	await waitFor(() => expect(window.kastard.debugInfo.copy).toHaveBeenCalledOnce());
 	const report = vi.mocked(window.kastard.debugInfo.copy).mock.calls[0]?.[0];
 	expect(report).toContain(
-		"Application\nApp Version: 0.1.0\nApp Build: 1\nChannel: Production",
+		`Application\nApp Version: 0.1.0\nApp Build: 1\nApp Revision: ${"a".repeat(40)}\nChannel: Production`,
 	);
 	expect(report).toContain("Platform: macOS 25.0.0 · arm64");
 	expect(report).toContain("Editor ComfyUI\nFrontend: v1.49.6 (bundled)");

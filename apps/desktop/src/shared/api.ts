@@ -14,7 +14,6 @@ import {
 	isModelArtifact,
 	isModelRelativePath,
 	isModelSyncState,
-	isReleaseChannel,
 	isServerLogEntry,
 	isSyncVerification,
 	isWorkerComfyServerState,
@@ -26,12 +25,11 @@ import {
 	normalizeGitHubRepository,
 	parseCustomNodeSyncServerState,
 	parseModelSyncTarget,
-	parseWorkerIdentity,
-	type ReleaseChannel,
+	parseReleaseIdentity,
+	type ReleaseIdentity,
 	type ServerLogEntry,
 	type SyncVerification,
 	type WorkerComfyServerState,
-	type WorkerIdentity,
 	type WorkerSystemStatus,
 } from "@kastard/common";
 
@@ -54,6 +52,7 @@ export type {
 	ModelSyncSnapshot,
 	ModelSyncTarget,
 	ReleaseChannel,
+	ReleaseIdentity,
 	ServerLogEntry,
 	ServerLogLevel,
 	SyncVerification,
@@ -61,7 +60,6 @@ export type {
 	VerificationProblem,
 	VerificationStatus,
 	WorkerComfyServerState,
-	WorkerIdentity,
 	WorkerRuntime,
 	WorkerSystemStatus,
 } from "@kastard/common";
@@ -132,10 +130,7 @@ export const SYNC_COMPLETION_NOTIFICATION_SETTINGS_UPDATE_CHANNEL =
 	"sync-completion-notification-settings:update";
 export const MENU_OPEN_SETTINGS_CHANNEL = "menu:open-settings";
 
-export type DesktopAppInfo = {
-	version: string;
-	buildNumber: string;
-	channel: ReleaseChannel;
+export type DesktopAppInfo = ReleaseIdentity & {
 	environment: {
 		os: string;
 		osVersion: string;
@@ -174,7 +169,7 @@ export type ConnectionState =
 			provider: WorkerProvider;
 			serverUrl: string;
 			connectedAt: number;
-			worker?: WorkerIdentity;
+			worker?: ReleaseIdentity;
 	  }
 	| {
 			status: "offline";
@@ -668,16 +663,10 @@ export type KastardApi = {
 	};
 };
 
-const BUILD_NUMBER_PATTERN = /^[1-9]\d*$/;
-
 export function isDesktopAppInfo(value: unknown): value is DesktopAppInfo {
 	return (
 		isRecord(value) &&
-		typeof value.version === "string" &&
-		value.version.length > 0 &&
-		typeof value.buildNumber === "string" &&
-		BUILD_NUMBER_PATTERN.test(value.buildNumber) &&
-		isReleaseChannel(value.channel) &&
+		parseReleaseIdentity(value) !== null &&
 		isRecord(value.environment) &&
 		[
 			value.environment.os,
@@ -856,7 +845,8 @@ export function isConnectionState(value: unknown): value is ConnectionState {
 			typeof candidate.connectedAt === "number" &&
 			Number.isFinite(candidate.connectedAt) &&
 			candidate.connectedAt >= 0 &&
-			(candidate.worker === undefined || parseWorkerIdentity(candidate.worker) !== null)
+			(candidate.worker === undefined ||
+				parseReleaseIdentity(candidate.worker) !== null)
 		);
 	}
 	if (candidate.status === "offline") {

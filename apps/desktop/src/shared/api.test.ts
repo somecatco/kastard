@@ -116,9 +116,10 @@ test("requires a provider in Worker connection requests and states", () => {
 			serverUrl: "https://worker.example.com",
 			connectedAt: 1,
 			worker: {
-				version: "0.1.0",
 				buildNumber: "15",
 				channel: "production",
+				productVersion: "0.1.0",
+				sourceRevision: "a".repeat(40),
 			},
 		}),
 	).toBe(true);
@@ -128,16 +129,22 @@ test("requires a provider in Worker connection requests and states", () => {
 			provider: "other",
 			serverUrl: "https://worker.example.com",
 			connectedAt: 1,
-			worker: { version: "0.1.0", buildNumber: "15", channel: "preview" },
+			worker: {
+				buildNumber: "15",
+				channel: "preview",
+				productVersion: "0.1.0",
+				sourceRevision: "a".repeat(40),
+			},
 		}),
 	).toBe(false);
 });
 
 test("validates Editor application information", () => {
 	const info = {
-		version: "0.1.0",
 		buildNumber: "1",
 		channel: "production",
+		productVersion: "0.1.0",
+		sourceRevision: "a".repeat(40),
 		environment: {
 			os: "darwin",
 			osVersion: "25.0.0",
@@ -148,10 +155,12 @@ test("validates Editor application information", () => {
 		},
 	};
 	expect(isDesktopAppInfo(info)).toBe(true);
-	expect(isDesktopAppInfo({ ...info, version: "" })).toBe(false);
+	expect(isDesktopAppInfo({ ...info, productVersion: "" })).toBe(false);
 	expect(isDesktopAppInfo({ ...info, buildNumber: "0" })).toBe(false);
 	expect(isDesktopAppInfo({ ...info, buildNumber: 1 })).toBe(false);
-	expect(isDesktopAppInfo({ ...info, channel: "preview" })).toBe(false);
+	expect(isDesktopAppInfo({ ...info, channel: "preview", productVersion: null })).toBe(
+		true,
+	);
 	expect(
 		isDesktopAppInfo({
 			...info,

@@ -22,7 +22,7 @@ export type ExternalLinks = {
 			cu128: string;
 			cu130: string;
 		};
-		beta: {
+		preview: {
 			cu128: string;
 			cu130: string;
 		};
@@ -45,7 +45,7 @@ export function parseExternalLinks(source: string): ExternalLinks {
 	const runpod = record(links.runpod, "runpod");
 	const vastAi = record(links.vastAi, "vastAi");
 	const vastAiProduction = record(vastAi.production, "vastAi.production");
-	const vastAiBeta = record(vastAi.beta, "vastAi.beta");
+	const vastAiPreview = record(vastAi.preview, "vastAi.preview");
 
 	return {
 		github: httpsUrl(links.github, "github"),
@@ -79,9 +79,9 @@ export function parseExternalLinks(source: string): ExternalLinks {
 				cu128: httpsUrl(vastAiProduction.cu128, "vastAi.production.cu128"),
 				cu130: httpsUrl(vastAiProduction.cu130, "vastAi.production.cu130"),
 			},
-			beta: {
-				cu128: httpsUrl(vastAiBeta.cu128, "vastAi.beta.cu128"),
-				cu130: httpsUrl(vastAiBeta.cu130, "vastAi.beta.cu130"),
+			preview: {
+				cu128: httpsUrl(vastAiPreview.cu128, "vastAi.preview.cu128"),
+				cu130: httpsUrl(vastAiPreview.cu130, "vastAi.preview.cu130"),
 			},
 		},
 	};

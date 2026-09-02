@@ -21,9 +21,9 @@
 			"cu128": "https://cloud.vast.ai/?creator_id=153845&name=kastard-worker-cu128",
 			"cu130": "https://cloud.vast.ai/?creator_id=153845&name=kastard-worker-cu130"
 		},
-		"beta": {
-			"cu128": "https://cloud.vast.ai/?creator_id=153845&name=kastard-worker-beta-cu128",
-			"cu130": "https://cloud.vast.ai/?creator_id=153845&name=kastard-worker-beta-cu130"
+		"preview": {
+			"cu128": "https://cloud.vast.ai/?creator_id=153845&name=kastard-worker-preview-cu128",
+			"cu130": "https://cloud.vast.ai/?creator_id=153845&name=kastard-worker-preview-cu130"
 		}
 	}
 }

@@ -166,9 +166,10 @@ export function createDesktopApiMock() {
 	const api: KastardApi = {
 		appInfo: {
 			get: async () => ({
-				version: "0.1.0",
 				buildNumber: "1",
 				channel: "production",
+				productVersion: "0.1.0",
+				sourceRevision: "a".repeat(40),
 				environment: {
 					os: "darwin",
 					osVersion: "25.0.0",

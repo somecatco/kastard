@@ -2,6 +2,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { readSourceRevision, verifyProductionLineage } from "./release-lineage.mjs";
 
 const BUILD_VERSION_PATTERN = /^[1-9]\d*$/;
 const VERSION_PATTERN = /^\d+\.\d+\.\d+$/;
@@ -15,64 +16,80 @@ function readDesktopPackage(root) {
 		throw new Error(`Cannot read ${path}: ${error.message}`);
 	}
 
-	const { version } = packageJson;
+	const { version: packageVersion } = packageJson;
 	const buildVersion = packageJson?.build?.buildVersion;
-	if (typeof version !== "string" || !VERSION_PATTERN.test(version)) {
+	if (typeof packageVersion !== "string" || !VERSION_PATTERN.test(packageVersion)) {
 		throw new Error(
-			"apps/desktop/package.json must contain a stable semantic version.",
+			"apps/desktop/package.json must contain a technical semantic version.",
 		);
 	}
-	if (typeof buildVersion !== "string" || !BUILD_VERSION_PATTERN.test(buildVersion)) {
+	if (
+		typeof buildVersion !== "string" ||
+		!BUILD_VERSION_PATTERN.test(buildVersion) ||
+		!Number.isSafeInteger(Number(buildVersion))
+	) {
 		throw new Error(
-			"apps/desktop/package.json must contain a positive integer buildVersion.",
+			"apps/desktop/package.json must contain a safe positive integer buildVersion.",
 		);
 	}
 
-	return { buildVersion, version };
+	return { buildVersion, packageVersion };
 }
 
-export function resolveEditorRelease(root, tag) {
-	const { buildVersion, version } = readDesktopPackage(root);
-	const betaTag = `editor-v${version}-beta.${buildVersion}`;
-	const productionTag = `editor-v${version}`;
+export function resolveEditorRelease(root, tag, sourceRevision) {
+	const { buildVersion, packageVersion } = readDesktopPackage(root);
+	if (!/^[0-9a-f]{40}$/.test(sourceRevision)) {
+		throw new Error("The Editor source revision must be a full Git commit SHA.");
+	}
+	const shortRevision = sourceRevision.slice(0, 7);
+	const previewTag = `editor-preview.${buildVersion}`;
 
-	if (tag === betaTag) {
+	if (tag === previewTag) {
 		return {
-			appId: "co.somecat.kastard.beta",
-			appName: "Kastard Beta",
-			artifactName: `Kastard-Beta-${version}+${buildVersion}-arm64.dmg`,
-			buildScript: "build:beta",
+			appId: "co.somecat.kastard.preview",
+			appName: "Kastard Preview",
+			artifactName: `Kastard-Preview-${buildVersion}+${shortRevision}-arm64.dmg`,
+			buildScript: "build:preview",
 			buildVersion,
-			outputDirectory: "dist/beta",
+			bundleVersion: packageVersion,
+			channel: "preview",
+			outputDirectory: "dist/preview",
 			prerelease: true,
-			releaseName: `Kastard Beta ${version} (${buildVersion})`,
-			version,
+			productVersion: null,
+			releaseName: `Kastard Preview ${buildVersion} (${shortRevision})`,
+			sourceRevision,
 		};
 	}
 
-	if (tag === productionTag) {
+	const productionMatch = /^editor-v(\d+\.\d+\.\d+)$/.exec(tag);
+	if (productionMatch !== null) {
+		const productVersion = productionMatch[1];
 		return {
 			appId: "co.somecat.kastard",
 			appName: "Kastard",
-			artifactName: `Kastard-${version}+${buildVersion}-arm64.dmg`,
+			artifactName: `Kastard-${productVersion}+${buildVersion}-${shortRevision}-arm64.dmg`,
 			buildScript: "build:production",
 			buildVersion,
+			bundleVersion: productVersion,
+			channel: "production",
 			outputDirectory: "dist/production",
 			prerelease: false,
-			releaseName: `Kastard ${version} (${buildVersion})`,
-			version,
+			previewTag,
+			productVersion,
+			releaseName: `Kastard ${productVersion} (${buildVersion}, ${shortRevision})`,
+			sourceRevision,
 		};
 	}
 
 	throw new Error(
-		`Tag ${JSON.stringify(tag)} does not match ${productionTag} or ${betaTag}.`,
+		`Tag ${JSON.stringify(tag)} does not match ${previewTag} or editor-v{version}.`,
 	);
 }
 
 function printGitHubOutputs(release) {
 	for (const [key, value] of Object.entries(release)) {
 		const outputKey = key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
-		console.log(`${outputKey}=${value}`);
+		console.log(`${outputKey}=${value ?? ""}`);
 	}
 }
 
@@ -83,7 +100,10 @@ function main() {
 	}
 
 	const scriptDirectory = dirname(fileURLToPath(import.meta.url));
-	printGitHubOutputs(resolveEditorRelease(resolve(scriptDirectory, ".."), tag));
+	const root = resolve(scriptDirectory, "..");
+	const release = resolveEditorRelease(root, tag, readSourceRevision(root));
+	verifyProductionLineage(root, release);
+	printGitHubOutputs(release);
 }
 
 const isDirectExecution =

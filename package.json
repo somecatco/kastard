@@ -15,7 +15,7 @@
     "increment-build-number": "node scripts/increment-build-number.mjs",
     "check-build-number": "node scripts/increment-build-number.mjs --check",
     "tag": "node scripts/release-tag.mjs",
-    "test": "bun scripts/worker-runtime-layers.mjs --check && bun test scripts/editor-release.test.mjs scripts/worker-release.test.mjs scripts/release-tag.test.mjs scripts/increment-build-number.test.mjs scripts/worker-runtime-layers.test.mjs && bun run --cwd packages/common test && bun run --cwd apps/server test && bun run --cwd apps/desktop test",
+		"test": "bun scripts/worker-runtime-layers.mjs --check && bun test scripts/editor-release.test.mjs scripts/worker-release.test.mjs scripts/release-tag.test.mjs scripts/release-lineage.test.mjs scripts/increment-build-number.test.mjs scripts/worker-runtime-layers.test.mjs && bun run --cwd packages/common test && bun run --cwd apps/server test && bun run --cwd apps/desktop test",
     "typecheck": "bun run --cwd packages/common typecheck && bun run --cwd apps/server typecheck && bun run --cwd apps/desktop typecheck",
     "lint": "bun run --cwd apps/desktop biome check ../../scripts && bun run --cwd packages/common lint && bun run --cwd apps/server lint && bun run --cwd apps/desktop lint",
     "format": "bun run --cwd apps/desktop biome format --write ../../scripts && bun run --cwd packages/common format && bun run --cwd apps/server format && bun run --cwd apps/desktop format",

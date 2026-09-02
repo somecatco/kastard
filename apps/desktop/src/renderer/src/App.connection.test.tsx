@@ -121,9 +121,10 @@ test("shows the connected Worker release identity", async () => {
 		emitConnection(
 			connectedState({
 				worker: {
-					version: "0.1.0",
 					buildNumber: "15",
 					channel: "production",
+					productVersion: "0.1.0",
+					sourceRevision: "a".repeat(40),
 				},
 			}),
 		);
@@ -132,9 +133,37 @@ test("shows the connected Worker release identity", async () => {
 	const popover = within(await openConnectionDetails());
 	expect(popover.getByText("Version").nextElementSibling).toHaveTextContent("0.1.0");
 	expect(popover.getByText("Build").nextElementSibling).toHaveTextContent("15");
+	expect(popover.getByText("Revision").nextElementSibling).toHaveTextContent(
+		"a".repeat(40),
+	);
 	expect(popover.getByText("Channel").nextElementSibling).toHaveTextContent(
 		"Production",
 	);
+});
+
+test("does not show a product version for a Preview Worker", async () => {
+	render(<App />);
+
+	await act(async () => {
+		emitConnection(
+			connectedState({
+				worker: {
+					buildNumber: "15",
+					channel: "preview",
+					productVersion: null,
+					sourceRevision: "b".repeat(40),
+				},
+			}),
+		);
+	});
+
+	const popover = within(await openConnectionDetails());
+	expect(popover.queryByText("Version")).not.toBeInTheDocument();
+	expect(popover.getByText("Build").nextElementSibling).toHaveTextContent("15");
+	expect(popover.getByText("Revision").nextElementSibling).toHaveTextContent(
+		"b".repeat(40),
+	);
+	expect(popover.getByText("Channel").nextElementSibling).toHaveTextContent("Preview");
 });
 
 test("renders available Worker metrics from session state", async () => {

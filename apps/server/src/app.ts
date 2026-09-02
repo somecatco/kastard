@@ -1,9 +1,9 @@
 import {
 	isReleaseChannel,
 	parseWorkerComfyMemoryCleanupRequest,
+	type ReleaseIdentity,
 	type WorkerConnectionResponse,
 	type WorkerConnectionStartResponse,
-	type WorkerIdentity,
 	type WorkflowJobRejection,
 } from "@kastard/common";
 import { Hono } from "hono";
@@ -39,16 +39,31 @@ const COMFY_RUNTIME_SYNC_CONFLICT =
 
 export function readWorkerIdentity(
 	environment: Record<string, string | undefined> = process.env,
-): WorkerIdentity {
+): ReleaseIdentity {
 	const channel = environment.KASTARD_CHANNEL ?? "development";
 	if (!isReleaseChannel(channel)) {
 		throw new Error(`Invalid KASTARD_CHANNEL: ${channel}.`);
 	}
-	return {
-		version: serverPackage.version,
-		buildNumber: serverPackage.buildNumber,
-		channel,
-	};
+	const buildNumber = serverPackage.buildNumber;
+	if (channel === "development") {
+		return { buildNumber, channel, productVersion: null, sourceRevision: null };
+	}
+
+	const sourceRevision = environment.KASTARD_SOURCE_REVISION;
+	if (typeof sourceRevision !== "string" || !/^[0-9a-f]{40}$/.test(sourceRevision)) {
+		throw new Error("KASTARD_SOURCE_REVISION must be a full Git commit SHA.");
+	}
+	if (channel === "preview") {
+		return { buildNumber, channel, productVersion: null, sourceRevision };
+	}
+
+	const productVersion = environment.KASTARD_PRODUCT_VERSION;
+	if (typeof productVersion !== "string" || !/^\d+\.\d+\.\d+$/.test(productVersion)) {
+		throw new Error(
+			"KASTARD_PRODUCT_VERSION must be a stable semantic version in Production.",
+		);
+	}
+	return { buildNumber, channel, productVersion, sourceRevision };
 }
 
 export function createServerApp(

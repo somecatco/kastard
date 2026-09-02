@@ -5,17 +5,31 @@ export type WorkerErrorResponse = {
 	retryable?: boolean;
 };
 
-export type ReleaseChannel = "development" | "beta" | "production";
+export type ReleaseChannel = "development" | "preview" | "production";
 
-export type WorkerIdentity = {
-	version: string;
-	buildNumber: string;
-	channel: ReleaseChannel;
-};
+export type ReleaseIdentity =
+	| {
+			channel: "development";
+			buildNumber: string;
+			productVersion: null;
+			sourceRevision: null;
+	  }
+	| {
+			channel: "preview";
+			buildNumber: string;
+			productVersion: null;
+			sourceRevision: string;
+	  }
+	| {
+			channel: "production";
+			buildNumber: string;
+			productVersion: string;
+			sourceRevision: string;
+	  };
 
 export type WorkerConnectionResponse = {
 	status: "connected";
-	worker?: WorkerIdentity;
+	worker?: ReleaseIdentity;
 };
 
 export type WorkerConnectionStartResponse = WorkerConnectionResponse & {
@@ -51,7 +65,7 @@ export function parseWorkerConnectionResponse(
 	value: unknown,
 ): WorkerConnectionResponse | null {
 	if (!isRecord(value) || value.status !== "connected") return null;
-	const worker = parseWorkerIdentity(value.worker);
+	const worker = parseReleaseIdentity(value.worker);
 	return {
 		status: "connected",
 		...(worker === null ? {} : { worker }),
@@ -68,22 +82,36 @@ export function parseWorkerConnectionStartResponse(
 }
 
 export function isReleaseChannel(value: unknown): value is ReleaseChannel {
-	return value === "development" || value === "beta" || value === "production";
+	return value === "development" || value === "preview" || value === "production";
 }
 
-export function parseWorkerIdentity(value: unknown): WorkerIdentity | null {
-	return isRecord(value) &&
-		typeof value.version === "string" &&
-		value.version.length > 0 &&
-		typeof value.buildNumber === "string" &&
-		/^[1-9]\d*$/.test(value.buildNumber) &&
-		Number.isSafeInteger(Number(value.buildNumber)) &&
-		isReleaseChannel(value.channel)
-		? {
-				version: value.version,
-				buildNumber: value.buildNumber,
-				channel: value.channel,
-			}
+export function parseReleaseIdentity(value: unknown): ReleaseIdentity | null {
+	if (
+		!isRecord(value) ||
+		typeof value.buildNumber !== "string" ||
+		!/^[1-9]\d*$/.test(value.buildNumber) ||
+		!Number.isSafeInteger(Number(value.buildNumber)) ||
+		!isReleaseChannel(value.channel)
+	) {
+		return null;
+	}
+
+	const { buildNumber, channel, productVersion, sourceRevision } = value;
+	if (channel === "development") {
+		return productVersion === null && sourceRevision === null
+			? { buildNumber, channel, productVersion, sourceRevision }
+			: null;
+	}
+	if (typeof sourceRevision !== "string" || !/^[0-9a-f]{40}$/.test(sourceRevision)) {
+		return null;
+	}
+	if (channel === "preview") {
+		return productVersion === null
+			? { buildNumber, channel, productVersion, sourceRevision }
+			: null;
+	}
+	return typeof productVersion === "string" && /^\d+\.\d+\.\d+$/.test(productVersion)
+		? { buildNumber, channel, productVersion, sourceRevision }
 		: null;
 }
 

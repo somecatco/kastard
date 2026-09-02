@@ -1,6 +1,6 @@
 {
 	"name": "@kastard/desktop",
-	"version": "0.1.0",
+	"version": "0.0.0",
 	"private": true,
 	"license": "AGPL-3.0-or-later",
 	"main": "./out/main/index.js",
@@ -12,8 +12,8 @@
 		"dev": "bun run electron:install && electron-vite dev",
 		"start": "bun run electron:install && electron-vite preview",
 		"build": "bun run comfy:sync && bun run typecheck && electron-vite build",
-		"build:beta": "node ../../scripts/increment-build-number.mjs --check editor && bun run build -- --mode beta && rm -rf dist/beta && electron-builder --config electron-builder.beta.yml --config.buildVersion=$(node -p \"require('./package.json').build.buildVersion\") --mac dmg --arm64",
-		"build:production": "node ../../scripts/increment-build-number.mjs --check editor && bun run build && rm -rf dist/production && electron-builder --config electron-builder.production.yml --config.buildVersion=$(node -p \"require('./package.json').build.buildVersion\") --mac dmg --arm64",
+		"build:preview": "node ../../scripts/increment-build-number.mjs --check editor && bun run build -- --mode preview && rm -rf dist/preview && electron-builder --config electron-builder.preview.yml --config.buildVersion=$(node -p \"require('./package.json').build.buildVersion\") --config.artifactName=\"$KASTARD_ARTIFACT_NAME\" --mac dmg --arm64",
+		"build:production": "node ../../scripts/increment-build-number.mjs --check editor && bun run build -- --mode production && rm -rf dist/production && electron-builder --config electron-builder.production.yml --config.buildVersion=$(node -p \"require('./package.json').build.buildVersion\") --config.extraMetadata.version=\"$KASTARD_PRODUCT_VERSION\" --config.artifactName=\"$KASTARD_ARTIFACT_NAME\" --mac dmg --arm64",
 		"typecheck": "bun run typecheck:node && bun run typecheck:web && bun run typecheck:scripts",
 		"typecheck:node": "tsc --noEmit -p tsconfig.node.json",
 		"typecheck:web": "tsc --noEmit -p tsconfig.web.json",

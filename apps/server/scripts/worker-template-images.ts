@@ -3,21 +3,21 @@ import { resolve } from "node:path";
 export const workerRuntimes = ["cu128", "cu130"] as const;
 export type WorkerRuntime = (typeof workerRuntimes)[number];
 export type WorkerImages = Record<WorkerRuntime, string>;
-export type WorkerTemplateChannel = "beta" | "production";
+export type WorkerTemplateChannel = "preview" | "production";
 
 export function workerTemplateIdEnvironmentName(
 	provider: "RUNPOD" | "VAST",
 	runtime: WorkerRuntime,
 	channel: WorkerTemplateChannel,
 ): string {
-	return `${provider}_WORKER_TEMPLATE_ID_${channel === "beta" ? "BETA_" : ""}${runtime.toUpperCase()}`;
+	return `${provider}_WORKER_TEMPLATE_ID_${channel === "preview" ? "PREVIEW_" : ""}${runtime.toUpperCase()}`;
 }
 
 export function workerTemplateName(
 	runtime: WorkerRuntime,
 	channel: WorkerTemplateChannel,
 ): string {
-	return `kastard-worker${channel === "beta" ? "-beta" : ""}-${runtime}`;
+	return `kastard-worker${channel === "preview" ? "-preview" : ""}-${runtime}`;
 }
 
 const workerImageScript = resolve(import.meta.dir, "../../../scripts/worker-image.sh");
@@ -60,13 +60,13 @@ export function parseWorkerImageArguments(
 ): WorkerTemplateChannel {
 	const [channelArgument, ...imageArguments] = args;
 	const channel =
-		channelArgument === "--beta"
-			? "beta"
+		channelArgument === "--preview"
+			? "preview"
 			: channelArgument === "--production"
 				? "production"
 				: null;
 	if (channel !== null && imageArguments.length === 0) return channel;
-	throw new Error(`Usage: bun ${command} <--beta | --production>`);
+	throw new Error(`Usage: bun ${command} <--preview | --production>`);
 }
 
 export async function resolveWorkerImages(

@@ -7,9 +7,10 @@ import type {
 import { formatDebugInfo } from "./debug-info";
 
 const APP_INFO: DesktopAppInfo = {
-	version: "0.1.0",
 	buildNumber: "12",
-	channel: "beta",
+	channel: "preview",
+	productVersion: null,
+	sourceRevision: "a".repeat(40),
 	environment: {
 		os: "darwin",
 		osVersion: "25.0.0",
@@ -35,9 +36,10 @@ const WORKER_SESSION: WorkerSessionState = {
 		serverUrl: "https://user:secret@worker.example.com:8443/api?token=hidden#details",
 		connectedAt: 1_787_542_000_000,
 		worker: {
-			version: "0.1.0",
 			buildNumber: "15",
 			channel: "production",
+			productVersion: "0.1.0",
+			sourceRevision: "b".repeat(40),
 		},
 	},
 	systemMetrics: { status: "loading" },
@@ -73,9 +75,9 @@ describe("formatDebugInfo", () => {
 		expect(report).toBe(
 			[
 				"Application",
-				"App Version: 0.1.0",
 				"App Build: 12",
-				"Channel: Beta",
+				`App Revision: ${"a".repeat(40)}`,
+				"Channel: Preview",
 				"Platform: macOS 25.0.0 · arm64",
 				"Runtime: Electron 43.4.0 · Chrome 144.0.7559.220 · Node 24.13.0",
 				"",
@@ -88,6 +90,7 @@ describe("formatDebugInfo", () => {
 				"Connection: connected",
 				"Version: 0.1.0",
 				"Build: 15",
+				`Revision: ${"b".repeat(40)}`,
 				"Channel: Production",
 				"Backend: ready",
 				"Expected Backend Version: 0.34.0",
