@@ -13,6 +13,7 @@
     "docs": "cd docs && bunx mint@latest dev",
     "build": "bun run --cwd apps/desktop build",
     "increment-build-number": "node scripts/increment-build-number.mjs",
+    "check-build-number": "node scripts/increment-build-number.mjs --check",
     "tag": "node scripts/release-tag.mjs",
     "test": "bun scripts/worker-runtime-layers.mjs --check && bun test scripts/editor-release.test.mjs scripts/worker-release.test.mjs scripts/release-tag.test.mjs scripts/increment-build-number.test.mjs scripts/worker-runtime-layers.test.mjs && bun run --cwd packages/common test && bun run --cwd apps/server test && bun run --cwd apps/desktop test",
     "typecheck": "bun run --cwd packages/common typecheck && bun run --cwd apps/server typecheck && bun run --cwd apps/desktop typecheck",
