@@ -7,6 +7,10 @@ const repositoryRoot = resolve(import.meta.dirname, "../../..");
 const externalLinks = parseExternalLinks(
 	readFileSync(resolve(repositoryRoot, "LINKS.jsonc"), "utf8"),
 );
+const composeFileUrl = `${externalLinks.github.replace(
+	"https://github.com/",
+	"https://raw.githubusercontent.com/",
+)}/main/compose.yaml`;
 
 test("keeps static external link mirrors aligned with LINKS.jsonc", () => {
 	const staticMirrors = [
@@ -29,6 +33,7 @@ test("keeps static external link mirrors aligned with LINKS.jsonc", () => {
 		{
 			path: "docs/en/run-worker-with-docker.mdx",
 			values: [
+				composeFileUrl,
 				`docker.io/${externalLinks.dockerHub.cu128}:latest`,
 				`docker.io/${externalLinks.dockerHub.cu130}:latest`,
 			],
@@ -36,6 +41,7 @@ test("keeps static external link mirrors aligned with LINKS.jsonc", () => {
 		{
 			path: "docs/ko/run-worker-with-docker.mdx",
 			values: [
+				composeFileUrl,
 				`docker.io/${externalLinks.dockerHub.cu128}:latest`,
 				`docker.io/${externalLinks.dockerHub.cu130}:latest`,
 			],
