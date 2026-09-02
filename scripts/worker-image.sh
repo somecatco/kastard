@@ -8,17 +8,17 @@ print_images=false
 requested_runtime=""
 
 usage() {
-	printf 'Usage: %s [--beta | --production] [--runtime <cu128|cu130>] [--push | --print-images]\n' "$0" >&2
+	printf 'Usage: %s [--preview | --production] [--runtime <cu128|cu130>] [--push | --print-images]\n' "$0" >&2
 }
 
 while [[ $# -gt 0 ]]; do
 	case "$1" in
-		--beta)
+		--preview)
 			if [[ $worker_channel != development ]]; then
 				usage
 				exit 2
 			fi
-			worker_channel=beta
+			worker_channel=preview
 			;;
 		--production)
 			if [[ $worker_channel != development ]]; then
@@ -73,8 +73,8 @@ fi
 if [[ $worker_channel != development ]]; then
 	metadata="$(bun -e '
 		const manifest = await Bun.file(process.argv[1]).json();
-		if (typeof manifest.version !== "string" || manifest.version.length === 0) {
-			console.error("The Worker package version must be a non-empty string.");
+		if (typeof manifest.version !== "string" || !/^\d+\.\d+\.\d+$/.test(manifest.version)) {
+			console.error("The Worker package version must be a technical semantic version.");
 			process.exit(1);
 		}
 		if (typeof manifest.buildNumber !== "string" || !/^[1-9]\d*$/.test(manifest.buildNumber)) {
@@ -85,15 +85,29 @@ if [[ $worker_channel != development ]]; then
 			console.error("The Worker build number exceeds JavaScript safe integer range.");
 			process.exit(1);
 		}
-		process.stdout.write(`${manifest.version}\t${manifest.buildNumber}`);
+		process.stdout.write(manifest.buildNumber);
 	' "$repo_root/apps/server/package.json")"
-	IFS=$'\t' read -r version build_number <<< "$metadata"
-	if [[ $worker_channel == beta ]]; then
-		base_tag="beta-${version}-build.${build_number}"
+	build_number="$metadata"
+	source_revision="${KASTARD_SOURCE_REVISION:-}"
+	if [[ ! $source_revision =~ ^[0-9a-f]{40}$ ]]; then
+		printf 'KASTARD_SOURCE_REVISION must be a full Git commit SHA.\n' >&2
+		exit 1
+	fi
+	short_revision="${source_revision:0:7}"
+	if [[ $worker_channel == preview ]]; then
+		product_version=""
+		base_tag="preview-build.${build_number}-${short_revision}"
 	else
-		base_tag="${version}-build.${build_number}"
+		product_version="${KASTARD_PRODUCT_VERSION:-}"
+		if [[ ! $product_version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+			printf 'KASTARD_PRODUCT_VERSION must be a stable semantic version in Production.\n' >&2
+			exit 1
+		fi
+		base_tag="${product_version}-build.${build_number}-${short_revision}"
 	fi
 else
+	product_version=""
+	source_revision=""
 	branch_tag="$(
 		printf '%s' "$branch" |
 			LC_ALL=C tr '[:upper:]' '[:lower:]' |
@@ -226,6 +240,8 @@ for index in "${!runtimes[@]}"; do
 			--platform linux/amd64
 			--build-arg "RUNTIME_IMAGE=${runtime_image}"
 			--build-arg "KASTARD_CHANNEL=${worker_channel}"
+			--build-arg "KASTARD_PRODUCT_VERSION=${product_version}"
+			--build-arg "KASTARD_SOURCE_REVISION=${source_revision}"
 		)
 		if $use_registry_cache; then
 			worker_build+=(
@@ -255,6 +271,8 @@ for index in "${!runtimes[@]}"; do
 			--platform linux/amd64 \
 			--build-arg "RUNTIME_IMAGE=${runtime_image}" \
 			--build-arg "KASTARD_CHANNEL=${worker_channel}" \
+			--build-arg "KASTARD_PRODUCT_VERSION=${product_version}" \
+			--build-arg "KASTARD_SOURCE_REVISION=${source_revision}" \
 			-f apps/server/Dockerfile \
 			-t "${images[$index]}" \
 			.

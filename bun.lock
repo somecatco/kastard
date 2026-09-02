@@ -10,7 +10,7 @@
     },
     "apps/desktop": {
       "name": "@kastard/desktop",
-      "version": "0.1.0",
+      "version": "0.0.0",
       "dependencies": {
         "@kastard/common": "workspace:*",
         "@radix-ui/react-dialog": "^1.1.23",
@@ -57,7 +57,7 @@
     },
     "apps/server": {
       "name": "@kastard/server",
-      "version": "0.1.0",
+      "version": "0.0.0",
       "dependencies": {
         "@kastard/common": "workspace:*",
         "fflate": "^0.8.3",

@@ -14,6 +14,7 @@ import { checkBuildNumbers, incrementBuildNumbers } from "./increment-build-numb
 
 const roots = [];
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
+const sourceRevision = "a".repeat(40);
 
 function writeJson(root, path, value) {
 	const fullPath = join(root, path);
@@ -29,7 +30,7 @@ function createFixture({ editor = "4", worker = "7" } = {}) {
 	});
 	writeJson(root, "apps/server/package.json", {
 		buildNumber: worker,
-		version: "0.1.0",
+		version: "0.0.0",
 	});
 	return root;
 }
@@ -59,7 +60,7 @@ if [ "$1" = "-e" ]; then
 	if [ -n "$4" ]; then
 		printf 'nvidia/cuda:fixture\\t3.13.12'
 	else
-		printf '0.1.0\\t7'
+		printf '7'
 	fi
 elif [ "$2" = "--fingerprint" ]; then
 	printf 'fixture%s\\n' "$3"
@@ -88,6 +89,8 @@ fi
 		...process.env,
 		DOCKER_LOG: log,
 		GITHUB_ACTIONS: "true",
+		KASTARD_PRODUCT_VERSION: "0.2.0",
+		KASTARD_SOURCE_REVISION: sourceRevision,
 		PATH: `${bin}:${process.env.PATH}`,
 		RUNTIME_EXISTS: String(runtimeExists),
 	};
@@ -149,12 +152,12 @@ describe("build number increment", () => {
 		expect(readFileSync(editorPath, "utf8")).toBe(before);
 	});
 
-	test("rejects an unsafe Worker build number before resolving a Beta image", () => {
+	test("rejects an unsafe Worker build number before resolving a Preview image", () => {
 		const root = createFixture({ worker: "9007199254740992" });
 		installWorkerImageScript(root);
 
 		const result = Bun.spawnSync(
-			["bash", "scripts/worker-image.sh", "--beta", "--print-images"],
+			["bash", "scripts/worker-image.sh", "--preview", "--print-images"],
 			{ cwd: root },
 		);
 
@@ -163,20 +166,20 @@ describe("build number increment", () => {
 		expect(result.stderr.toString()).toContain("safe integer range");
 	});
 
-	test("resolves both explicit Worker runtime image tags from one Beta build", () => {
+	test("resolves both explicit Worker runtime image tags from one Preview build", () => {
 		const root = createFixture();
 		installWorkerImageScript(root);
 
 		const result = Bun.spawnSync(
-			["bash", "scripts/worker-image.sh", "--beta", "--print-images"],
-			{ cwd: root },
+			["bash", "scripts/worker-image.sh", "--preview", "--print-images"],
+			{ cwd: root, env: { ...process.env, KASTARD_SOURCE_REVISION: sourceRevision } },
 		);
 
 		expect(result.exitCode).toBe(0);
 		expect(result.stderr.toString()).toBe("");
 		expect(result.stdout.toString()).toBe(
-			"cu128\tsomecatco/kastard-worker-cu128:beta-0.1.0-build.7\n" +
-				"cu130\tsomecatco/kastard-worker-cu130:beta-0.1.0-build.7\n",
+			"cu128\tsomecatco/kastard-worker-cu128:preview-build.7-aaaaaaa\n" +
+				"cu130\tsomecatco/kastard-worker-cu130:preview-build.7-aaaaaaa\n",
 		);
 	});
 
@@ -188,18 +191,18 @@ describe("build number increment", () => {
 			[
 				"bash",
 				"scripts/worker-image.sh",
-				"--beta",
+				"--preview",
 				"--runtime",
 				"cu130",
 				"--print-images",
 			],
-			{ cwd: root },
+			{ cwd: root, env: { ...process.env, KASTARD_SOURCE_REVISION: sourceRevision } },
 		);
 
 		expect(result.exitCode).toBe(0);
 		expect(result.stderr.toString()).toBe("");
 		expect(result.stdout.toString()).toBe(
-			"cu130\tsomecatco/kastard-worker-cu130:beta-0.1.0-build.7\n",
+			"cu130\tsomecatco/kastard-worker-cu130:preview-build.7-aaaaaaa\n",
 		);
 	});
 
@@ -224,14 +227,19 @@ describe("build number increment", () => {
 			["bash", "scripts/worker-image.sh", "--production", "--print-images"],
 			{
 				cwd: root,
+				env: {
+					...process.env,
+					KASTARD_PRODUCT_VERSION: "0.2.0",
+					KASTARD_SOURCE_REVISION: sourceRevision,
+				},
 			},
 		);
 
 		expect(result.exitCode).toBe(0);
 		expect(result.stderr.toString()).toBe("");
 		expect(result.stdout.toString()).toBe(
-			"cu128\tsomecatco/kastard-worker-cu128:0.1.0-build.7\n" +
-				"cu130\tsomecatco/kastard-worker-cu130:0.1.0-build.7\n",
+			"cu128\tsomecatco/kastard-worker-cu128:0.2.0-build.7-aaaaaaa\n" +
+				"cu130\tsomecatco/kastard-worker-cu130:0.2.0-build.7-aaaaaaa\n",
 		);
 	});
 
@@ -240,12 +248,18 @@ describe("build number increment", () => {
 		installWorkerImageScript(root);
 
 		const result = Bun.spawnSync(
-			["bash", "scripts/worker-image.sh", "--beta", "--production", "--print-images"],
+			[
+				"bash",
+				"scripts/worker-image.sh",
+				"--preview",
+				"--production",
+				"--print-images",
+			],
 			{ cwd: root },
 		);
 
 		expect(result.exitCode).toBe(2);
-		expect(result.stderr.toString()).toContain("--beta | --production");
+		expect(result.stderr.toString()).toContain("--preview | --production");
 	});
 
 	test("keeps branch and commit tags outside main", () => {
@@ -288,13 +302,13 @@ describe("build number increment", () => {
 });
 
 describe("Worker image builds", () => {
-	test("publishes a missing runtime base before the Beta Worker image", () => {
+	test("publishes a missing runtime base before the Preview Worker image", () => {
 		const root = createFixture();
 		installWorkerImageScript(root);
 		const env = installWorkerBuildTools(root, false);
 
 		const result = Bun.spawnSync(
-			["bash", "scripts/worker-image.sh", "--beta", "--runtime", "cu128", "--push"],
+			["bash", "scripts/worker-image.sh", "--preview", "--runtime", "cu128", "--push"],
 			{ cwd: root, env },
 		);
 
@@ -315,7 +329,10 @@ describe("Worker image builds", () => {
 		expect(commands[2]).toContain(
 			"--build-arg RUNTIME_IMAGE=somecatco/kastard-worker-cu128:runtime-cu128-fixturecu128",
 		);
-		expect(commands[2]).toContain("--build-arg KASTARD_CHANNEL=beta");
+		expect(commands[2]).toContain("--build-arg KASTARD_CHANNEL=preview");
+		expect(commands[2]).toContain(
+			`--build-arg KASTARD_SOURCE_REVISION=${sourceRevision}`,
+		);
 		expect(commands[2]).toContain(
 			"--cache-to type=registry,ref=somecatco/kastard-worker-cu128:buildcache-worker-cu128,mode=max",
 		);
@@ -323,7 +340,7 @@ describe("Worker image builds", () => {
 			"--cache-from type=registry,ref=somecatco/kastard-worker-cu128:buildcache-worker-cu128",
 		);
 		expect(commands[2]).toContain(
-			"-t somecatco/kastard-worker-cu128:beta-0.1.0-build.7",
+			"-t somecatco/kastard-worker-cu128:preview-build.7-aaaaaaa",
 		);
 	});
 
@@ -349,9 +366,12 @@ describe("Worker image builds", () => {
 		const commands = readFileSync(env.DOCKER_LOG, "utf8").trim().split("\n");
 		expect(commands).toHaveLength(2);
 		expect(commands[1]).not.toContain("Dockerfile.runtime");
-		expect(commands[1]).toContain("-t somecatco/kastard-worker-cu130:0.1.0-build.7");
+		expect(commands[1]).toContain(
+			"-t somecatco/kastard-worker-cu130:0.2.0-build.7-aaaaaaa",
+		);
 		expect(commands[1]).toContain("-t somecatco/kastard-worker-cu130:latest");
 		expect(commands[1]).toContain("--build-arg KASTARD_CHANNEL=production");
+		expect(commands[1]).toContain("--build-arg KASTARD_PRODUCT_VERSION=0.2.0");
 	});
 
 	test("fails when the runtime registry lookup is unavailable", () => {
@@ -360,7 +380,7 @@ describe("Worker image builds", () => {
 		const env = installWorkerBuildTools(root, "error");
 
 		const result = Bun.spawnSync(
-			["bash", "scripts/worker-image.sh", "--beta", "--runtime", "cu128", "--push"],
+			["bash", "scripts/worker-image.sh", "--preview", "--runtime", "cu128", "--push"],
 			{ cwd: root, env },
 		);
 
@@ -376,7 +396,7 @@ describe("Worker image builds", () => {
 		delete env.GITHUB_ACTIONS;
 
 		const result = Bun.spawnSync(
-			["bash", "scripts/worker-image.sh", "--beta", "--runtime", "cu130", "--push"],
+			["bash", "scripts/worker-image.sh", "--preview", "--runtime", "cu130", "--push"],
 			{ cwd: root, env },
 		);
 

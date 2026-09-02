@@ -152,25 +152,32 @@ describe("Worker HTTP contracts", () => {
 				status: "connected",
 				logCursor: "worker:0",
 				worker: {
-					version: "0.1.0",
 					buildNumber: "15",
-					channel: "beta",
+					channel: "preview",
+					productVersion: null,
+					sourceRevision: "a".repeat(40),
 				},
 			}),
 		).toEqual({
 			status: "connected",
 			logCursor: "worker:0",
 			worker: {
-				version: "0.1.0",
 				buildNumber: "15",
-				channel: "beta",
+				channel: "preview",
+				productVersion: null,
+				sourceRevision: "a".repeat(40),
 			},
 		});
 		expect(
 			parseWorkerConnectionStartResponse({
 				status: "connected",
 				logCursor: "worker:0",
-				worker: { version: "0.1.0", buildNumber: "0", channel: "beta" },
+				worker: {
+					buildNumber: "0",
+					channel: "preview",
+					productVersion: null,
+					sourceRevision: "a".repeat(40),
+				},
 			}),
 		).toEqual({ status: "connected", logCursor: "worker:0" });
 		expect(
@@ -246,7 +253,7 @@ describe("Worker HTTP contracts", () => {
 				operationId: null,
 				status: "failed",
 				models: [model],
-				error: "Pre-Beta Worker failure.",
+				error: "Older Worker failure.",
 			}),
 		).toBeNull();
 		expect(

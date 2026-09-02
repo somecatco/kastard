@@ -3,9 +3,9 @@ import type {
 	ConnectionRequest,
 	ConnectionResult,
 	ConnectionState,
+	ReleaseIdentity,
 	SyncVerification,
 	WorkerComfyState,
-	WorkerIdentity,
 	WorkerSessionState,
 	WorkerSetupState,
 } from "../../../shared/api";
@@ -49,7 +49,7 @@ export type WorkerSessionMachineServices = {
 	recoverConnection: (
 		serverUrl: string,
 		connectedAt: number,
-		worker?: WorkerIdentity,
+		worker?: ReleaseIdentity,
 	) => void;
 	setSetupState: (state: WorkerSetupState) => void;
 	getComfyState: () => WorkerComfyState;
@@ -103,7 +103,7 @@ type WorkerSessionMachineEvent =
 			type: "connection.recovered";
 			serverUrl: string;
 			connectedAt: number;
-			worker?: WorkerIdentity;
+			worker?: ReleaseIdentity;
 	  }
 	| {
 			type: "connection.resolved";

@@ -60,9 +60,10 @@ describe("server connection client", () => {
 				status: "connected",
 				logCursor: "server-one:0",
 				worker: {
-					version: "0.1.0",
 					buildNumber: "15",
-					channel: "beta",
+					channel: "preview",
+					productVersion: null,
+					sourceRevision: "a".repeat(40),
 				},
 			}),
 		);
@@ -82,9 +83,10 @@ describe("server connection client", () => {
 			logCursor: "server-one:0",
 			tunnel,
 			worker: {
-				version: "0.1.0",
 				buildNumber: "15",
-				channel: "beta",
+				channel: "preview",
+				productVersion: null,
+				sourceRevision: "a".repeat(40),
 			},
 		});
 		expect(openTunnel).toHaveBeenCalledWith(
@@ -201,9 +203,10 @@ describe("server connection client", () => {
 					Response.json({
 						status: "connected",
 						worker: {
-							version: "0.1.0",
 							buildNumber: "15",
 							channel: "production",
+							productVersion: "0.1.0",
+							sourceRevision: "a".repeat(40),
 						},
 					}),
 				) as unknown as typeof fetch,
@@ -211,9 +214,10 @@ describe("server connection client", () => {
 		).toEqual({
 			status: "connected",
 			worker: {
-				version: "0.1.0",
 				buildNumber: "15",
 				channel: "production",
+				productVersion: "0.1.0",
+				sourceRevision: "a".repeat(40),
 			},
 		});
 	});

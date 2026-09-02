@@ -200,7 +200,7 @@ async function syncFailure(provider: ReturnType<typeof runpod>): Promise<string[
 describe("RunPod Worker templates", () => {
 	test("requires one release channel", () => {
 		expect(parseArguments(["--production"])).toBe("production");
-		expect(parseArguments(["--beta"])).toBe("beta");
+		expect(parseArguments(["--preview"])).toBe("preview");
 		expect(() => parseArguments([])).toThrow("runpod-worker-templates.ts");
 		expect(() => parseArguments(["--production", cu128, cu130])).toThrow(
 			"runpod-worker-templates.ts",

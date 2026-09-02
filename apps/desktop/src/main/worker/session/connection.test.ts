@@ -21,6 +21,19 @@ import {
 	workerTunnel,
 } from "./test-harness";
 
+const previewWorker = {
+	buildNumber: "15",
+	channel: "preview" as const,
+	productVersion: null,
+	sourceRevision: "a".repeat(40),
+};
+const productionWorker = {
+	buildNumber: "2",
+	channel: "production" as const,
+	productVersion: "0.2.0",
+	sourceRevision: "b".repeat(40),
+};
+
 test("refreshes Worker resources after the connection becomes connected", async () => {
 	const observedConnectionStatuses: string[] = [];
 	const harness = createHarness({
@@ -909,7 +922,7 @@ test("clears stale Worker identity when a connection recheck omits it", async ()
 			ok: true as const,
 			logCursor: "cursor-1",
 			tunnel: workerTunnel(serverUrl),
-			worker: { version: "0.1.0", buildNumber: "15", channel: "beta" as const },
+			worker: previewWorker,
 		})),
 		probe: vi.fn().mockReturnValue(recheck.promise),
 		recheckMs: 1,
@@ -918,7 +931,7 @@ test("clears stale Worker identity when a connection recheck omits it", async ()
 	await initializeAndConnect(session);
 	expect(session.getState().connection).toMatchObject({
 		status: "connected",
-		worker: { version: "0.1.0", buildNumber: "15", channel: "beta" },
+		worker: previewWorker,
 	});
 	await vi.waitFor(() => expect(options.probe).toHaveBeenCalled());
 	recheck.resolve({ status: "connected" });
@@ -947,7 +960,7 @@ test("preserves connection time during rechecks and resets it after recovery", a
 	}
 	probe.mockReturnValueOnce(recoveredProbe.promise).mockResolvedValue({
 		status: "connected",
-		worker: { version: "0.1.0", buildNumber: "15", channel: "beta" },
+		worker: previewWorker,
 	});
 	const now = vi.spyOn(Date, "now").mockReturnValue(1_000);
 	const { session } = createHarness({ probe, recheckMs: 1 });
@@ -982,13 +995,13 @@ test("preserves connection time during rechecks and resets it after recovery", a
 		now.mockReturnValue(3_000);
 		recoveredProbe.resolve({
 			status: "connected",
-			worker: { version: "0.1.0", buildNumber: "15", channel: "beta" },
+			worker: previewWorker,
 		});
 		await vi.waitFor(() =>
 			expect(session.getState().connection).toMatchObject({
 				status: "connected",
 				connectedAt: 3_000,
-				worker: { version: "0.1.0", buildNumber: "15", channel: "beta" },
+				worker: previewWorker,
 			}),
 		);
 	} finally {
@@ -1169,14 +1182,19 @@ test("ignores work completed after the Worker session was replaced", async () =>
 		ok: true,
 		logCursor: "second",
 		tunnel: workerTunnel(SECOND_SERVER_URL),
-		worker: { version: "0.2.0", buildNumber: "2", channel: "production" },
+		worker: productionWorker,
 	});
 	expect(await secondConnection).toEqual({ ok: true });
 	first.resolve({
 		ok: true,
 		logCursor: "first",
 		tunnel: workerTunnel(SERVER_URL),
-		worker: { version: "0.1.0", buildNumber: "1", channel: "beta" },
+		worker: {
+			buildNumber: "1",
+			channel: "preview",
+			productVersion: null,
+			sourceRevision: "c".repeat(40),
+		},
 	});
 	expect(await firstConnection).toEqual({
 		ok: false,
@@ -1187,7 +1205,7 @@ test("ignores work completed after the Worker session was replaced", async () =>
 		provider: "other",
 		serverUrl: SECOND_SERVER_URL,
 		connectedAt: expect.any(Number),
-		worker: { version: "0.2.0", buildNumber: "2", channel: "production" },
+		worker: productionWorker,
 	});
 	session.stop();
 });

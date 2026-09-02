@@ -23,12 +23,12 @@ import {
 	parseWorkerSystemStatus,
 	parseWorkflowJobRejection,
 	parseWorkflowJobState,
+	type ReleaseIdentity,
 	type ServerLogEntry,
 	type SyncVerification,
 	type SyncVerificationRequest,
 	type WorkerComfyMemoryCleanupRequest,
 	type WorkerComfyServerState,
-	type WorkerIdentity,
 	type WorkerSystemStatus,
 } from "@kastard/common";
 import { connectWorkerTunnel, type WorkerTunnel } from "./tunnel";
@@ -55,11 +55,11 @@ export type ServerCredential = {
 };
 
 export type ConnectionAttemptResult =
-	| { ok: true; logCursor: string; tunnel: WorkerTunnel; worker?: WorkerIdentity }
+	| { ok: true; logCursor: string; tunnel: WorkerTunnel; worker?: ReleaseIdentity }
 	| { ok: false; error: string };
 
 export type ConnectionProbeResult =
-	| { status: "connected"; worker?: WorkerIdentity }
+	| { status: "connected"; worker?: ReleaseIdentity }
 	| { status: "offline"; error: string };
 
 export type ServerLogsFetchResult =

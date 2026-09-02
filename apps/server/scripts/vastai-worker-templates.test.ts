@@ -93,7 +93,7 @@ function template(
 describe("Vast.ai Worker templates", () => {
 	test("requires one release channel", () => {
 		expect(parseArguments(["--production"])).toBe("production");
-		expect(parseArguments(["--beta"])).toBe("beta");
+		expect(parseArguments(["--preview"])).toBe("preview");
 		expect(() => parseArguments([])).toThrow("vastai-worker-templates.ts");
 		expect(() => parseArguments(["--production", cu128, cu130])).toThrow(
 			"vastai-worker-templates.ts",

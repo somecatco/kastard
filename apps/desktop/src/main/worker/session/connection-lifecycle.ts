@@ -4,9 +4,9 @@ import type {
 	ConnectionResult,
 	ConnectionSettings,
 	ConnectionSettingsResult,
+	ReleaseIdentity,
 	ServerLogEntry,
 	ServerLogsResult,
-	WorkerIdentity,
 	WorkerProvider,
 	WorkerSessionState,
 } from "../../../shared/api";
@@ -67,7 +67,7 @@ type WorkerConnectionLifecycleDependencies = {
 	onRecovered: (
 		serverUrl: string,
 		connectedAt: number,
-		worker?: WorkerIdentity,
+		worker?: ReleaseIdentity,
 	) => void;
 	onOffline: (message: string, reconnectRequired?: boolean) => void;
 };
@@ -465,7 +465,7 @@ export class WorkerConnectionLifecycle {
 		}
 	}
 
-	recover(serverUrl: string, connectedAt: number, worker?: WorkerIdentity): void {
+	recover(serverUrl: string, connectedAt: number, worker?: ReleaseIdentity): void {
 		const connection = this.dependencies.state.getState().connection;
 		if (connection.status !== "offline") return;
 		this.dependencies.state.setConnection({

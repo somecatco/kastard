@@ -2,6 +2,7 @@ import type {
 	ComfyVersionState,
 	DesktopAppInfo,
 	ReleaseChannel,
+	ReleaseIdentity,
 	WorkerRuntime,
 	WorkerSessionState,
 } from "../../../shared/api";
@@ -23,7 +24,7 @@ const OS_LABELS: Record<string, string> = {
 
 const RELEASE_CHANNEL_LABELS: Record<ReleaseChannel, string> = {
 	development: "Development",
-	beta: "Beta",
+	preview: "Preview",
 	production: "Production",
 };
 
@@ -45,6 +46,27 @@ export function desktopRuntimeLabel(
 
 export function releaseChannelLabel(channel: ReleaseChannel): string {
 	return RELEASE_CHANNEL_LABELS[channel];
+}
+
+export function releaseIdentityRows(
+	identity: ReleaseIdentity | undefined,
+	unavailable = "Unavailable",
+): [label: string, value: string][] {
+	if (identity === undefined) {
+		return [
+			["Build", unavailable],
+			["Revision", unavailable],
+			["Channel", unavailable],
+		];
+	}
+	return [
+		...(identity.productVersion === null
+			? []
+			: ([["Version", identity.productVersion]] as [string, string][])),
+		["Build", identity.buildNumber],
+		["Revision", identity.sourceRevision ?? unavailable],
+		["Channel", releaseChannelLabel(identity.channel)],
+	];
 }
 
 function editorBlock(source: DebugInfoSource<ComfyVersionState>): string {
@@ -78,16 +100,7 @@ function workerBlock(source: DebugInfoSource<WorkerSessionState>): string {
 	} = source.data;
 	const rows: [string, string][] = [["Connection", connection.status]];
 	if (connection.status === "connected") {
-		rows.push(
-			["Version", connection.worker?.version ?? "unavailable"],
-			["Build", connection.worker?.buildNumber ?? "unavailable"],
-			[
-				"Channel",
-				connection.worker === undefined
-					? "unavailable"
-					: releaseChannelLabel(connection.worker.channel),
-			],
-		);
+		rows.push(...releaseIdentityRows(connection.worker, "unavailable"));
 	}
 	rows.push(
 		["Backend", backend.status],
@@ -134,9 +147,10 @@ export function formatDebugInfo({
 }: DebugInfoSnapshot): string {
 	const application = appInfo.ok
 		? block("Application", [
-				["App Version", appInfo.data.version],
-				["App Build", appInfo.data.buildNumber],
-				["Channel", releaseChannelLabel(appInfo.data.channel)],
+				...releaseIdentityRows(appInfo.data).map(
+					([label, value]) =>
+						[label === "Channel" ? label : `App ${label}`, value] as [string, string],
+				),
 				["Platform", desktopPlatformLabel(appInfo.data.environment)],
 				["Runtime", desktopRuntimeLabel(appInfo.data.environment)],
 			])

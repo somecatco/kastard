@@ -5,8 +5,9 @@ import { dirname, join } from "node:path";
 import { resolveWorkerRelease } from "./worker-release.mjs";
 
 const roots = [];
+const sourceRevision = "b".repeat(40);
 
-function createFixture({ buildNumber = "11", version = "0.1.0" } = {}) {
+function createFixture({ buildNumber = "11", version = "0.0.0" } = {}) {
 	const root = mkdtempSync(join(tmpdir(), "kastard-worker-release-"));
 	roots.push(root);
 	const path = join(root, "apps/server/package.json");
@@ -22,46 +23,60 @@ afterEach(() => {
 });
 
 describe("Worker release tags", () => {
-	test("resolves the Beta tag", () => {
-		expect(resolveWorkerRelease(createFixture(), "worker-v0.1.0-beta.11")).toEqual({
+	test("resolves Preview without a product version", () => {
+		expect(
+			resolveWorkerRelease(createFixture(), "worker-preview.11", sourceRevision),
+		).toEqual({
 			buildNumber: "11",
-			channel: "beta",
-			version: "0.1.0",
+			channel: "preview",
+			productVersion: null,
+			sourceRevision,
 		});
 	});
 
-	test("resolves the Production tag", () => {
-		expect(resolveWorkerRelease(createFixture(), "worker-v0.1.0")).toEqual({
+	test("resolves the Production version from the tag", () => {
+		expect(
+			resolveWorkerRelease(createFixture(), "worker-v0.2.0", sourceRevision),
+		).toEqual({
 			buildNumber: "11",
 			channel: "production",
-			version: "0.1.0",
+			previewTag: "worker-preview.11",
+			productVersion: "0.2.0",
+			sourceRevision,
 		});
 	});
 
-	test("rejects version, build number, and format mismatches", () => {
+	test("rejects build number and format mismatches", () => {
 		const root = createFixture();
 		for (const tag of [
-			"worker-v0.2.0-beta.11",
-			"worker-v0.1.0-beta.12",
-			"worker-v0.1.0-production",
-			"editor-v0.1.0-beta.11",
+			"worker-preview.12",
+			"worker-v0.1",
+			"worker-production.11",
+			"editor-preview.11",
 		]) {
-			expect(() => resolveWorkerRelease(root, tag)).toThrow("does not match");
+			expect(() => resolveWorkerRelease(root, tag, sourceRevision)).toThrow(
+				"does not match",
+			);
 		}
 	});
 
-	test("rejects invalid package release metadata", () => {
+	test("rejects invalid package and source metadata", () => {
 		expect(() =>
 			resolveWorkerRelease(
-				createFixture({ version: "0.1.0-beta.11" }),
-				"worker-v0.1.0-beta.11",
+				createFixture({ version: "0.1.0-rc.1" }),
+				"worker-preview.11",
+				sourceRevision,
 			),
-		).toThrow("stable semantic version");
+		).toThrow("technical semantic version");
 		expect(() =>
 			resolveWorkerRelease(
 				createFixture({ buildNumber: "9007199254740992" }),
-				"worker-v0.1.0-beta.9007199254740992",
+				"worker-preview.9007199254740992",
+				sourceRevision,
 			),
 		).toThrow("safe positive integer buildNumber");
+		expect(() =>
+			resolveWorkerRelease(createFixture(), "worker-preview.11", "bbbbbbb"),
+		).toThrow("full Git commit SHA");
 	});
 });

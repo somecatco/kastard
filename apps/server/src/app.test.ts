@@ -92,14 +92,42 @@ function modelOperationState(state: {
 
 describe("Kastard server HTTP API", () => {
 	test("reports the Worker release identity", () => {
-		expect(readWorkerIdentity({ KASTARD_CHANNEL: "production" })).toEqual({
-			version: serverPackage.version,
+		const sourceRevision = "a".repeat(40);
+		expect(
+			readWorkerIdentity({
+				KASTARD_CHANNEL: "production",
+				KASTARD_PRODUCT_VERSION: "0.2.0",
+				KASTARD_SOURCE_REVISION: sourceRevision,
+			}),
+		).toEqual({
 			buildNumber: serverPackage.buildNumber,
 			channel: "production",
+			productVersion: "0.2.0",
+			sourceRevision,
 		});
+		expect(
+			readWorkerIdentity({
+				KASTARD_CHANNEL: "preview",
+				KASTARD_SOURCE_REVISION: sourceRevision,
+			}),
+		).toEqual({
+			buildNumber: serverPackage.buildNumber,
+			channel: "preview",
+			productVersion: null,
+			sourceRevision,
+		});
+	});
+
+	test("rejects incomplete Worker release metadata", () => {
 		expect(() => readWorkerIdentity({ KASTARD_CHANNEL: "preview" })).toThrow(
-			"Invalid KASTARD_CHANNEL",
+			"KASTARD_SOURCE_REVISION",
 		);
+		expect(() =>
+			readWorkerIdentity({
+				KASTARD_CHANNEL: "production",
+				KASTARD_SOURCE_REVISION: "a".repeat(40),
+			}),
+		).toThrow("KASTARD_PRODUCT_VERSION");
 	});
 
 	test("reports health and accepts a connection", async () => {
@@ -114,9 +142,10 @@ describe("Kastard server HTTP API", () => {
 		expect(await connection.json()).toEqual({
 			status: "connected",
 			worker: {
-				version: serverPackage.version,
 				buildNumber: serverPackage.buildNumber,
 				channel: "development",
+				productVersion: null,
+				sourceRevision: null,
 			},
 		});
 	});
@@ -138,9 +167,10 @@ describe("Kastard server HTTP API", () => {
 			status: "connected",
 			logCursor: "server-one:1",
 			worker: {
-				version: serverPackage.version,
 				buildNumber: serverPackage.buildNumber,
 				channel: "development",
+				productVersion: null,
+				sourceRevision: null,
 			},
 		});
 

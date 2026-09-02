@@ -508,15 +508,24 @@ function ApplicationInfoSettings(): React.JSX.Element {
 
 	const pendingValue = error ? "Unavailable" : "Loading…";
 	const details = [
-		{
-			label: "App Version",
-			description: "The Kastard version installed on this device.",
-			value: info?.version ?? pendingValue,
-		},
+		...(info?.productVersion
+			? [
+					{
+						label: "App Version",
+						description: "The Kastard product version installed on this device.",
+						value: info.productVersion,
+					},
+				]
+			: []),
 		{
 			label: "Build Number",
-			description: "Build number of this Kastard version.",
+			description: "Independent build number of this Kastard installation.",
 			value: info?.buildNumber ?? pendingValue,
+		},
+		{
+			label: "Source Revision",
+			description: "Source revision used to build this Kastard installation.",
+			value: info ? (info.sourceRevision ?? "Unavailable") : pendingValue,
 		},
 		{
 			label: "Channel",

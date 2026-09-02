@@ -3,6 +3,7 @@ name: Release Editor
 on:
   push:
     tags:
+      - "editor-preview.*"
       - "editor-v*"
 
 permissions:
@@ -91,6 +92,9 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
           CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          KASTARD_ARTIFACT_NAME: ${{ steps.release.outputs.artifact_name }}
+          KASTARD_PRODUCT_VERSION: ${{ steps.release.outputs.product_version }}
+          KASTARD_SOURCE_REVISION: ${{ steps.release.outputs.source_revision }}
         run: |
           if [[ "$(uname -m)" != "arm64" ]]; then
             echo "::error::The Editor release must run on an Apple Silicon runner."
@@ -124,8 +128,9 @@ jobs:
           APP_NAME: ${{ steps.release.outputs.app_name }}
           ARTIFACT_NAME: ${{ steps.release.outputs.artifact_name }}
           BUILD_VERSION: ${{ steps.release.outputs.build_version }}
+          BUNDLE_VERSION: ${{ steps.release.outputs.bundle_version }}
           OUTPUT_DIRECTORY: ${{ steps.release.outputs.output_directory }}
-          VERSION: ${{ steps.release.outputs.version }}
+          SOURCE_REVISION: ${{ steps.release.outputs.source_revision }}
         run: |
           app="apps/desktop/${OUTPUT_DIRECTORY}/mac-arm64/${APP_NAME}.app"
           dmg="apps/desktop/${OUTPUT_DIRECTORY}/${ARTIFACT_NAME}"
@@ -154,8 +159,9 @@ jobs:
             exit 1
           fi
           [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$plist")" == "$APP_ID" ]]
-          [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist")" == "$VERSION" ]]
+          [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist")" == "$BUNDLE_VERSION" ]]
           [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$plist")" == "$BUILD_VERSION" ]]
+          grep -a -q -- "$SOURCE_REVISION" "${app}/Contents/Resources/app.asar"
 
           xcrun stapler validate "$app"
           spctl --assess --type execute --verbose=4 "$app"
