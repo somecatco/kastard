@@ -6,8 +6,8 @@
 Kastard is a desktop app for editing ComfyUI workflows locally and running them on remote GPU workers.
 
 <p>
-  <a href="./docs/en/getting-started.mdx">Getting Started</a> •
-  <a href="./docs/en/index.mdx">Docs</a> •
+  <a href="https://kastard.mintlify.site/en/getting-started">Getting Started</a> •
+  <a href="https://kastard.mintlify.site">Docs</a> •
   <a href="https://discord.gg/Z9eUBVFncN">Discord</a>
 </p>
 
@@ -27,7 +27,7 @@ Kastard is a desktop app for editing ComfyUI workflows locally and running them 
 
 ## Documentation
 
-- [Getting Started](./docs/en/getting-started.mdx)
-- [Run a Worker with Docker](./docs/en/run-worker-with-docker.mdx)
-- [Edit and Run Workflows](./docs/en/edit-and-run-workflows.mdx)
-- [Add Models and Custom Nodes After Connecting](./docs/en/add-models-and-custom-nodes.mdx)
+- [Getting Started](https://kastard.mintlify.site/en/getting-started)
+- [Run a Worker with Docker](https://kastard.mintlify.site/en/run-worker-with-docker)
+- [Edit and Run Workflows](https://kastard.mintlify.site/en/edit-and-run-workflows)
+- [Add Models and Custom Nodes After Connecting](https://kastard.mintlify.site/en/add-models-and-custom-nodes)

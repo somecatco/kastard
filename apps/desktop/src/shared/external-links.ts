@@ -4,7 +4,10 @@ export type ExternalLinks = {
 	github: string;
 	docs: {
 		home: string;
+		gettingStarted: string;
 		runWorkerWithDocker: string;
+		editAndRunWorkflows: string;
+		addModelsAndCustomNodes: string;
 	};
 	discord: string;
 	dockerHub: {
@@ -48,9 +51,18 @@ export function parseExternalLinks(source: string): ExternalLinks {
 		github: httpsUrl(links.github, "github"),
 		docs: {
 			home: httpsUrl(docs.home, "docs.home"),
+			gettingStarted: httpsUrl(docs.gettingStarted, "docs.gettingStarted"),
 			runWorkerWithDocker: httpsUrl(
 				docs.runWorkerWithDocker,
 				"docs.runWorkerWithDocker",
+			),
+			editAndRunWorkflows: httpsUrl(
+				docs.editAndRunWorkflows,
+				"docs.editAndRunWorkflows",
+			),
+			addModelsAndCustomNodes: httpsUrl(
+				docs.addModelsAndCustomNodes,
+				"docs.addModelsAndCustomNodes",
 			),
 		},
 		discord: httpsUrl(links.discord, "discord"),

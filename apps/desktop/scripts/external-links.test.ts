@@ -28,7 +28,14 @@ test("keeps static external link mirrors aligned with LINKS.jsonc", () => {
 		},
 		{
 			path: "README.md",
-			values: [externalLinks.discord],
+			values: [
+				externalLinks.docs.home,
+				externalLinks.docs.gettingStarted,
+				externalLinks.docs.runWorkerWithDocker,
+				externalLinks.docs.editAndRunWorkflows,
+				externalLinks.docs.addModelsAndCustomNodes,
+				externalLinks.discord,
+			],
 		},
 		{
 			path: "docs/en/run-worker-with-docker.mdx",
@@ -50,8 +57,10 @@ test("keeps static external link mirrors aligned with LINKS.jsonc", () => {
 
 	for (const mirror of staticMirrors) {
 		const contents = readFileSync(resolve(repositoryRoot, mirror.path), "utf8");
+		const references =
+			contents.match(/(?:https:\/\/|docker\.io\/)[^\s"'`()<>]+/g) ?? [];
 		for (const value of mirror.values) {
-			expect(contents, `${mirror.path} must contain ${value}`).toContain(value);
+			expect(references, `${mirror.path} must reference ${value}`).toContain(value);
 		}
 	}
 });
