@@ -49,3 +49,23 @@ test("keeps static external link mirrors aligned with LINKS.jsonc", () => {
 		}
 	}
 });
+
+test("keeps release Worker image repositories aligned with LINKS.jsonc", () => {
+	const workerImageScript = readFileSync(
+		resolve(repositoryRoot, "scripts/worker-image.sh"),
+		"utf8",
+	);
+	const repositoryTemplate = workerImageScript.match(
+		/image="([^"]+\$\{runtime\}):\$\{base_tag\}"/,
+	)?.[1];
+
+	expect(
+		repositoryTemplate,
+		"scripts/worker-image.sh must define a runtime repository template",
+	).toBeDefined();
+	for (const runtime of ["cu128", "cu130"] as const) {
+		expect(repositoryTemplate?.replace(/\$\{runtime\}/, runtime)).toBe(
+			externalLinks.dockerHub[runtime],
+		);
+	}
+});
