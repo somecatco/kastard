@@ -28,7 +28,14 @@ test("keeps static external link mirrors aligned with LINKS.jsonc", () => {
 		},
 		{
 			path: "README.md",
-			values: [externalLinks.discord],
+			values: [
+				externalLinks.docs.home,
+				`${externalLinks.docs.home}/en/getting-started`,
+				externalLinks.docs.runWorkerWithDocker,
+				`${externalLinks.docs.home}/en/edit-and-run-workflows`,
+				`${externalLinks.docs.home}/en/add-models-and-custom-nodes`,
+				externalLinks.discord,
+			],
 		},
 		{
 			path: "docs/en/run-worker-with-docker.mdx",

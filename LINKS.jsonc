@@ -1,8 +1,8 @@
 {
 	"github": "https://github.com/somecatco/kastard",
 	"docs": {
-		"home": "https://github.com/somecatco/kastard/blob/main/docs/en/index.mdx",
-		"runWorkerWithDocker": "https://github.com/somecatco/kastard/blob/main/docs/en/run-worker-with-docker.mdx"
+		"home": "https://kastard.mintlify.site",
+		"runWorkerWithDocker": "https://kastard.mintlify.site/en/run-worker-with-docker"
 	},
 	"discord": "https://discord.gg/Z9eUBVFncN",
 	"dockerHub": {
