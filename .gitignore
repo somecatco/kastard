@@ -16,6 +16,7 @@ apps/desktop/resources/comfyui-frontend/
 apps/desktop/resources/comfyui-runtime/
 
 # Local files
+/.docs/
 .data/
 .env
 .env.*
