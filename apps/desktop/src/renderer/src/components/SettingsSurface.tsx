@@ -29,6 +29,7 @@ import {
 	desktopRuntimeLabel,
 	releaseChannelLabel,
 } from "@/lib/debug-info";
+import { externalLinks } from "@/lib/external-links";
 import { cn } from "@/lib/utils";
 import {
 	type ComfyComponent,
@@ -84,19 +85,19 @@ const HELP_RESOURCES = [
 	{
 		label: "Docs",
 		description: "Learn how to set up and use Kastard.",
-		href: "https://github.com/somecatco/kastard/blob/main/docs/en/index.mdx",
+		href: externalLinks.docs.home,
 		icon: BookOpenIcon,
 	},
 	{
 		label: "GitHub",
 		description: "Browse the source code and report issues.",
-		href: "https://github.com/somecatco/kastard",
+		href: externalLinks.github,
 		icon: GithubIcon,
 	},
 	{
 		label: "Discord",
 		description: "Ask questions and join the community.",
-		href: "https://discord.gg/Z9eUBVFncN",
+		href: externalLinks.discord,
 		icon: DiscordIcon,
 	},
 ] as const;

@@ -7,6 +7,7 @@ import {
 	within,
 } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
+import { externalLinks } from "@/lib/external-links";
 import { ConnectWorkerDialog } from "./ConnectWorkerDialog";
 
 afterEach(cleanup);
@@ -36,10 +37,7 @@ test("shows concise Worker setup descriptions", () => {
 	expect(within(dialog).getByText("Start a Worker on your server.")).toBeVisible();
 	expect(
 		within(dialog).getByRole("link", { name: "Open setup guide" }),
-	).toHaveAttribute(
-		"href",
-		"https://github.com/somecatco/kastard/blob/main/docs/en/run-worker-with-docker.mdx",
-	);
+	).toHaveAttribute("href", externalLinks.docs.runWorkerWithDocker);
 });
 
 test("submits the final provider, address, and authentication code", async () => {
@@ -59,7 +57,10 @@ test("submits the final provider, address, and authentication code", async () =>
 
 	const dialog = screen.getByRole("dialog");
 	fireEvent.click(within(dialog).getByRole("button", { name: /^RunPod/ }));
-	expect(within(dialog).getAllByRole("link", { name: /template/ })).toHaveLength(2);
+	expect(
+		within(dialog).getByText("RunPod templates are not available yet."),
+	).toBeVisible();
+	expect(within(dialog).queryByRole("link", { name: /template/ })).toBeNull();
 	expect(
 		within(dialog).getByText(
 			"Use the code from the Worker log. It remains valid until this Worker stops.",
@@ -79,16 +80,10 @@ test("submits the final provider, address, and authentication code", async () =>
 	fireEvent.click(within(dialog).getByRole("button", { name: /^Vast.ai/ }));
 	expect(
 		within(dialog).getByRole("link", { name: "CUDA 12.8 template" }),
-	).toHaveAttribute(
-		"href",
-		"https://cloud.vast.ai/?creator_id=153845&name=kastard-worker-cu128",
-	);
+	).toHaveAttribute("href", externalLinks.vastAi.production.cu128);
 	expect(
 		within(dialog).getByRole("link", { name: "CUDA 13.0 template" }),
-	).toHaveAttribute(
-		"href",
-		"https://cloud.vast.ai/?creator_id=153845&name=kastard-worker-cu130",
-	);
+	).toHaveAttribute("href", externalLinks.vastAi.production.cu130);
 	expect(within(dialog).getByLabelText("Worker address")).toHaveValue("");
 	expect(within(dialog).getByLabelText("Authentication code")).toHaveValue("");
 	fireEvent.change(within(dialog).getByLabelText("Worker address"), {

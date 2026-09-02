@@ -1,0 +1,26 @@
+{
+	"github": "https://github.com/somecatco/kastard",
+	"docs": {
+		"home": "https://github.com/somecatco/kastard/blob/main/docs/en/index.mdx",
+		"runWorkerWithDocker": "https://github.com/somecatco/kastard/blob/main/docs/en/run-worker-with-docker.mdx"
+	},
+	"discord": "https://discord.gg/Z9eUBVFncN",
+	"dockerHub": {
+		"cu128": "somecatco/kastard-worker-cu128",
+		"cu130": "somecatco/kastard-worker-cu130"
+	},
+	"runpod": {
+		// A public RunPod template URL is not currently available.
+		"template": null
+	},
+	"vastAi": {
+		"production": {
+			"cu128": "https://cloud.vast.ai/?creator_id=153845&name=kastard-worker-cu128",
+			"cu130": "https://cloud.vast.ai/?creator_id=153845&name=kastard-worker-cu130"
+		},
+		"beta": {
+			"cu128": "https://cloud.vast.ai/?creator_id=153845&name=kastard-worker-beta-cu128",
+			"cu130": "https://cloud.vast.ai/?creator_id=153845&name=kastard-worker-beta-cu130"
+		}
+	}
+}

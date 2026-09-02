@@ -19,6 +19,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
+import { externalLinks } from "@/lib/external-links";
 import { cn } from "@/lib/utils";
 import {
 	buildWorkerServerUrl,
@@ -49,21 +50,20 @@ export type ConnectWorkerDialogProps = {
 	onOpenChange: (open: boolean) => void;
 };
 
-const RUNPOD_TEMPLATE_URL =
-	"https://console.runpod.io/hub/group/cmqv26i1m003jtnf10rn2zo4b?selectedTemplate=2lv7ev3wfp";
-const VASTAI_TEMPLATE_CHANNEL = import.meta.env.MODE === "beta" ? "-beta" : "";
+const VASTAI_TEMPLATE_LINKS =
+	import.meta.env.MODE === "beta"
+		? externalLinks.vastAi.beta
+		: externalLinks.vastAi.production;
 const TEMPLATE_LINKS = [
 	{
 		label: "CUDA 12.8 template",
-		vastaiUrl: `https://cloud.vast.ai/?creator_id=153845&name=kastard-worker${VASTAI_TEMPLATE_CHANNEL}-cu128`,
+		vastaiUrl: VASTAI_TEMPLATE_LINKS.cu128,
 	},
 	{
 		label: "CUDA 13.0 template",
-		vastaiUrl: `https://cloud.vast.ai/?creator_id=153845&name=kastard-worker${VASTAI_TEMPLATE_CHANNEL}-cu130`,
+		vastaiUrl: VASTAI_TEMPLATE_LINKS.cu130,
 	},
 ] as const;
-const OTHER_SERVER_GUIDE_URL =
-	"https://github.com/somecatco/kastard/blob/main/docs/en/run-worker-with-docker.mdx";
 
 const PROVIDERS: ProviderOption[] = [
 	{
@@ -319,15 +319,29 @@ function SetupStep({
 }
 
 function TemplateLinks({ provider }: { provider: "runpod" | "vastai" }) {
+	let links: Array<{ label: string; url: string }>;
+	if (provider === "runpod") {
+		const runpodTemplate = externalLinks.runpod.template;
+		if (runpodTemplate === null) {
+			return (
+				<p className="cursor-text select-text text-xs text-muted-foreground">
+					RunPod templates are not available yet.
+				</p>
+			);
+		}
+		links = TEMPLATE_LINKS.map(({ label }) => ({ label, url: runpodTemplate }));
+	} else {
+		links = TEMPLATE_LINKS.map(({ label, vastaiUrl }) => ({
+			label,
+			url: vastaiUrl,
+		}));
+	}
+
 	return (
 		<div className="flex flex-wrap gap-2">
-			{TEMPLATE_LINKS.map(({ label, vastaiUrl }) => (
+			{links.map(({ label, url }) => (
 				<Button key={label} asChild type="button" variant="outline" size="default">
-					<a
-						href={provider === "runpod" ? RUNPOD_TEMPLATE_URL : vastaiUrl}
-						target="_blank"
-						rel="noreferrer"
-					>
+					<a href={url} target="_blank" rel="noreferrer">
 						{label}
 						<ExternalLinkIcon />
 					</a>
@@ -369,7 +383,11 @@ function ProviderSetup({
 			>
 				{provider === "other" ? (
 					<Button asChild type="button" variant="outline" size="default">
-						<a href={OTHER_SERVER_GUIDE_URL} target="_blank" rel="noreferrer">
+						<a
+							href={externalLinks.docs.runWorkerWithDocker}
+							target="_blank"
+							rel="noreferrer"
+						>
 							Open setup guide
 							<ExternalLinkIcon />
 						</a>
