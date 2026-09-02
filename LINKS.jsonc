@@ -2,7 +2,10 @@
 	"github": "https://github.com/somecatco/kastard",
 	"docs": {
 		"home": "https://kastard.mintlify.site",
-		"runWorkerWithDocker": "https://kastard.mintlify.site/en/run-worker-with-docker"
+		"gettingStarted": "https://kastard.mintlify.site/en/getting-started",
+		"runWorkerWithDocker": "https://kastard.mintlify.site/en/run-worker-with-docker",
+		"editAndRunWorkflows": "https://kastard.mintlify.site/en/edit-and-run-workflows",
+		"addModelsAndCustomNodes": "https://kastard.mintlify.site/en/add-models-and-custom-nodes"
 	},
 	"discord": "https://discord.gg/Z9eUBVFncN",
 	"dockerHub": {
