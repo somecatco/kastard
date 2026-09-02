@@ -41,7 +41,6 @@ import { WorkerSyncCancelButton } from "@/components/WorkerSyncList";
 import { useWorkerSession, useWorkerSessionChanges } from "@/hooks/use-worker-session";
 import { useModelDownloadRate } from "@/hooks/useModelDownloadRate";
 import { useOptimisticUpdateQueue } from "@/hooks/useOptimisticUpdateQueue";
-import { releaseIdentityRows } from "@/lib/debug-info";
 import { cn } from "@/lib/utils";
 import { workerComputeLabel } from "@/lib/worker-runtime";
 import type {
@@ -1519,16 +1518,6 @@ function ServerConnectionDetails({
 				<p className="text-xs text-muted-foreground">Worker address</p>
 				<p className="mt-1 break-all font-mono text-sm">{state.serverUrl}</p>
 			</div>
-			{offline ? null : (
-				<div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-					{releaseIdentityRows(state.worker).map(([label, value]) => (
-						<div key={label}>
-							<p className="text-xs text-muted-foreground">{label}</p>
-							<p className="mt-1 break-all font-mono text-sm">{value}</p>
-						</div>
-					))}
-				</div>
-			)}
 			<div className="flex flex-wrap items-center justify-between gap-2">
 				{offline ? (
 					<Button

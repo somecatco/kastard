@@ -54,6 +54,9 @@
 
 - Code, identifiers, comments, product documentation, and tests changed directly by the work must describe the resulting current state and contract, not the process of changing them. Do not record renaming, implementation replacement, or refactoring instructions in the deliverables themselves.
 - Tests must verify observable current behavior. Do not test for the absence of removed internal names, structures, or implementations unless that absence is part of a public contract or security requirement.
+- Do not add tests whose only purpose is to assert that removed UI labels, elements, identifiers, or implementations are absent.
+- When removing UI, delete obsolete display assertions and keep positive tests for the behavior that remains.
+- Test absence only when it is an explicit product, security, accessibility, or compatibility requirement.
 - Record change history in issues, PRs, commits, changelogs, ADRs, or migration documents. Preserve historical context that remains necessary for external compatibility, stored-data migration, security, or auditing, and explain why it remains and when it can be removed.
 - Do not use this principle as authorization to delete existing records or compatibility code outside the current scope.
 - Before completion, check whether the diff adds any code, comments, documentation, or tests solely to record that a change occurred.

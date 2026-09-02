@@ -7,7 +7,6 @@ test.each(["xs", "default", "sm", "lg", "icon"] as const)(
 		const classes = buttonVariants({ size }).split(" ");
 
 		expect(classes).toContain("rounded-full");
-		expect(classes).not.toContain("rounded-md");
 	},
 );
 
