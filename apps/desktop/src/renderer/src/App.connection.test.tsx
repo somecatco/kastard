@@ -31,7 +31,10 @@ test("connects a selected RunPod Worker and shows its connected state", async ()
 	const connect = within(dialog).getByRole("button", { name: "Connect" });
 	const address = within(dialog).getByLabelText("Worker address");
 	expect(address).toHaveValue("");
-	expect(within(dialog).getAllByRole("link", { name: /template/ })).toHaveLength(2);
+	expect(
+		within(dialog).getByText("RunPod templates are not available yet."),
+	).toBeVisible();
+	expect(within(dialog).queryByRole("link", { name: /template/ })).toBeNull();
 	expect(screen.getByRole("switch", { name: /^Sync after connecting/ })).toBeChecked();
 	fireEvent.change(address, {
 		target: { value: "203.0.113.10:22001" },

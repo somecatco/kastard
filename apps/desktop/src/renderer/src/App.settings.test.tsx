@@ -17,6 +17,7 @@ import {
 	emitComfyRuntime,
 	openSettingsSection,
 } from "./App.test-harness";
+import { externalLinks } from "./lib/external-links";
 
 test("shows external Help resources above About", () => {
 	render(<App />);
@@ -27,9 +28,9 @@ test("shows external Help resources above About", () => {
 	expect(screen.getByRole("heading", { name: "Help", level: 2 })).toBeVisible();
 	const resources = screen.getByRole("region", { name: "Help resources" });
 	const expectedLinks = [
-		["Docs", "https://github.com/somecatco/kastard/blob/main/docs/en/index.mdx"],
-		["GitHub", "https://github.com/somecatco/kastard"],
-		["Discord", "https://discord.gg/Z9eUBVFncN"],
+		["Docs", externalLinks.docs.home],
+		["GitHub", externalLinks.github],
+		["Discord", externalLinks.discord],
 	] as const;
 
 	for (const [name, href] of expectedLinks) {
