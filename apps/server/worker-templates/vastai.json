@@ -26,5 +26,5 @@
 	"use_ssh": false,
 	"readme_visible": true,
 	"recommended_disk_space": 200,
-	"private": true
+	"private": false
 }

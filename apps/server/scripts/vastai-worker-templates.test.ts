@@ -3,7 +3,6 @@ import {
 	type Fetcher,
 	getTemplates,
 	parseArguments,
-	parseTemplateId,
 	reportedImage,
 	syncTemplates,
 	updateTemplate,
@@ -39,7 +38,7 @@ const config = parseVastTemplateConfig({
 	use_ssh: false,
 	readme_visible: true,
 	recommended_disk_space: 150,
-	private: true,
+	private: false,
 });
 
 type VastApiTemplate = {
@@ -85,7 +84,7 @@ function template(
 		use_ssh: config.use_ssh,
 		extra_filters: config.templates[id === 128 ? "cu128" : "cu130"].extra_filters,
 		recommended_disk_space: config.recommended_disk_space,
-		private: config.private,
+		private: true,
 		...overrides,
 	};
 }
@@ -99,14 +98,6 @@ describe("Vast.ai Worker templates", () => {
 			"vastai-worker-templates.ts",
 		);
 		expect(() => parseArguments(["--unknown"])).toThrow("vastai-worker-templates.ts");
-	});
-
-	test("validates stable numeric template IDs", () => {
-		expect(parseTemplateId("TEMPLATE_ID", "123")).toBe(123);
-		expect(() => parseTemplateId("TEMPLATE_ID", "hash-id")).toThrow("positive integer");
-		expect(() =>
-			parseTemplateId("TEMPLATE_ID", String(Number.MAX_SAFE_INTEGER + 1)),
-		).toThrow("safe integer");
 	});
 
 	test("looks up every managed field through the current hashes", async () => {
@@ -226,7 +217,7 @@ describe("Vast.ai Worker templates", () => {
 			use_ssh: false,
 			extra_filters: { cuda_max_good: { gte: 12.8 } },
 			recommended_disk_space: 150,
-			private: true,
+			private: false,
 		});
 		expect(body.env).toBe("-p 22:22 -p 2222:2222");
 		expect(body.env).not.toContain("SSH_PUBLIC_KEY");

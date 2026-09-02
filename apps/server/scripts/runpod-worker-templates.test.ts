@@ -30,7 +30,7 @@ const config = parseRunpodTemplateConfig({
 	],
 	dockerEntrypoint: [],
 	dockerStartCmd: [],
-	isPublic: false,
+	isPublic: true,
 	env: {},
 });
 
@@ -48,7 +48,7 @@ function staleTemplate(id: string) {
 		ports: ["22/tcp"],
 		dockerEntrypoint: ["old-entrypoint"],
 		dockerStartCmd: ["old-command"],
-		isPublic: true,
+		isPublic: false,
 		env: { OBSOLETE_VALUE: "secret" } as Record<string, string>,
 		readme: "",
 	};
@@ -226,7 +226,7 @@ describe("RunPod Worker templates", () => {
 			ports: ["22/tcp", "2222/tcp"],
 			dockerEntrypoint: [],
 			dockerStartCmd: [],
-			isPublic: false,
+			isPublic: true,
 			env: {},
 			readme,
 		});
@@ -243,7 +243,7 @@ describe("RunPod Worker templates", () => {
 			portsConfig: desiredPortsConfig,
 			volumeInGb: 150,
 			volumeMountPath: "/workspace",
-			isPublic: false,
+			isPublic: true,
 			isServerless: true,
 			startJupyter: true,
 			startSsh: true,

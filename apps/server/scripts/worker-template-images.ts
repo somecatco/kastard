@@ -1,24 +1,16 @@
 import { resolve } from "node:path";
+import {
+	type WorkerTemplateChannel,
+	type WorkerTemplateRuntime,
+	workerTemplateName,
+	workerTemplateRuntimes,
+} from "@kastard/common";
 
-export const workerRuntimes = ["cu128", "cu130"] as const;
-export type WorkerRuntime = (typeof workerRuntimes)[number];
+export { type WorkerTemplateChannel, workerTemplateName };
+
+export const workerRuntimes = workerTemplateRuntimes;
+export type WorkerRuntime = WorkerTemplateRuntime;
 export type WorkerImages = Record<WorkerRuntime, string>;
-export type WorkerTemplateChannel = "preview" | "production";
-
-export function workerTemplateIdEnvironmentName(
-	provider: "RUNPOD" | "VAST",
-	runtime: WorkerRuntime,
-	channel: WorkerTemplateChannel,
-): string {
-	return `${provider}_WORKER_TEMPLATE_ID_${channel === "preview" ? "PREVIEW_" : ""}${runtime.toUpperCase()}`;
-}
-
-export function workerTemplateName(
-	runtime: WorkerRuntime,
-	channel: WorkerTemplateChannel,
-): string {
-	return `kastard-worker${channel === "preview" ? "-preview" : ""}-${runtime}`;
-}
 
 const workerImageScript = resolve(import.meta.dir, "../../../scripts/worker-image.sh");
 

@@ -21,7 +21,7 @@ const runpodConfig = {
 	],
 	dockerEntrypoint: [],
 	dockerStartCmd: [],
-	isPublic: false,
+	isPublic: true,
 	env: {},
 };
 
@@ -45,7 +45,7 @@ const vastConfig = {
 	use_ssh: false,
 	readme_visible: true,
 	recommended_disk_space: 150,
-	private: true,
+	private: false,
 };
 
 describe("Worker template configuration", () => {
@@ -53,9 +53,15 @@ describe("Worker template configuration", () => {
 		const files = await loadWorkerTemplateFiles();
 
 		expect(files.runpod.templates.cu128.name).toBe("kastard-worker-cu128");
+		expect(files.resources.workerTemplates.runpod.production.cu128).toMatch(
+			/^[a-z0-9]+$/,
+		);
+		expect(files.resources.workerTemplates.vastAi.preview.cu130).toBeGreaterThan(0);
 		expect(files.runpod.volumeInGb).toBe(200);
+		expect(files.runpod.isPublic).toBe(true);
 		expect(files.vastai.templates.cu130.name).toBe("kastard-worker-cu130");
 		expect(files.vastai.recommended_disk_space).toBe(200);
+		expect(files.vastai.private).toBe(false);
 		expect(files.vastai.templates.cu128.extra_filters).toEqual({
 			cuda_max_good: { gte: 12.8 },
 		});

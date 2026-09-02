@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { parseResources, type Resources } from "@kastard/common";
 import { type WorkerRuntime, workerRuntimes } from "./worker-template-images";
 
 type RuntimeTemplates<T extends object = Record<never, never>> = Record<
@@ -42,6 +43,7 @@ export type WorkerEnvironmentConfig = {
 };
 
 export type WorkerTemplateFiles = {
+	resources: Resources;
 	runpod: RunpodTemplateConfig;
 	vastai: VastTemplateConfig;
 	environment: WorkerEnvironmentConfig;
@@ -49,14 +51,17 @@ export type WorkerTemplateFiles = {
 };
 
 const templateDirectory = resolve(import.meta.dir, "../worker-templates");
+const resourcesPath = resolve(import.meta.dir, "../../../resources.jsonc");
 
 export async function loadWorkerTemplateFiles(): Promise<WorkerTemplateFiles> {
-	const [runpodValue, vastaiValue, environmentValue, readmeValue] = await Promise.all([
-		Bun.file(resolve(templateDirectory, "runpod.json")).json(),
-		Bun.file(resolve(templateDirectory, "vastai.json")).json(),
-		Bun.file(resolve(templateDirectory, "environment.json")).json(),
-		Bun.file(resolve(templateDirectory, "template.md")).text(),
-	]);
+	const [resourcesSource, runpodValue, vastaiValue, environmentValue, readmeValue] =
+		await Promise.all([
+			Bun.file(resourcesPath).text(),
+			Bun.file(resolve(templateDirectory, "runpod.json")).json(),
+			Bun.file(resolve(templateDirectory, "vastai.json")).json(),
+			Bun.file(resolve(templateDirectory, "environment.json")).json(),
+			Bun.file(resolve(templateDirectory, "template.md")).text(),
+		]);
 	const environment = parseWorkerEnvironmentConfig(environmentValue);
 	const readme = readmeValue.trim();
 	if (readme.length === 0) throw new Error("Worker template README must not be empty.");
@@ -66,6 +71,7 @@ export async function loadWorkerTemplateFiles(): Promise<WorkerTemplateFiles> {
 		}
 	}
 	return {
+		resources: parseResources(resourcesSource),
 		runpod: parseRunpodTemplateConfig(runpodValue),
 		vastai: parseVastTemplateConfig(vastaiValue),
 		environment,

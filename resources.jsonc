@@ -12,18 +12,29 @@
 		"cu128": "somecatco/kastard-worker-cu128",
 		"cu130": "somecatco/kastard-worker-cu130"
 	},
-	"runpod": {
-		// A public RunPod template URL is not currently available.
-		"template": null
-	},
-	"vastAi": {
-		"production": {
-			"cu128": "https://cloud.vast.ai/?creator_id=153845&name=kastard-worker-cu128",
-			"cu130": "https://cloud.vast.ai/?creator_id=153845&name=kastard-worker-cu130"
+	"workerTemplates": {
+		"runpod": {
+			"hub": "https://console.runpod.io/hub/template",
+			"production": {
+				"cu128": "qo1nvrleev",
+				"cu130": "panivn87zl"
+			},
+			"preview": {
+				"cu128": "5v016n842q",
+				"cu130": "ioy9cppfit"
+			}
 		},
-		"preview": {
-			"cu128": "https://cloud.vast.ai/?creator_id=153845&name=kastard-worker-preview-cu128",
-			"cu130": "https://cloud.vast.ai/?creator_id=153845&name=kastard-worker-preview-cu130"
+		"vastAi": {
+			"marketplace": "https://cloud.vast.ai/",
+			"creatorId": 153845,
+			"production": {
+				"cu128": 614932,
+				"cu130": 614935
+			},
+			"preview": {
+				"cu128": 659456,
+				"cu130": 659452
+			}
 		}
 	}
 }

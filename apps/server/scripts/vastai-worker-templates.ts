@@ -13,7 +13,6 @@ import {
 	type WorkerRuntime,
 	type WorkerTemplateChannel,
 	workerRuntimes,
-	workerTemplateIdEnvironmentName,
 	workerTemplateName,
 } from "./worker-template-images";
 
@@ -60,17 +59,6 @@ export function parseArguments(args: string[]): WorkerTemplateChannel {
 		args,
 		"apps/server/scripts/vastai-worker-templates.ts",
 	);
-}
-
-export function parseTemplateId(name: string, value: string): number {
-	if (!/^[1-9]\d*$/.test(value)) {
-		throw new Error(`${name} must be a positive integer Vast.ai template ID.`);
-	}
-	const id = Number(value);
-	if (!Number.isSafeInteger(id)) {
-		throw new Error(`${name} exceeds the JavaScript safe integer range.`);
-	}
-	return id;
 }
 
 export async function getTemplates(
@@ -424,31 +412,7 @@ async function main(): Promise<void> {
 	for (const runtime of workerRuntimes) {
 		files.vastai.templates[runtime].name = workerTemplateName(runtime, channel);
 	}
-	const cu128EnvironmentName = workerTemplateIdEnvironmentName(
-		"VAST",
-		"cu128",
-		channel,
-	);
-	const cu130EnvironmentName = workerTemplateIdEnvironmentName(
-		"VAST",
-		"cu130",
-		channel,
-	);
-	const templateIds: Record<WorkerRuntime, number> = {
-		cu128: parseTemplateId(
-			cu128EnvironmentName,
-			requireEnvironment(cu128EnvironmentName),
-		),
-		cu130: parseTemplateId(
-			cu130EnvironmentName,
-			requireEnvironment(cu130EnvironmentName),
-		),
-	};
-	if (templateIds.cu128 === templateIds.cu130) {
-		throw new Error(
-			"The cu128 and cu130 Vast.ai Worker template IDs must be different.",
-		);
-	}
+	const templateIds = files.resources.workerTemplates.vastAi[channel];
 
 	await requirePushedWorkerImages(images);
 	await syncTemplates(

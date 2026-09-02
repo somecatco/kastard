@@ -44,47 +44,19 @@ jobs:
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
-          RUNPOD_WORKER_TEMPLATE_ID_CU128: ${{ secrets.RUNPOD_WORKER_TEMPLATE_ID_CU128 }}
-          RUNPOD_WORKER_TEMPLATE_ID_CU130: ${{ secrets.RUNPOD_WORKER_TEMPLATE_ID_CU130 }}
-          RUNPOD_WORKER_TEMPLATE_ID_PREVIEW_CU128: ${{ secrets.RUNPOD_WORKER_TEMPLATE_ID_PREVIEW_CU128 }}
-          RUNPOD_WORKER_TEMPLATE_ID_PREVIEW_CU130: ${{ secrets.RUNPOD_WORKER_TEMPLATE_ID_PREVIEW_CU130 }}
           VAST_API_KEY: ${{ secrets.VAST_API_KEY }}
-          VAST_WORKER_TEMPLATE_ID_CU128: ${{ secrets.VAST_WORKER_TEMPLATE_ID_CU128 }}
-          VAST_WORKER_TEMPLATE_ID_CU130: ${{ secrets.VAST_WORKER_TEMPLATE_ID_CU130 }}
-          VAST_WORKER_TEMPLATE_ID_PREVIEW_CU128: ${{ secrets.VAST_WORKER_TEMPLATE_ID_PREVIEW_CU128 }}
-          VAST_WORKER_TEMPLATE_ID_PREVIEW_CU130: ${{ secrets.VAST_WORKER_TEMPLATE_ID_PREVIEW_CU130 }}
         run: |
           missing=0
           for name in \
             DOCKERHUB_TOKEN \
             DOCKERHUB_USERNAME \
             RUNPOD_API_KEY \
-            RUNPOD_WORKER_TEMPLATE_ID_CU128 \
-            RUNPOD_WORKER_TEMPLATE_ID_CU130 \
-            RUNPOD_WORKER_TEMPLATE_ID_PREVIEW_CU128 \
-            RUNPOD_WORKER_TEMPLATE_ID_PREVIEW_CU130 \
-            VAST_API_KEY \
-            VAST_WORKER_TEMPLATE_ID_CU128 \
-            VAST_WORKER_TEMPLATE_ID_CU130 \
-            VAST_WORKER_TEMPLATE_ID_PREVIEW_CU128 \
-            VAST_WORKER_TEMPLATE_ID_PREVIEW_CU130
+            VAST_API_KEY
           do
             if [[ -z "${!name}" ]]; then
               echo "::error::Missing GitHub Actions secret: ${name}"
               missing=1
             fi
-          done
-          for provider in RUNPOD VAST; do
-            for preview_runtime in CU128 CU130; do
-              preview_name="${provider}_WORKER_TEMPLATE_ID_PREVIEW_${preview_runtime}"
-              for general_runtime in CU128 CU130; do
-                general_name="${provider}_WORKER_TEMPLATE_ID_${general_runtime}"
-                if [[ -n "${!preview_name}" && "${!preview_name}" == "${!general_name}" ]]; then
-                  echo "::error::${preview_name} must differ from ${general_name}."
-                  missing=1
-                fi
-              done
-            done
           done
           exit "$missing"
 
@@ -134,7 +106,7 @@ jobs:
         run: bash scripts/worker-image.sh "--${WORKER_CHANNEL}" --runtime "$WORKER_RUNTIME" --push
 
   publish-templates:
-    name: Update private Worker templates
+    name: Update public Worker templates
     needs: [prepare, build]
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -147,6 +119,9 @@ jobs:
         with:
           bun-version: 1.3.14
 
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
       - name: Log in to Docker Hub
         env:
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -156,15 +131,7 @@ jobs:
       - name: Update RunPod and Vast.ai templates
         env:
           RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
-          RUNPOD_WORKER_TEMPLATE_ID_CU128: ${{ secrets.RUNPOD_WORKER_TEMPLATE_ID_CU128 }}
-          RUNPOD_WORKER_TEMPLATE_ID_CU130: ${{ secrets.RUNPOD_WORKER_TEMPLATE_ID_CU130 }}
-          RUNPOD_WORKER_TEMPLATE_ID_PREVIEW_CU128: ${{ secrets.RUNPOD_WORKER_TEMPLATE_ID_PREVIEW_CU128 }}
-          RUNPOD_WORKER_TEMPLATE_ID_PREVIEW_CU130: ${{ secrets.RUNPOD_WORKER_TEMPLATE_ID_PREVIEW_CU130 }}
           VAST_API_KEY: ${{ secrets.VAST_API_KEY }}
-          VAST_WORKER_TEMPLATE_ID_CU128: ${{ secrets.VAST_WORKER_TEMPLATE_ID_CU128 }}
-          VAST_WORKER_TEMPLATE_ID_CU130: ${{ secrets.VAST_WORKER_TEMPLATE_ID_CU130 }}
-          VAST_WORKER_TEMPLATE_ID_PREVIEW_CU128: ${{ secrets.VAST_WORKER_TEMPLATE_ID_PREVIEW_CU128 }}
-          VAST_WORKER_TEMPLATE_ID_PREVIEW_CU130: ${{ secrets.VAST_WORKER_TEMPLATE_ID_PREVIEW_CU130 }}
           KASTARD_PRODUCT_VERSION: ${{ needs.prepare.outputs.product_version }}
           KASTARD_SOURCE_REVISION: ${{ needs.prepare.outputs.source_revision }}
           WORKER_CHANNEL: ${{ needs.prepare.outputs.channel }}

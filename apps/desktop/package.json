@@ -64,7 +64,6 @@
 		"electron-vite": "^5.0.0",
 		"fflate": "^0.8.3",
 		"happy-dom": "^20.11.2",
-		"jsonc-parser": "^3.3.1",
 		"storybook": "^10.5.8",
 		"tailwindcss": "^4.3.3",
 		"typescript": "^7.0.2",

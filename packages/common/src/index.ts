@@ -1,6 +1,7 @@
 export * from "./backend";
 export * from "./custom-nodes";
 export * from "./model-sync";
+export * from "./resources";
 export * from "./server-log";
 export * from "./sync-verification";
 export * from "./system-status";
