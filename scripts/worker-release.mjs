@@ -1,27 +1,27 @@
 #!/usr/bin/env node
-import { readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { readSourceRevision, verifyProductionLineage } from "./release-lineage.mjs";
+import {
+	readJsonAtRevision,
+	readSourceRevision,
+	verifyProductionLineage,
+} from "./release-lineage.mjs";
 
 const BUILD_NUMBER_PATTERN = /^[1-9]\d*$/;
 const PREVIEW_TAG_PATTERN = /^worker-preview\.([1-9]\d*)(?:-([1-9]\d*))?$/;
 const PRODUCTION_TAG_PATTERN = /^worker-v(\d+\.\d+\.\d+)(?:-([1-9]\d*))?$/;
-const VERSION_PATTERN = /^\d+\.\d+\.\d+$/;
+const SOURCE_PACKAGE_VERSION = "0.0.0";
 
-function readWorkerPackage(root) {
-	const path = join(root, "apps/worker/package.json");
-	let packageJson;
-	try {
-		packageJson = JSON.parse(readFileSync(path, "utf8"));
-	} catch (error) {
-		throw new Error(`Cannot read ${path}: ${error.message}`);
-	}
-
+function readWorkerPackage(root, sourceRevision) {
+	const packageJson = readJsonAtRevision(
+		root,
+		"apps/worker/package.json",
+		sourceRevision,
+	);
 	const { buildNumber, version: packageVersion } = packageJson;
-	if (typeof packageVersion !== "string" || !VERSION_PATTERN.test(packageVersion)) {
+	if (packageVersion !== SOURCE_PACKAGE_VERSION) {
 		throw new Error(
-			"apps/worker/package.json must contain a technical semantic version.",
+			`apps/worker/package.json must keep version ${SOURCE_PACKAGE_VERSION}; Production versions come from release tags.`,
 		);
 	}
 	if (
@@ -38,10 +38,10 @@ function readWorkerPackage(root) {
 }
 
 export function resolveWorkerRelease(root, tag, sourceRevision) {
-	const { buildNumber } = readWorkerPackage(root);
 	if (!/^[0-9a-f]{40}$/.test(sourceRevision)) {
 		throw new Error("The Worker source revision must be a full Git commit SHA.");
 	}
+	const { buildNumber } = readWorkerPackage(root, sourceRevision);
 	const previewTag = `worker-preview.${buildNumber}`;
 	const previewMatch = PREVIEW_TAG_PATTERN.exec(tag);
 	if (previewMatch?.[1] === buildNumber) {

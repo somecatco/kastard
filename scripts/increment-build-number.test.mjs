@@ -22,7 +22,7 @@ function writeJson(root, path, value) {
 	writeFileSync(fullPath, `${JSON.stringify(value, null, 2)}\n`);
 }
 
-function createFixture({ editor = "4", worker = "7" } = {}) {
+function createFixture({ editor = "4", worker = "7", workerVersion = "0.0.0" } = {}) {
 	const root = mkdtempSync(join(tmpdir(), "kastard-build-number-"));
 	roots.push(root);
 	writeJson(root, "apps/desktop/package.json", {
@@ -30,7 +30,7 @@ function createFixture({ editor = "4", worker = "7" } = {}) {
 	});
 	writeJson(root, "apps/worker/package.json", {
 		buildNumber: worker,
-		version: "0.0.0",
+		version: workerVersion,
 	});
 	return root;
 }
@@ -164,6 +164,20 @@ describe("build number increment", () => {
 		expect(result.exitCode).toBe(1);
 		expect(result.stdout.toString()).toBe("");
 		expect(result.stderr.toString()).toContain("safe integer range");
+	});
+
+	test("requires the Worker source package version to remain a placeholder", () => {
+		const root = createFixture({ workerVersion: "0.1.0" });
+		installWorkerImageScript(root);
+
+		const result = Bun.spawnSync(
+			["bash", "scripts/worker-image.sh", "--preview", "--print-images"],
+			{ cwd: root, env: { ...process.env, KASTARD_SOURCE_REVISION: sourceRevision } },
+		);
+
+		expect(result.exitCode).toBe(1);
+		expect(result.stdout.toString()).toBe("");
+		expect(result.stderr.toString()).toContain("must remain 0.0.0");
 	});
 
 	test("resolves both explicit Worker runtime image tags from one Preview build", () => {

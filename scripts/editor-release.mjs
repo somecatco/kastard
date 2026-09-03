@@ -1,28 +1,28 @@
 #!/usr/bin/env node
-import { readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { readSourceRevision, verifyProductionLineage } from "./release-lineage.mjs";
+import {
+	readJsonAtRevision,
+	readSourceRevision,
+	verifyProductionLineage,
+} from "./release-lineage.mjs";
 
 const BUILD_VERSION_PATTERN = /^[1-9]\d*$/;
 const PREVIEW_TAG_PATTERN = /^editor-preview\.([1-9]\d*)(?:-([1-9]\d*))?$/;
 const PRODUCTION_TAG_PATTERN = /^editor-v(\d+\.\d+\.\d+)(?:-([1-9]\d*))?$/;
-const VERSION_PATTERN = /^\d+\.\d+\.\d+$/;
+const SOURCE_PACKAGE_VERSION = "0.0.0";
 
-function readDesktopPackage(root) {
-	const path = join(root, "apps/desktop/package.json");
-	let packageJson;
-	try {
-		packageJson = JSON.parse(readFileSync(path, "utf8"));
-	} catch (error) {
-		throw new Error(`Cannot read ${path}: ${error.message}`);
-	}
-
+function readDesktopPackage(root, sourceRevision) {
+	const packageJson = readJsonAtRevision(
+		root,
+		"apps/desktop/package.json",
+		sourceRevision,
+	);
 	const { version: packageVersion } = packageJson;
 	const buildVersion = packageJson?.build?.buildVersion;
-	if (typeof packageVersion !== "string" || !VERSION_PATTERN.test(packageVersion)) {
+	if (packageVersion !== SOURCE_PACKAGE_VERSION) {
 		throw new Error(
-			"apps/desktop/package.json must contain a technical semantic version.",
+			`apps/desktop/package.json must keep version ${SOURCE_PACKAGE_VERSION}; Production versions come from release tags.`,
 		);
 	}
 	if (
@@ -39,10 +39,10 @@ function readDesktopPackage(root) {
 }
 
 export function resolveEditorRelease(root, tag, sourceRevision) {
-	const { buildVersion, packageVersion } = readDesktopPackage(root);
 	if (!/^[0-9a-f]{40}$/.test(sourceRevision)) {
 		throw new Error("The Editor source revision must be a full Git commit SHA.");
 	}
+	const { buildVersion, packageVersion } = readDesktopPackage(root, sourceRevision);
 	const shortRevision = sourceRevision.slice(0, 7);
 	const previewTag = `editor-preview.${buildVersion}`;
 	const previewMatch = PREVIEW_TAG_PATTERN.exec(tag);

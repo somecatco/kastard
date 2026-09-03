@@ -73,8 +73,8 @@ fi
 if [[ $worker_channel != development ]]; then
 	metadata="$(bun -e '
 		const manifest = await Bun.file(process.argv[1]).json();
-		if (typeof manifest.version !== "string" || !/^\d+\.\d+\.\d+$/.test(manifest.version)) {
-			console.error("The Worker package version must be a technical semantic version.");
+		if (manifest.version !== "0.0.0") {
+			console.error("The Worker package version must remain 0.0.0; Production versions come from release tags.");
 			process.exit(1);
 		}
 		if (typeof manifest.buildNumber !== "string" || !/^[1-9]\d*$/.test(manifest.buildNumber)) {
