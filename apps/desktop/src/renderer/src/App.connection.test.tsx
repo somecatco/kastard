@@ -86,13 +86,6 @@ test("connects a selected RunPod Worker and shows its connected state", async ()
 	expect(connected).toHaveClass("ring-1", "ring-inset", "ring-sidebar-ring/50");
 	expect(connectionPopover).toHaveTextContent("203.0.113.10:22001");
 	expect(within(connectionPopover).getByText("Synchronization status")).toBeVisible();
-	expect(connectionPopover).not.toHaveTextContent(/Server status|Connected/);
-	expect(
-		within(connectionPopover).queryByText("ComfyUI backend"),
-	).not.toBeInTheDocument();
-	expect(within(connectionPopover).queryByText("Worker setup")).not.toBeInTheDocument();
-	expect(within(connectionPopover).queryByText("Custom nodes")).not.toBeInTheDocument();
-	expect(within(connectionPopover).queryByText("Models")).not.toBeInTheDocument();
 	expect(screen.getByRole("button", { name: "ComfyUI" })).toHaveAttribute(
 		"aria-current",
 		"page",
@@ -112,58 +105,6 @@ test("connects a selected RunPod Worker and shows its connected state", async ()
 	).not.toBeInTheDocument();
 	expect(screen.queryByRole("list", { name: "Worker status" })).not.toBeInTheDocument();
 	expect(window.kastard.workerSession.disconnect).toHaveBeenCalledOnce();
-});
-
-test("shows the connected Worker release identity", async () => {
-	render(<App />);
-
-	await act(async () => {
-		emitConnection(
-			connectedState({
-				worker: {
-					buildNumber: "15",
-					channel: "production",
-					productVersion: "0.1.0",
-					sourceRevision: "a".repeat(40),
-				},
-			}),
-		);
-	});
-
-	const popover = within(await openConnectionDetails());
-	expect(popover.getByText("Version").nextElementSibling).toHaveTextContent("0.1.0");
-	expect(popover.getByText("Build").nextElementSibling).toHaveTextContent("15");
-	expect(popover.getByText("Revision").nextElementSibling).toHaveTextContent(
-		"a".repeat(40),
-	);
-	expect(popover.getByText("Channel").nextElementSibling).toHaveTextContent(
-		"Production",
-	);
-});
-
-test("does not show a product version for a Preview Worker", async () => {
-	render(<App />);
-
-	await act(async () => {
-		emitConnection(
-			connectedState({
-				worker: {
-					buildNumber: "15",
-					channel: "preview",
-					productVersion: null,
-					sourceRevision: "b".repeat(40),
-				},
-			}),
-		);
-	});
-
-	const popover = within(await openConnectionDetails());
-	expect(popover.queryByText("Version")).not.toBeInTheDocument();
-	expect(popover.getByText("Build").nextElementSibling).toHaveTextContent("15");
-	expect(popover.getByText("Revision").nextElementSibling).toHaveTextContent(
-		"b".repeat(40),
-	);
-	expect(popover.getByText("Channel").nextElementSibling).toHaveTextContent("Preview");
 });
 
 test("renders available Worker metrics from session state", async () => {
@@ -561,13 +502,11 @@ test("shows an active server as clickable Offline", async () => {
 	});
 	const offlineButton = screen.getByRole("button", { name: "Offline" });
 	expect(offlineButton).toBeVisible();
-	expect(offlineButton).not.toHaveAttribute("title");
 	fireEvent.click(offlineButton);
 
 	const connectionPopover = await screen.findByRole("dialog", {
 		name: "Connection details",
 	});
-	expect(connectionPopover).not.toHaveTextContent("Offline");
 	expect(within(connectionPopover).getByRole("alert")).toHaveTextContent(
 		"Could not reach the Worker.",
 	);

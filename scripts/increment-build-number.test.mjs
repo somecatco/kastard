@@ -365,7 +365,7 @@ describe("Worker image builds", () => {
 		expect(result.exitCode).toBe(0);
 		const commands = readFileSync(env.DOCKER_LOG, "utf8").trim().split("\n");
 		expect(commands).toHaveLength(2);
-		expect(commands[1]).not.toContain("Dockerfile.runtime");
+		expect(commands[1]).toMatch(/(?:^| )-f apps\/server\/Dockerfile(?: |$)/);
 		expect(commands[1]).toContain(
 			"-t somecatco/kastard-worker-cu130:0.2.0-build.7-aaaaaaa",
 		);

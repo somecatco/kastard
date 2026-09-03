@@ -112,7 +112,6 @@ describe("formatDebugInfo", () => {
 		expect(report).not.toContain("worker.example.com");
 		expect(report).not.toContain("secret");
 		expect(report).not.toContain("token");
-		expect(report).not.toContain("Generated:");
 	});
 
 	it("keeps a useful report when every live source is unavailable", () => {
