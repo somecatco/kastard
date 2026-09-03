@@ -378,6 +378,7 @@ export const customNodeListFailedScenario = {
 				editorVersion: "1.1.2",
 				workerVersion: null,
 				status: "failed",
+				error: "Python dependency installation failed.",
 			},
 			{
 				id: "RES4LYF",

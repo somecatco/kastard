@@ -715,6 +715,7 @@ function projectSnapshot(
 				editorVersion: node.version,
 				workerVersion: nodeState.workerVersion,
 				status: nodeState.status,
+				...(nodeState.error === undefined ? {} : { error: nodeState.error }),
 			};
 		}),
 		unselectedNodes:

@@ -482,9 +482,11 @@ function WorkerCustomNodeTargetRow({
 	onReinstall: () => void;
 }): React.JSX.Element {
 	const operationActive = operationLabel !== null;
+	const failureReason =
+		!operationActive && node.status === "failed" ? node.error : undefined;
 	return (
 		<WorkerSyncListRow
-			ariaLabel={`${node.id}: ${operationLabel ?? customNodeStatusLabel(node.status)}`}
+			ariaLabel={`${node.id}: ${operationLabel ?? customNodeStatusLabel(node.status)}${failureReason === undefined ? "" : `. ${failureReason}`}`}
 			icon={
 				<CustomNodeStatusIcon status={operationActive ? "installing" : node.status} />
 			}
@@ -494,6 +496,11 @@ function WorkerCustomNodeTargetRow({
 					<p className="mt-1 break-words text-[11px] text-muted-foreground">
 						Editor {node.editorVersion} · Worker {node.workerVersion ?? "not installed"}
 					</p>
+					{failureReason === undefined ? null : (
+						<p className="mt-1 break-words text-[11px] text-destructive">
+							{failureReason}
+						</p>
+					)}
 				</div>
 			}
 			status={

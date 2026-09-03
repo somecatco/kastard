@@ -122,6 +122,43 @@ test("projects selected and unselected Worker custom nodes", async () => {
 	session.stop();
 });
 
+test("projects the failure reason for an individual custom node", async () => {
+	const readCustomNodes = vi.fn().mockResolvedValue({
+		ok: true,
+		state: currentCustomNodeState({
+			status: "failed" as const,
+			nodes: [],
+			error: "Custom node synchronization did not complete.",
+			nodeSnapshot: {
+				targetNodes: [
+					{
+						id: "comfyui-kjnodes",
+						status: "failed" as const,
+						workerVersion: null,
+						error: "Dependency installation failed.",
+					},
+				],
+				activeNodes: [],
+			},
+		}),
+	});
+	const { session } = createHarness({ readCustomNodes });
+
+	await initializeAndConnect(session);
+
+	expect(session.getState().customNodes).toMatchObject({
+		status: "failed",
+		targetNodes: [
+			{
+				id: "comfyui-kjnodes",
+				status: "failed",
+				error: "Dependency installation failed.",
+			},
+		],
+	});
+	session.stop();
+});
+
 test("reinstalls one selected custom node while preserving the full projection", async () => {
 	const primaryNode = { id: "comfyui-kjnodes", version: "1.5.0" };
 	const otherNode = { id: "comfyui-easy-use", version: "1.3.6" };
