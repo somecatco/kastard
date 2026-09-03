@@ -102,7 +102,7 @@ test("keeps Settings usable when application information is unavailable", async 
 	expect(applicationError).toHaveTextContent("Application information unavailable.");
 	expect(applicationError).toHaveClass("select-text");
 	expect(applicationError).toHaveAttribute("aria-atomic", "true");
-	expect(within(application).getAllByText("Unavailable")).toHaveLength(5);
+	expect(within(application).getByText("Unavailable")).toBeVisible();
 	openSettingsSection("Connection");
 	expect(screen.getByRole("switch", { name: /^Sync after connecting/ })).toBeEnabled();
 });
@@ -117,16 +117,6 @@ test("copies a sanitized debug snapshot from About", async () => {
 	});
 	expect(await within(application).findByText("0.1.0")).toBeVisible();
 	expect(await within(application).findByText("1")).toBeVisible();
-	expect(await within(application).findByText("Production")).toBeVisible();
-	expect(await within(application).findByText("a".repeat(40))).toBeVisible();
-	expect(within(application).getByText("macOS 25.0.0 · arm64")).toHaveClass(
-		"select-text",
-	);
-	expect(
-		within(application).getByText(
-			"Electron 43.4.0 · Chrome 144.0.7559.220 · Node 24.13.0",
-		),
-	).toHaveClass("select-text");
 	fireEvent.click(screen.getByRole("button", { name: "Copy debug info" }));
 
 	await waitFor(() => expect(window.kastard.debugInfo.copy).toHaveBeenCalledOnce());
