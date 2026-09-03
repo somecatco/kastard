@@ -9,6 +9,7 @@ ARG KASTARD_SOURCE_REVISION
 WORKDIR /app
 COPY LICENSE LICENSE
 COPY package.json bun.lock tsconfig.base.json ./
+COPY patches patches
 COPY apps/desktop/package.json apps/desktop/package.json
 COPY apps/worker/package.json apps/worker/package.json
 COPY packages/common/package.json packages/common/package.json
