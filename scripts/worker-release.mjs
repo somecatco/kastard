@@ -5,6 +5,8 @@ import { fileURLToPath } from "node:url";
 import { readSourceRevision, verifyProductionLineage } from "./release-lineage.mjs";
 
 const BUILD_NUMBER_PATTERN = /^[1-9]\d*$/;
+const PREVIEW_TAG_PATTERN = /^worker-preview\.([1-9]\d*)(?:-([1-9]\d*))?$/;
+const PRODUCTION_TAG_PATTERN = /^worker-v(\d+\.\d+\.\d+)(?:-([1-9]\d*))?$/;
 const VERSION_PATTERN = /^\d+\.\d+\.\d+$/;
 
 function readWorkerPackage(root) {
@@ -41,7 +43,8 @@ export function resolveWorkerRelease(root, tag, sourceRevision) {
 		throw new Error("The Worker source revision must be a full Git commit SHA.");
 	}
 	const previewTag = `worker-preview.${buildNumber}`;
-	if (tag === previewTag) {
+	const previewMatch = PREVIEW_TAG_PATTERN.exec(tag);
+	if (previewMatch?.[1] === buildNumber) {
 		return {
 			buildNumber,
 			channel: "preview",
@@ -50,10 +53,10 @@ export function resolveWorkerRelease(root, tag, sourceRevision) {
 		};
 	}
 
-	const productionMatch = /^worker-v(\d+\.\d+\.\d+)$/.exec(tag);
+	const productionMatch = PRODUCTION_TAG_PATTERN.exec(tag);
 	if (productionMatch === null) {
 		throw new Error(
-			`Tag ${JSON.stringify(tag)} does not match ${previewTag} or worker-v{version}.`,
+			`Tag ${JSON.stringify(tag)} does not match ${previewTag}[-{number}] or worker-v{version}[-{number}].`,
 		);
 	}
 	return {

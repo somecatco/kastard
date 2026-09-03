@@ -49,6 +49,20 @@ describe("Editor release tags", () => {
 		});
 	});
 
+	test("resolves a numbered Preview tag variant as the same build", () => {
+		const release = resolveEditorRelease(
+			createFixture(),
+			"editor-preview.11-1",
+			sourceRevision,
+		);
+
+		expect(release).toMatchObject({
+			buildVersion: "11",
+			channel: "preview",
+			productVersion: null,
+		});
+	});
+
 	test("resolves the Production version from the tag", () => {
 		const release = resolveEditorRelease(
 			createFixture(),
@@ -73,6 +87,19 @@ describe("Editor release tags", () => {
 		});
 	});
 
+	test("resolves a numbered Production tag variant as the same version", () => {
+		const release = resolveEditorRelease(
+			createFixture(),
+			"editor-v0.2.0-1",
+			sourceRevision,
+		);
+
+		expect(release).toMatchObject({
+			channel: "production",
+			productVersion: "0.2.0",
+		});
+	});
+
 	test("rejects Preview buildVersion mismatches", () => {
 		expect(() =>
 			resolveEditorRelease(createFixture(), "editor-preview.12", sourceRevision),
@@ -81,7 +108,18 @@ describe("Editor release tags", () => {
 
 	test("rejects unsupported and malformed tags", () => {
 		const root = createFixture();
-		for (const tag of ["v0.1.0", "editor-v0.1", "editor-preview", "editor-preview.0"]) {
+		for (const tag of [
+			"v0.1.0",
+			"editor-v0.1",
+			"editor-v0.1.0-0",
+			"editor-v0.1.0-01",
+			"editor-v0.1.0-1-1",
+			"editor-preview",
+			"editor-preview.0",
+			"editor-preview.11-0",
+			"editor-preview.11-01",
+			"editor-preview.11-1-1",
+		]) {
 			expect(() => resolveEditorRelease(root, tag, sourceRevision)).toThrow(
 				"does not match",
 			);

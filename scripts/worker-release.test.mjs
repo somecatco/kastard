@@ -34,6 +34,16 @@ describe("Worker release tags", () => {
 		});
 	});
 
+	test("resolves a numbered Preview tag variant as the same build", () => {
+		expect(
+			resolveWorkerRelease(createFixture(), "worker-preview.11-1", sourceRevision),
+		).toMatchObject({
+			buildNumber: "11",
+			channel: "preview",
+			productVersion: null,
+		});
+	});
+
 	test("resolves the Production version from the tag", () => {
 		expect(
 			resolveWorkerRelease(createFixture(), "worker-v0.2.0", sourceRevision),
@@ -46,11 +56,26 @@ describe("Worker release tags", () => {
 		});
 	});
 
+	test("resolves a numbered Production tag variant as the same version", () => {
+		expect(
+			resolveWorkerRelease(createFixture(), "worker-v0.2.0-1", sourceRevision),
+		).toMatchObject({
+			channel: "production",
+			productVersion: "0.2.0",
+		});
+	});
+
 	test("rejects build number and format mismatches", () => {
 		const root = createFixture();
 		for (const tag of [
 			"worker-preview.12",
+			"worker-preview.11-0",
+			"worker-preview.11-01",
+			"worker-preview.11-1-1",
 			"worker-v0.1",
+			"worker-v0.1.0-0",
+			"worker-v0.1.0-01",
+			"worker-v0.1.0-1-1",
 			"worker-production.11",
 			"editor-preview.11",
 		]) {

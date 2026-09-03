@@ -5,6 +5,8 @@ import { fileURLToPath } from "node:url";
 import { readSourceRevision, verifyProductionLineage } from "./release-lineage.mjs";
 
 const BUILD_VERSION_PATTERN = /^[1-9]\d*$/;
+const PREVIEW_TAG_PATTERN = /^editor-preview\.([1-9]\d*)(?:-([1-9]\d*))?$/;
+const PRODUCTION_TAG_PATTERN = /^editor-v(\d+\.\d+\.\d+)(?:-([1-9]\d*))?$/;
 const VERSION_PATTERN = /^\d+\.\d+\.\d+$/;
 
 function readDesktopPackage(root) {
@@ -43,8 +45,9 @@ export function resolveEditorRelease(root, tag, sourceRevision) {
 	}
 	const shortRevision = sourceRevision.slice(0, 7);
 	const previewTag = `editor-preview.${buildVersion}`;
+	const previewMatch = PREVIEW_TAG_PATTERN.exec(tag);
 
-	if (tag === previewTag) {
+	if (previewMatch?.[1] === buildVersion) {
 		return {
 			appId: "co.somecat.kastard.preview",
 			appName: "Kastard Preview",
@@ -61,7 +64,7 @@ export function resolveEditorRelease(root, tag, sourceRevision) {
 		};
 	}
 
-	const productionMatch = /^editor-v(\d+\.\d+\.\d+)$/.exec(tag);
+	const productionMatch = PRODUCTION_TAG_PATTERN.exec(tag);
 	if (productionMatch !== null) {
 		const productVersion = productionMatch[1];
 		return {
@@ -82,7 +85,7 @@ export function resolveEditorRelease(root, tag, sourceRevision) {
 	}
 
 	throw new Error(
-		`Tag ${JSON.stringify(tag)} does not match ${previewTag} or editor-v{version}.`,
+		`Tag ${JSON.stringify(tag)} does not match ${previewTag}[-{number}] or editor-v{version}[-{number}].`,
 	);
 }
 

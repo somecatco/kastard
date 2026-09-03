@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { resolveReleaseTag } from "./release-tag.mjs";
+import { resolveEnteredReleaseTag, resolveReleaseTag } from "./release-tag.mjs";
 
 const roots = [];
 const sourceRevision = "c".repeat(40);
@@ -46,6 +46,29 @@ describe("Release tag command", () => {
 		expect(
 			resolveReleaseTag(root, "production", "worker", "0.4.0", sourceRevision),
 		).toBe("worker-v0.4.0");
+	});
+
+	test("accepts directly entered numbered tag variants", () => {
+		const root = createFixture();
+		expect(
+			resolveEnteredReleaseTag(root, "editor-preview.11-1", sourceRevision),
+		).toMatchObject({
+			release: { buildVersion: "11", channel: "preview" },
+			target: "editor",
+		});
+		expect(
+			resolveEnteredReleaseTag(root, "worker-v0.4.0-1", sourceRevision),
+		).toMatchObject({
+			release: { channel: "production", productVersion: "0.4.0" },
+			target: "worker",
+		});
+	});
+
+	test("rejects unsupported directly entered tags", () => {
+		const root = createFixture();
+		for (const tag of ["preview.11-1", "editor-preview.11-1-1", "worker-v0.4.0-1-1"]) {
+			expect(() => resolveEnteredReleaseTag(root, tag, sourceRevision)).toThrow();
+		}
 	});
 
 	test("rejects unsupported selections and channel arguments", () => {

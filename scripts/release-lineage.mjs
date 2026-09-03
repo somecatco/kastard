@@ -16,21 +16,32 @@ export function readSourceRevision(root) {
 export function verifyProductionLineage(root, release) {
 	if (release.channel !== "production") return;
 
-	let previewRevision;
-	try {
-		previewRevision = execFileSync(
+	const escapedPreviewTag = release.previewTag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	const previewTagPattern = new RegExp(`^${escapedPreviewTag}(?:-[1-9]\\d*)?$`);
+	const previewTags = execFileSync(
+		"git",
+		["tag", "--list", release.previewTag, `${release.previewTag}-*`],
+		{ cwd: root, encoding: "utf8" },
+	)
+		.split("\n")
+		.filter((tag) => previewTagPattern.test(tag));
+
+	if (previewTags.length === 0) {
+		throw new Error(
+			`Production requires ${release.previewTag} or a numbered suffix on the same source revision.`,
+		);
+	}
+
+	for (const previewTag of previewTags) {
+		const previewRevision = execFileSync(
 			"git",
-			["rev-parse", `refs/tags/${release.previewTag}^{commit}`],
+			["rev-parse", `refs/tags/${previewTag}^{commit}`],
 			{ cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
 		).trim();
-	} catch {
-		throw new Error(
-			`Production requires ${release.previewTag} on the same source revision.`,
-		);
+		if (previewRevision === release.sourceRevision) return;
 	}
-	if (previewRevision !== release.sourceRevision) {
-		throw new Error(
-			`${release.previewTag} must point to the Production source revision ${release.sourceRevision}.`,
-		);
-	}
+
+	throw new Error(
+		`${previewTags.join(", ")} must point to the Production source revision ${release.sourceRevision}.`,
+	);
 }

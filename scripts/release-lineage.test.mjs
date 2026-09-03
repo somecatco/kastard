@@ -40,7 +40,7 @@ describe("Production release lineage", () => {
 		};
 
 		expect(() => verifyProductionLineage(root, release)).toThrow(
-			"requires editor-preview.15 on the same source revision",
+			"requires editor-preview.15 or a numbered suffix on the same source revision",
 		);
 		git(root, "tag", release.previewTag);
 		expect(() => verifyProductionLineage(root, release)).not.toThrow();
@@ -54,5 +54,33 @@ describe("Production release lineage", () => {
 				sourceRevision: git(root, "rev-parse", "HEAD"),
 			}),
 		).toThrow("must point to the Production source revision");
+	});
+
+	test("accepts one numbered Preview suffix on the Production commit", () => {
+		const root = createRepository();
+		const release = {
+			channel: "production",
+			previewTag: "editor-preview.15",
+			sourceRevision: git(root, "rev-parse", "HEAD"),
+		};
+
+		git(root, "tag", `${release.previewTag}-1`);
+		expect(() => verifyProductionLineage(root, release)).not.toThrow();
+	});
+
+	test("ignores malformed Preview suffixes", () => {
+		const root = createRepository();
+		const release = {
+			channel: "production",
+			previewTag: "editor-preview.15",
+			sourceRevision: git(root, "rev-parse", "HEAD"),
+		};
+
+		for (const suffix of ["0", "01", "1-1", "candidate"]) {
+			git(root, "tag", `${release.previewTag}-${suffix}`);
+		}
+		expect(() => verifyProductionLineage(root, release)).toThrow(
+			"requires editor-preview.15 or a numbered suffix on the same source revision",
+		);
 	});
 });

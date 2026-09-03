@@ -9,7 +9,7 @@ import { readSourceRevision, verifyProductionLineage } from "./release-lineage.m
 import { resolveWorkerRelease } from "./worker-release.mjs";
 
 const USAGE =
-	"Usage: bun run tag <preview|production> <editor|worker> [production-version]";
+	"Usage: bun run tag [<release-tag> | <preview|production> <editor|worker> [production-version]]";
 
 function readPackage(root, path) {
 	return JSON.parse(readFileSync(join(root, path), "utf8"));
@@ -57,17 +57,52 @@ export function resolveReleaseTag(
 	return tag;
 }
 
-async function promptForRelease() {
+export function resolveEnteredReleaseTag(root, tag, sourceRevision) {
+	if (tag.startsWith("editor-")) {
+		return {
+			release: resolveEditorRelease(root, tag, sourceRevision),
+			target: "editor",
+		};
+	}
+	if (tag.startsWith("worker-")) {
+		return {
+			release: resolveWorkerRelease(root, tag, sourceRevision),
+			target: "worker",
+		};
+	}
+	throw new Error(`Tag ${JSON.stringify(tag)} must target editor or worker.`);
+}
+
+async function promptForRelease(root, sourceRevision) {
 	const channel = await select({
-		message: "Select a release channel",
+		message: "Select a release tag",
 		options: [
 			{ label: "Preview", value: "preview" },
 			{ label: "Production", value: "production" },
+			{ label: "Enter tag directly", value: "direct" },
 		],
 	});
 	if (isCancel(channel)) {
 		cancel("Tag creation cancelled.");
 		return;
+	}
+	if (channel === "direct") {
+		const tag = await text({
+			message: "Enter the release tag",
+			placeholder: "editor-preview.16-1",
+			validate: (value) => {
+				try {
+					resolveEnteredReleaseTag(root, value, sourceRevision);
+				} catch (error) {
+					return error.message;
+				}
+			},
+		});
+		if (isCancel(tag)) {
+			cancel("Tag creation cancelled.");
+			return;
+		}
+		return { tag };
 	}
 
 	const target = await select({
@@ -101,24 +136,32 @@ async function promptForRelease() {
 }
 
 async function main() {
-	let [channel, target, productVersion, ...extraArgs] = process.argv.slice(2);
-	if (extraArgs.length > 0 || Boolean(channel) !== Boolean(target)) {
-		throw new Error(USAGE);
-	}
-	if (!channel) {
-		const selection = await promptForRelease();
-		if (!selection) return;
-		({ channel, productVersion, target } = selection);
-	}
-
 	const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 	const root = resolve(scriptDirectory, "..");
 	const sourceRevision = readSourceRevision(root);
-	const tag = resolveReleaseTag(root, channel, target, productVersion, sourceRevision);
-	const release =
-		target === "editor"
-			? resolveEditorRelease(root, tag, sourceRevision)
-			: resolveWorkerRelease(root, tag, sourceRevision);
+	const args = process.argv.slice(2);
+	let tag;
+	if (args.length === 0) {
+		const selection = await promptForRelease(root, sourceRevision);
+		if (!selection) return;
+		tag =
+			selection.tag ??
+			resolveReleaseTag(
+				root,
+				selection.channel,
+				selection.target,
+				selection.productVersion,
+				sourceRevision,
+			);
+	} else if (args.length === 1) {
+		[tag] = args;
+	} else {
+		const [channel, target, productVersion, ...extraArgs] = args;
+		if (extraArgs.length > 0) throw new Error(USAGE);
+		tag = resolveReleaseTag(root, channel, target, productVersion, sourceRevision);
+	}
+
+	const { release } = resolveEnteredReleaseTag(root, tag, sourceRevision);
 	verifyProductionLineage(root, release);
 	execFileSync("git", ["tag", tag], { cwd: root, stdio: "inherit" });
 	console.log(`Created ${tag}.\nPush with: git push origin ${tag}`);
