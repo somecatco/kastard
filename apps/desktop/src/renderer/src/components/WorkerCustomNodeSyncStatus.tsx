@@ -62,11 +62,19 @@ export function verifiedCustomNodeTargets(
 			};
 		}
 		if (problems.some((problem) => problem.reason === "missing")) {
-			return { ...node, status: "not-installed", workerVersion: null };
+			return {
+				...node,
+				status: node.error === undefined ? "not-installed" : "failed",
+				workerVersion: null,
+			};
 		}
 		const mismatch = problems.find((problem) => problem.reason === "version-mismatch");
 		if (mismatch !== undefined) {
-			return { ...node, status: "version-mismatch", workerVersion: mismatch.actual };
+			return {
+				...node,
+				status: node.error === undefined ? "version-mismatch" : "failed",
+				workerVersion: mismatch.actual,
+			};
 		}
 		return { ...node, status: "failed" };
 	});
