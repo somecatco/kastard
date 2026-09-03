@@ -6,7 +6,7 @@
 	"main": "./out/main/index.js",
 	"build": {
 		"extends": "./electron-builder.yml",
-		"buildVersion": "16"
+		"buildVersion": "17"
 	},
 	"scripts": {
 		"dev": "bun run electron:install && electron-vite dev",
