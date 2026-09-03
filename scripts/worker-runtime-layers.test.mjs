@@ -41,10 +41,20 @@ function compiledLock(applicationVersion = "1.0.0", cudaVia = "fixture") {
 	)}${requirement("Comfy_Name", applicationVersion)}`;
 }
 
+function prebundleLock() {
+	return `# Generated fixture.\n${requirement("onnxruntime")}${requirement(
+		"onnxruntime-gpu",
+	)}${requirement("opencv-python")}`;
+}
+
 function createRoot() {
 	const root = mkdtempSync(join(tmpdir(), "kastard-runtime-layers-"));
 	roots.push(root);
 	mkdirSync(join(root, "vendor"));
+	writeFileSync(
+		join(root, "vendor/comfyui-worker-prebundle-lock.txt"),
+		prebundleLock(),
+	);
 	for (const profile of ["cu128", "cu130"]) {
 		writeFileSync(
 			join(root, "vendor", `comfyui-worker-${profile}-lock.txt`),
@@ -163,6 +173,13 @@ describe("Worker runtime layers", () => {
 		writeFileSync(join(root, "unrelated.txt"), "changed\n");
 		expect(runtimeImageFingerprint(root, "cu128")).toBe(cu128);
 		expect(runtimeImageFingerprint(root, "cu130")).toBe(cu130);
+
+		const prebundleLockPath = join(root, "vendor/comfyui-worker-prebundle-lock.txt");
+		const originalPrebundleLock = readFileSync(prebundleLockPath, "utf8");
+		writeFileSync(prebundleLockPath, `${originalPrebundleLock}# changed\n`);
+		expect(runtimeImageFingerprint(root, "cu128")).not.toBe(cu128);
+		expect(runtimeImageFingerprint(root, "cu130")).not.toBe(cu130);
+		writeFileSync(prebundleLockPath, originalPrebundleLock);
 
 		writeFileSync(
 			join(root, "vendor/comfyui-worker-runtime-cu128.json"),

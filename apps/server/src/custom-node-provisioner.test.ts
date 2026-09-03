@@ -176,7 +176,9 @@ describe("CustomNodeProvisioner", () => {
 			},
 			sourceEnvironment: {
 				PATH: "/usr/bin",
+				UV_CACHE_DIR: "/var/cache/uv",
 				UV_CONSTRAINT: "/opt/kastard/runtime-constraints.txt",
+				UV_LINK_MODE: "copy",
 				RUNPOD_API_KEY: "must-not-reach-custom-nodes",
 			},
 		});
@@ -235,8 +237,10 @@ describe("CustomNodeProvisioner", () => {
 			cwd: join(ROOT, "backend"),
 			env: {
 				PATH: "/usr/bin",
+				UV_CACHE_DIR: "/var/cache/uv",
 				HOME: join(ROOT, ".kastard", "comfyui-manager"),
 				UV_CONSTRAINT: "/opt/kastard/runtime-constraints.txt",
+				UV_LINK_MODE: "copy",
 				PYTHONPYCACHEPREFIX: join(
 					ROOT,
 					".kastard",

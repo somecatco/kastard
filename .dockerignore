@@ -25,6 +25,7 @@ vendor/*
 !vendor/comfyui-worker-cu128-lock.txt
 !vendor/comfyui-worker-cu130-lock.txt
 !vendor/comfyui-worker-cpu-lock.txt
+!vendor/comfyui-worker-prebundle-lock.txt
 !vendor/comfyui-worker-cu128-layer-*.txt
 !vendor/comfyui-worker-cu130-layer-*.txt
 !vendor/comfyui-worker-constraints-cu128.txt
