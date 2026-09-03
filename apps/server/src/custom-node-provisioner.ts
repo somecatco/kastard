@@ -425,12 +425,7 @@ export class CustomNodeProvisioner implements CustomNodeProvisionerApi {
 		}
 		const operation = createCustomNodeOperation(target, kind);
 		this.activeOperation = operation;
-		const nodeSnapshot = customNodeSyncNodeSnapshot(
-			target.nodes,
-			this.activeInventory,
-			new Set(),
-			null,
-		);
+		const nodeSnapshot = customNodeSyncNodeSnapshot(target.nodes, this.activeInventory);
 		this.state = {
 			...operationState(operation),
 			status: "syncing",
@@ -662,7 +657,7 @@ export class CustomNodeProvisioner implements CustomNodeProvisionerApi {
 		const reinstallNode = operation.kind === "reinstall" ? nodes[0] : undefined;
 		const action = reinstallNode === undefined ? "synchronization" : "reinstall";
 		const { signal } = operation.controller;
-		const failedNodeIds = new Set<string>();
+		const nodeFailures = new Map<string, string>();
 		let activeInventory = this.activeInventory;
 		const updateActiveInventory = (inventory: CustomNodeInventoryEntry[]): void => {
 			activeInventory = inventory;
@@ -674,7 +669,7 @@ export class CustomNodeProvisioner implements CustomNodeProvisionerApi {
 			customNodeSyncNodeSnapshot(
 				nodes,
 				activeInventory,
-				failedNodeIds,
+				nodeFailures,
 				currentNode?.id ?? null,
 			);
 		const backendDirectory = join(this.rootDirectory, "backend");
@@ -787,6 +782,14 @@ export class CustomNodeProvisioner implements CustomNodeProvisionerApi {
 			};
 			let completed = reusableIds.size;
 			const problems: string[] = [];
+			const recordNodeFailure = (
+				nodeId: string,
+				error: string,
+				summary = `${nodeId}: ${error}`,
+			): void => {
+				nodeFailures.set(nodeId, error);
+				problems.push(summary);
+			};
 			const setProgress = (
 				currentNode: CustomNodeSyncTarget | null,
 				reinstallPhase: "remove" | "install" = "install",
@@ -815,8 +818,9 @@ export class CustomNodeProvisioner implements CustomNodeProvisionerApi {
 				const inactiveEntries = inactiveById.get(reinstallNode.id) ?? [];
 				const installedEntries = activeEntries.concat(inactiveEntries);
 				if (installedEntries.length > 1) {
-					failedNodeIds.add(reinstallNode.id);
-					problems.push(
+					recordNodeFailure(
+						reinstallNode.id,
+						"Duplicate installed custom node ID. Remove the duplicate before reinstalling.",
 						`Duplicate installed custom node ID: ${reinstallNode.id}. Remove the duplicate before reinstalling.`,
 					);
 					completed += 1;
@@ -842,12 +846,10 @@ export class CustomNodeProvisioner implements CustomNodeProvisionerApi {
 							activeById.has(reinstallNode.id) ||
 							inactiveById.has(reinstallNode.id)
 						) {
-							failedNodeIds.add(reinstallNode.id);
-							problems.push(
-								`Could not remove ${reinstallNode.id} for reinstall.${
-									error === null ? "" : ` ${userFacingError(error)}`
-								}`,
-							);
+							const reason = `Could not remove ${reinstallNode.id} for reinstall.${
+								error === null ? "" : ` ${userFacingError(error)}`
+							}`;
+							recordNodeFailure(reinstallNode.id, reason, reason);
 							completed += 1;
 						} else {
 							installCandidates.push(reinstallNode);
@@ -864,8 +866,9 @@ export class CustomNodeProvisioner implements CustomNodeProvisionerApi {
 					setProgress(node);
 					const existing = activeById.get(node.id);
 					if (existing !== undefined && existing.length > 1) {
-						failedNodeIds.add(node.id);
-						problems.push(
+						recordNodeFailure(
+							node.id,
+							"Duplicate active custom node ID. Disable the duplicate before synchronizing.",
 							`Duplicate active custom node ID: ${node.id}. Disable the duplicate before synchronizing.`,
 						);
 						completed += 1;
@@ -891,12 +894,10 @@ export class CustomNodeProvisioner implements CustomNodeProvisionerApi {
 					for (const node of disabledNodes) {
 						const error = disableErrors.get(node.id);
 						if (error !== undefined || activeById.has(node.id)) {
-							failedNodeIds.add(node.id);
-							problems.push(
-								`Could not prepare ${node.id} for reinstall.${
-									error === undefined ? "" : ` ${userFacingError(error)}`
-								}`,
-							);
+							const reason = `Could not prepare ${node.id} for reinstall.${
+								error === undefined ? "" : ` ${userFacingError(error)}`
+							}`;
+							recordNodeFailure(node.id, reason, reason);
 							completed += 1;
 						} else {
 							installCandidates.push(node);
@@ -910,16 +911,17 @@ export class CustomNodeProvisioner implements CustomNodeProvisionerApi {
 				managerError: Error | null,
 			): void => {
 				if (managerError !== null) {
-					failedNodeIds.add(node.id);
-					problems.push(`${node.id}: ${userFacingError(managerError)}`);
+					recordNodeFailure(node.id, userFacingError(managerError));
 				} else if (!hasExactActiveNode(activeById, node)) {
-					failedNodeIds.add(node.id);
 					const actual = activeById
 						.get(node.id)
 						?.map((entry) => entry.version ?? "unknown")
 						.join(", ");
-					problems.push(
-						`${node.id} (expected ${node.version}, found ${actual ?? "missing"}).`,
+					const found = actual ?? "missing";
+					recordNodeFailure(
+						node.id,
+						`Expected ${node.version}, found ${found}.`,
+						`${node.id} (expected ${node.version}, found ${found}).`,
 					);
 				} else {
 					confirmedNodes.set(node.id, node);

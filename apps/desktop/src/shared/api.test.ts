@@ -483,11 +483,30 @@ test("validates canonical public GitHub custom nodes", () => {
 						editorVersion: "1.5.0",
 						workerVersion: "1.5.0",
 						status: "failed",
+						error: "Dependency installation failed.",
 					},
 				],
 			}),
 		),
 	).toBe(true);
+	expect(
+		isWorkerCustomNodeSyncState(
+			currentState({
+				status: "ready",
+				nodes: [],
+				unsupportedNodes: [],
+				targetNodes: [
+					{
+						id: "comfyui-kjnodes",
+						editorVersion: "1.5.0",
+						workerVersion: "1.5.0",
+						status: "failed",
+						error: 500,
+					},
+				],
+			}),
+		),
+	).toBe(false);
 	expect(
 		isWorkerCustomNodeSyncState(
 			currentState({

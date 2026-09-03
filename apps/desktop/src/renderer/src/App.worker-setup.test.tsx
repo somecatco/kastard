@@ -1042,6 +1042,7 @@ test("shows the full custom node target list throughout synchronization", async 
 					editorVersion: "1.1.2",
 					workerVersion: null,
 					status: "failed",
+					error: "Python dependency installation failed.",
 				},
 				{
 					id: "RES4LYF",
@@ -1059,6 +1060,46 @@ test("shows the full custom node target list throughout synchronization", async 
 		"Custom node synchronization did not complete. Affected: ComfyUI-GGUF and RES4LYF. Open Worker logs for details.",
 	);
 	expect(screen.getByText("ComfyUI-GGUF").closest("li")).toHaveTextContent("Failed");
+	expect(screen.getByText("ComfyUI-GGUF").closest("li")).toHaveTextContent(
+		"Python dependency installation failed.",
+	);
+
+	await act(async () => {
+		emitWorkerSession({
+			verification: {
+				status: "out-of-sync",
+				backend: {
+					status: "synced",
+					expectedVersion: "0.33.1",
+					actualVersion: "0.33.1",
+				},
+				models: { status: "synced", total: 0 },
+				customNodes: {
+					status: "out-of-sync",
+					total: 4,
+					problems: [
+						{
+							reason: "missing",
+							name: "ComfyUI-GGUF",
+							expected: "1.1.2",
+							actual: null,
+						},
+						{
+							reason: "version-mismatch",
+							name: "RES4LYF",
+							expected: "cdf2f4a",
+							actual: "8a109de",
+						},
+					],
+				},
+			},
+		});
+	});
+
+	expect(screen.getByText("ComfyUI-GGUF").closest("li")).toHaveTextContent("Failed");
+	expect(screen.getByText("ComfyUI-GGUF").closest("li")).toHaveTextContent(
+		"Python dependency installation failed.",
+	);
 	expect(
 		screen.getByRole("listitem", { name: "Nodes: Needs attention, 2/4" }),
 	).toHaveTextContent("N2/4");

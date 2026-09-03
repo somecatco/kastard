@@ -43,6 +43,7 @@ export type CustomNodeSyncNodeState = {
 	id: string;
 	status: CustomNodeSyncNodeStatus;
 	workerVersion: string | null;
+	error?: string;
 };
 
 export type CustomNodeSyncNodeSnapshot = {
@@ -417,25 +418,25 @@ export function sameCustomNodeInventoryEntry(
 export function customNodeSyncNodeSnapshot(
 	targets: CustomNodeSyncTarget[],
 	activeNodes: CustomNodeInventoryEntry[],
-	failedNodeIds?: ReadonlySet<string>,
+	failures?: ReadonlyMap<string, string>,
 	installingNodeId?: string | null,
 ): CustomNodeSyncNodeSnapshot;
 export function customNodeSyncNodeSnapshot(
 	targets: CustomNodeSyncTarget[],
 	activeNodes: null,
-	failedNodeIds?: ReadonlySet<string>,
+	failures?: ReadonlyMap<string, string>,
 	installingNodeId?: string | null,
 ): undefined;
 export function customNodeSyncNodeSnapshot(
 	targets: CustomNodeSyncTarget[],
 	activeNodes: CustomNodeInventoryEntry[] | null,
-	failedNodeIds?: ReadonlySet<string>,
+	failures?: ReadonlyMap<string, string>,
 	installingNodeId?: string | null,
 ): CustomNodeSyncNodeSnapshot | undefined;
 export function customNodeSyncNodeSnapshot(
 	targets: CustomNodeSyncTarget[],
 	activeNodes: CustomNodeInventoryEntry[] | null,
-	failedNodeIds: ReadonlySet<string> = new Set(),
+	failures: ReadonlyMap<string, string> = new Map(),
 	installingNodeId: string | null = null,
 ): CustomNodeSyncNodeSnapshot | undefined {
 	if (activeNodes === null) return undefined;
@@ -457,11 +458,13 @@ export function customNodeSyncNodeSnapshot(
 					workerVersion: installed?.version ?? null,
 				};
 			}
-			if (failedNodeIds.has(target.id)) {
+			const error = failures.get(target.id);
+			if (error !== undefined) {
 				return {
 					id: target.id,
 					status: "failed",
 					workerVersion: installed?.version ?? null,
+					error,
 				};
 			}
 			if (installed?.version === target.version) {
@@ -577,7 +580,8 @@ function isOptionalCustomNodeSyncNodeSnapshot(
 			!isRecord(state) ||
 			state.id !== node.id ||
 			!isCustomNodeSyncNodeStatus(state.status) ||
-			(state.workerVersion !== null && typeof state.workerVersion !== "string")
+			(state.workerVersion !== null && typeof state.workerVersion !== "string") ||
+			(state.error !== undefined && typeof state.error !== "string")
 		) {
 			return false;
 		}

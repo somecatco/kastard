@@ -348,7 +348,12 @@ describe("CustomNodeProvisioner", () => {
 			error: expect.stringContaining("failed-node: Registry unavailable."),
 			nodeSnapshot: {
 				targetNodes: [
-					{ id: failedNode.id, status: "failed", workerVersion: null },
+					{
+						id: failedNode.id,
+						status: "failed",
+						workerVersion: null,
+						error: "Registry unavailable.",
+					},
 					{
 						id: successfulNode.id,
 						status: "installed",
@@ -2105,6 +2110,16 @@ describe("CustomNodeProvisioner", () => {
 				},
 			],
 			error: expect.stringContaining("new-node: New node install failed."),
+			nodeSnapshot: {
+				targetNodes: [
+					{
+						id: "new-node",
+						status: "failed",
+						workerVersion: null,
+						error: "New node install failed.",
+					},
+				],
+			},
 		});
 	});
 

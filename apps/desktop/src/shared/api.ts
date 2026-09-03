@@ -265,6 +265,7 @@ export type WorkerCustomNodeTargetState = {
 	editorVersion: string;
 	workerVersion: string | null;
 	status: CustomNodeSyncNodeStatus;
+	error?: string;
 };
 
 type WorkerCustomNodeServerState = CustomNodeSyncServerState extends infer State
@@ -1016,7 +1017,8 @@ function isWorkerCustomNodeTargetState(
 		typeof value.id !== "string" ||
 		typeof value.editorVersion !== "string" ||
 		(value.workerVersion !== null && typeof value.workerVersion !== "string") ||
-		!isCustomNodeSyncNodeStatus(value.status)
+		!isCustomNodeSyncNodeStatus(value.status) ||
+		(value.error !== undefined && typeof value.error !== "string")
 	) {
 		return false;
 	}

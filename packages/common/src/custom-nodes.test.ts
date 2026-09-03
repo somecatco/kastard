@@ -312,10 +312,17 @@ describe("custom node common semantics", () => {
 						version: target.version,
 					},
 				],
-				new Set([target.id]),
+				new Map([[target.id, "Dependency installation failed."]]),
 			),
 		).toEqual({
-			targetNodes: [{ id: target.id, status: "failed", workerVersion: target.version }],
+			targetNodes: [
+				{
+					id: target.id,
+					status: "failed",
+					workerVersion: target.version,
+					error: "Dependency installation failed.",
+				},
+			],
 			activeNodes: [
 				{
 					name: target.id,
@@ -350,12 +357,29 @@ describe("custom node common semantics", () => {
 							id: "comfyui-kjnodes",
 							status: "failed",
 							workerVersion: "1.5.0",
+							error: "Dependency installation failed.",
 						},
 					],
 					activeNodes: [],
 				},
 			}),
 		).not.toBeNull();
+		expect(
+			parseCustomNodeSyncServerState({
+				...base,
+				nodeSnapshot: {
+					targetNodes: [
+						{
+							id: "comfyui-kjnodes",
+							status: "failed",
+							workerVersion: "1.5.0",
+							error: 500,
+						},
+					],
+					activeNodes: [],
+				},
+			}),
+		).toBeNull();
 		expect(
 			parseCustomNodeSyncServerState({
 				...base,
