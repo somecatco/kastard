@@ -14,12 +14,13 @@ extraResources:
   - from: resources/comfyui-runtime
     to: comfyui-runtime
 asar: true
+afterSign: ./scripts/notarize.mjs
 mac:
   icon: ../../assets/icon/kastard.icon
   target: dmg
   forceCodeSigning: true
   hardenedRuntime: true
-  notarize: true
+  notarize: false
 dmg:
   sign: true
   writeUpdateInfo: false

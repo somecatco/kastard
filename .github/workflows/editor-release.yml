@@ -114,12 +114,7 @@ jobs:
             echo "::error::Expected DMG was not created: ${dmg}"
             exit 1
           fi
-          xcrun notarytool submit "$dmg" \
-            --key "$APPLE_API_KEY" \
-            --key-id "$APPLE_API_KEY_ID" \
-            --issuer "$APPLE_API_ISSUER" \
-            --wait
-          xcrun stapler staple "$dmg"
+          node apps/desktop/scripts/notarize.mjs "$dmg"
 
       - name: Verify signed release
         env:
@@ -203,7 +198,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PRERELEASE: ${{ needs.build.outputs.prerelease }}
           RELEASE_NAME: ${{ needs.build.outputs.release_name }}
-          STABLE_ARTIFACT_NAME: Kastard-arm64.dmg
         run: |
           if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "::error::A GitHub Release already exists for ${GITHUB_REF_NAME}."
@@ -221,16 +215,7 @@ jobs:
             args+=(--prerelease --latest=false)
           fi
 
-          assets=(
-            "$ARTIFACT_NAME"
-            "${ARTIFACT_NAME}.sha256"
-          )
-          if [[ "$PRERELEASE" == "false" ]]; then
-            cp "$ARTIFACT_NAME" "$STABLE_ARTIFACT_NAME"
-            sha256sum "$STABLE_ARTIFACT_NAME" > "${STABLE_ARTIFACT_NAME}.sha256"
-            assets+=("$STABLE_ARTIFACT_NAME" "${STABLE_ARTIFACT_NAME}.sha256")
-          fi
-
           gh release create "$GITHUB_REF_NAME" \
             "${args[@]}" \
-            "${assets[@]}"
+            "$ARTIFACT_NAME" \
+            "${ARTIFACT_NAME}.sha256"

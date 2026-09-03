@@ -12,8 +12,8 @@
 		"dev": "bun run electron:install && electron-vite dev",
 		"start": "bun run electron:install && electron-vite preview",
 		"build": "bun run comfy:sync && bun run typecheck && electron-vite build",
-		"build:preview": "node ../../scripts/increment-build-number.mjs --check editor && bun run build -- --mode preview && rm -rf dist/preview && electron-builder --config electron-builder.preview.yml --config.buildVersion=$(node -p \"require('./package.json').build.buildVersion\") --config.artifactName=\"$KASTARD_ARTIFACT_NAME\" --mac dmg --arm64",
-		"build:production": "node ../../scripts/increment-build-number.mjs --check editor && bun run build -- --mode production && rm -rf dist/production && electron-builder --config electron-builder.production.yml --config.buildVersion=$(node -p \"require('./package.json').build.buildVersion\") --config.extraMetadata.version=\"$KASTARD_PRODUCT_VERSION\" --config.artifactName=\"$KASTARD_ARTIFACT_NAME\" --mac dmg --arm64",
+		"build:preview": "node ../../scripts/increment-build-number.mjs --check editor && bun run build -- --mode preview && rm -rf dist/preview && electron-builder --config electron-builder.preview.yml --config.buildVersion=$(node -p \"require('./package.json').build.buildVersion\") --config.artifactName=\"$KASTARD_ARTIFACT_NAME\" --mac dmg --arm64 --publish never",
+		"build:production": "node ../../scripts/increment-build-number.mjs --check editor && bun run build -- --mode production && rm -rf dist/production && electron-builder --config electron-builder.production.yml --config.buildVersion=$(node -p \"require('./package.json').build.buildVersion\") --config.extraMetadata.version=\"$KASTARD_PRODUCT_VERSION\" --config.artifactName=\"$KASTARD_ARTIFACT_NAME\" --mac dmg --arm64 --publish never",
 		"typecheck": "bun run typecheck:node && bun run typecheck:web && bun run typecheck:scripts",
 		"typecheck:node": "tsc --noEmit -p tsconfig.node.json",
 		"typecheck:web": "tsc --noEmit -p tsconfig.web.json",
@@ -46,6 +46,7 @@
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.5.8",
+		"@electron/notarize": "2.5.0",
 		"@playwright/test": "^1.62.1",
 		"@storybook/react-vite": "^10.5.8",
 		"@tailwindcss/vite": "^4.3.3",

@@ -87,20 +87,21 @@ test("keeps static external resource mirrors aligned with resources.jsonc", () =
 	}
 });
 
-test("keeps the stable Editor download aligned with the release workflow", () => {
-	const stableArtifactName = resources.downloads.editorMacArm64.split("/").at(-1);
+test("keeps the Editor download channel aligned with its release workflow", () => {
 	const workflow = readFileSync(
-		resolve(repositoryRoot, ".github/workflows/editor-release.yml"),
+		resolve(repositoryRoot, ".github/workflows/editor-download.yml"),
 		"utf8",
 	);
-	const configuredArtifactName = workflow.match(
-		/^\s*STABLE_ARTIFACT_NAME:\s*(\S+)$/m,
+	const configuredDownloadTag = workflow.match(/^\s*DOWNLOAD_TAG:\s*(\S+)$/m)?.[1];
+	const configuredDownloadArtifactName = workflow.match(
+		/^\s*DOWNLOAD_ARTIFACT_NAME:\s*(\S+)$/m,
 	)?.[1];
 
 	expect(resources.downloads.editorMacArm64).toBe(
-		`${resources.github}/releases/latest/download/${stableArtifactName}`,
+		`${resources.github}/releases/download/${configuredDownloadTag}/${configuredDownloadArtifactName}`,
 	);
-	expect(configuredArtifactName).toBe(stableArtifactName);
+	expect(workflow).toMatch(/^\s*types:\s*\[published\]$/m);
+	expect(workflow).toContain("startsWith(github.event.release.tag_name, 'editor-v')");
 });
 
 test("keeps release Worker image repositories aligned with resources.jsonc", () => {

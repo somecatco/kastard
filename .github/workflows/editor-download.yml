@@ -1,0 +1,72 @@
+name: Publish Editor Download
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: editor-download
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Update Editor download
+    if: ${{ !github.event.release.prerelease && startsWith(github.event.release.tag_name, 'editor-v') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      DOWNLOAD_ARTIFACT_NAME: Kastard-arm64.dmg
+      DOWNLOAD_TAG: editor-download
+      GH_TOKEN: ${{ github.token }}
+      SOURCE_TAG: ${{ github.event.release.tag_name }}
+      TARGET_COMMITISH: ${{ github.event.release.target_commitish }}
+    steps:
+      - name: Download published Editor DMG
+        run: |
+          mkdir -p source-assets download-assets
+          gh release download "$SOURCE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern 'Kastard-*-arm64.dmg' \
+            --dir source-assets
+
+          shopt -s nullglob
+          source_artifacts=(source-assets/Kastard-*-arm64.dmg)
+          if [[ "${#source_artifacts[@]}" -ne 1 ]]; then
+            echo "::error::Expected exactly one versioned Apple Silicon DMG in ${SOURCE_TAG}."
+            exit 1
+          fi
+
+          cp "${source_artifacts[0]}" "download-assets/${DOWNLOAD_ARTIFACT_NAME}"
+          cd download-assets
+          sha256sum "$DOWNLOAD_ARTIFACT_NAME" > "${DOWNLOAD_ARTIFACT_NAME}.sha256"
+
+      - name: Update Editor download release
+        working-directory: download-assets
+        run: |
+          notes="Current Kastard Editor download, published from ${SOURCE_TAG}."
+          if gh release view "$DOWNLOAD_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit "$DOWNLOAD_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Kastard Editor Download" \
+              --notes "$notes" \
+              --latest=false
+            gh release upload "$DOWNLOAD_TAG" \
+              "$DOWNLOAD_ARTIFACT_NAME" \
+              "${DOWNLOAD_ARTIFACT_NAME}.sha256" \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber
+          else
+            gh release create "$DOWNLOAD_TAG" \
+              "$DOWNLOAD_ARTIFACT_NAME" \
+              "${DOWNLOAD_ARTIFACT_NAME}.sha256" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$TARGET_COMMITISH" \
+              --title "Kastard Editor Download" \
+              --notes "$notes" \
+              --latest=false
+          fi
