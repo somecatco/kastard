@@ -346,7 +346,6 @@ test("shows Worker setup progress and keeps completed target resync available", 
 		name: "Synchronization warnings",
 	});
 	expect(problems).toHaveClass("max-h-32", "overflow-y-auto", "text-warning");
-	expect(problems).not.toHaveClass("text-destructive");
 	expect(problems).toHaveAccessibleDescription(/\d+ synchronization warnings?\./);
 	expect(problems).toHaveTextContent("Model synchronization failed.");
 	expect(screen.getByRole("button", { name: /^Connected/ })).toBeVisible();

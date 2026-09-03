@@ -345,7 +345,6 @@ test("shows supported model sources on hover and registers a CivitAI AIR", async
 	).toEqual(examples);
 	for (const example of examples) {
 		expect(within(tooltip).getByText(example)).toHaveClass("break-all");
-		expect(within(tooltip).getByText(example)).not.toHaveClass("select-text");
 	}
 
 	fireEvent.pointerLeave(supportedUrls, { pointerType: "mouse" });

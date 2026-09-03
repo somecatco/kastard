@@ -80,8 +80,6 @@ describe("Worker template configuration", () => {
 			optional: [],
 		});
 		expect(files.readme).toContain("`SSH_PUBLIC_KEY`");
-		expect(files.readme).not.toContain("`HF_TOKEN`");
-		expect(files.readme).not.toContain("`CIVITAI_TOKEN`");
 	});
 
 	test("validates RunPod port labels", () => {

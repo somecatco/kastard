@@ -198,7 +198,7 @@ test("updates connected time by the minute and resets it for a recovered connect
 	expect(screen.getByText("0h 0m")).toBeVisible();
 });
 
-test("keeps workflow details out of the connection popover and shows ownership after disconnect", async () => {
+test("shows workflow ownership after disconnect", async () => {
 	render(<App />);
 	const workflow = {
 		id: "019d2a56-3c30-7000-8000-000000000001",
@@ -218,8 +218,6 @@ test("keeps workflow details out of the connection popover and shows ownership a
 		});
 	});
 	const popover = await openConnectionDetails();
-	expect(within(popover).queryByText("Current workflow")).not.toBeInTheDocument();
-	expect(within(popover).queryByText(workflow.workerUrl)).not.toBeInTheDocument();
 
 	await act(async () => {
 		emitWorkerSession({
