@@ -8,6 +8,7 @@ const PROFILES = ["cu128", "cu130"];
 const LAYERS = ["cuda-core", "cuda-auxiliary", "framework", "application"];
 const FRAMEWORK_PACKAGES = new Set(["torch", "torchaudio", "torchvision", "triton"]);
 const REQUIREMENT_PATTERN = /^([A-Za-z0-9][A-Za-z0-9._-]*)==/gm;
+const PREBUNDLE_LOCK = "vendor/comfyui-worker-prebundle-lock.txt";
 
 function normalizePackageName(name) {
 	return name.toLowerCase().replace(/[-_.]+/g, "-");
@@ -83,6 +84,7 @@ export function runtimeImageFingerprint(root, profile) {
 	const paths = [
 		"apps/server/Dockerfile.runtime",
 		"scripts/verify-worker-runtime.py",
+		PREBUNDLE_LOCK,
 		`vendor/comfyui-worker-runtime-${profile}.json`,
 		`vendor/comfyui-worker-${profile}-lock.txt`,
 		`vendor/comfyui-worker-constraints-${profile}.txt`,

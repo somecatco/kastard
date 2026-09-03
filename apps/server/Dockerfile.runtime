@@ -160,3 +160,23 @@ RUN ldconfig \
 	&& llama-cli --version
 
 COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
+
+COPY vendor/comfyui-worker-prebundle-lock.txt /opt/kastard/prebundle-lock.txt
+RUN uv pip install \
+		--python /opt/kastard/runtime/bin/python \
+		--default-index https://pypi.org/simple \
+		--require-hashes \
+		--no-deps \
+		--only-binary :all: \
+		--target /tmp/kastard-prebundle \
+		--requirement /opt/kastard/prebundle-lock.txt \
+	&& rm -rf /tmp/kastard-prebundle \
+	&& uv pip install \
+		--python /opt/kastard/runtime/bin/python \
+		--offline \
+		--require-hashes \
+		--no-deps \
+		--only-binary :all: \
+		--target /tmp/kastard-prebundle \
+		--requirement /opt/kastard/prebundle-lock.txt \
+	&& rm -rf /tmp/kastard-prebundle
