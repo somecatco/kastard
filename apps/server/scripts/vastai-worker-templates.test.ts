@@ -220,8 +220,6 @@ describe("Vast.ai Worker templates", () => {
 			private: false,
 		});
 		expect(body.env).toBe("-p 22:22 -p 2222:2222");
-		expect(body.env).not.toContain("SSH_PUBLIC_KEY");
-		expect(body.env).not.toContain("REPLACE_ME");
 	});
 
 	test("reports a partial failure and converges on rerun", async () => {

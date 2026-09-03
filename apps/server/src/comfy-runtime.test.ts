@@ -661,7 +661,7 @@ test("keeps terminating an unresponsive ComfyUI process until it exits", async (
 	expect(child.signals).toEqual(["SIGTERM", "SIGKILL"]);
 });
 
-test("survives a probe slower than the old 2s cap but within the probe timeout", async () => {
+test("keeps ComfyUI ready when health probes complete within the configured timeout", async () => {
 	const rootDirectory = await fixture();
 	const child = new StubbornProcess();
 	let probes = 0;
@@ -700,7 +700,7 @@ test("survives a probe slower than the old 2s cap but within the probe timeout",
 	await runtime.stop();
 });
 
-test("keeps the default probe timeout above the old 2s cap", async () => {
+test("keeps ComfyUI ready when a slow health probe completes within the default timeout", async () => {
 	const rootDirectory = await fixture();
 	const child = new StubbornProcess();
 	let probes = 0;

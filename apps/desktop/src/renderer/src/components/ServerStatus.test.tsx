@@ -102,7 +102,7 @@ test("closes a metric tooltip when the window loses focus", async () => {
 
 	const cpu = screen.getByRole("img", { name: "CPU usage: 12%" });
 	expect(cpu).toHaveClass("cursor-default");
-	expect(cpu).not.toHaveClass("cursor-text");
+	expect(cpu).toHaveClass("select-text");
 	fireEvent.pointerMove(cpu, { pointerType: "mouse" });
 	const tooltip = await screen.findByRole("tooltip");
 	expect(tooltip).toHaveTextContent("CPU usage");

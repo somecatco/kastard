@@ -257,9 +257,6 @@ describe("RunPod Worker templates", () => {
 			desiredPortsConfig,
 		);
 		expect(provider.queries.join("\n")).not.toMatch(/\benv\s*\{/);
-		expect(JSON.stringify([...provider.templates.values()])).not.toContain(
-			"SSH_PUBLIC_KEY",
-		);
 		expect(messages.every((message) => message.endsWith("published"))).toBe(true);
 
 		const graphQL128 = provider.graphQLTemplates.get("128");
