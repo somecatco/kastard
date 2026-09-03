@@ -11,6 +11,9 @@ type ChannelValues<T> = Record<WorkerTemplateChannel, RuntimeValues<T>>;
 
 export type Resources = {
 	github: string;
+	downloads: {
+		editorMacArm64: string;
+	};
 	docs: {
 		home: string;
 		gettingStarted: string;
@@ -40,6 +43,7 @@ export function parseResources(source: string): Resources {
 	}
 
 	const resources = record(value, "resources.jsonc");
+	const downloads = record(resources.downloads, "downloads");
 	const docs = record(resources.docs, "docs");
 	const dockerHub = runtimeValues(resources.dockerHub, "dockerHub", nonEmptyString);
 	const workerTemplates = record(resources.workerTemplates, "workerTemplates");
@@ -52,6 +56,9 @@ export function parseResources(source: string): Resources {
 
 	return {
 		github: httpsUrl(resources.github, "github"),
+		downloads: {
+			editorMacArm64: httpsUrl(downloads.editorMacArm64, "downloads.editorMacArm64"),
+		},
 		docs: {
 			home: httpsUrl(docs.home, "docs.home"),
 			gettingStarted: httpsUrl(docs.gettingStarted, "docs.gettingStarted"),

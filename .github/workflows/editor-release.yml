@@ -203,6 +203,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PRERELEASE: ${{ needs.build.outputs.prerelease }}
           RELEASE_NAME: ${{ needs.build.outputs.release_name }}
+          STABLE_ARTIFACT_NAME: Kastard-arm64.dmg
         run: |
           if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "::error::A GitHub Release already exists for ${GITHUB_REF_NAME}."
@@ -220,7 +221,16 @@ jobs:
             args+=(--prerelease --latest=false)
           fi
 
+          assets=(
+            "$ARTIFACT_NAME"
+            "${ARTIFACT_NAME}.sha256"
+          )
+          if [[ "$PRERELEASE" == "false" ]]; then
+            cp "$ARTIFACT_NAME" "$STABLE_ARTIFACT_NAME"
+            sha256sum "$STABLE_ARTIFACT_NAME" > "${STABLE_ARTIFACT_NAME}.sha256"
+            assets+=("$STABLE_ARTIFACT_NAME" "${STABLE_ARTIFACT_NAME}.sha256")
+          fi
+
           gh release create "$GITHUB_REF_NAME" \
             "${args[@]}" \
-            "$ARTIFACT_NAME" \
-            "${ARTIFACT_NAME}.sha256"
+            "${assets[@]}"

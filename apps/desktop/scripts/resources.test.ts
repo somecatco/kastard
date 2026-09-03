@@ -41,6 +41,14 @@ test("keeps static external resource mirrors aligned with resources.jsonc", () =
 			values: [resources.github, resources.discord],
 		},
 		{
+			path: "docs/en/getting-started.mdx",
+			values: [resources.downloads.editorMacArm64],
+		},
+		{
+			path: "docs/ko/getting-started.mdx",
+			values: [resources.downloads.editorMacArm64],
+		},
+		{
 			path: "README.md",
 			values: [
 				resources.docs.home,
@@ -77,6 +85,22 @@ test("keeps static external resource mirrors aligned with resources.jsonc", () =
 			expect(references, `${mirror.path} must reference ${value}`).toContain(value);
 		}
 	}
+});
+
+test("keeps the stable Editor download aligned with the release workflow", () => {
+	const stableArtifactName = resources.downloads.editorMacArm64.split("/").at(-1);
+	const workflow = readFileSync(
+		resolve(repositoryRoot, ".github/workflows/editor-release.yml"),
+		"utf8",
+	);
+	const configuredArtifactName = workflow.match(
+		/^\s*STABLE_ARTIFACT_NAME:\s*(\S+)$/m,
+	)?.[1];
+
+	expect(resources.downloads.editorMacArm64).toBe(
+		`${resources.github}/releases/latest/download/${stableArtifactName}`,
+	);
+	expect(configuredArtifactName).toBe(stableArtifactName);
 });
 
 test("keeps release Worker image repositories aligned with resources.jsonc", () => {

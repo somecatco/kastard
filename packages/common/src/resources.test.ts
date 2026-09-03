@@ -3,6 +3,10 @@ import { createWorkerTemplateLinks, parseResources } from "./resources";
 
 const validResources = {
 	github: "https://github.com/somecatco/kastard",
+	downloads: {
+		editorMacArm64:
+			"https://github.com/somecatco/kastard/releases/latest/download/Kastard-arm64.dmg",
+	},
 	docs: {
 		home: "https://docs.example.com",
 		gettingStarted: "https://docs.example.com/getting-started",

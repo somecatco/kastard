@@ -1,5 +1,8 @@
 {
 	"github": "https://github.com/somecatco/kastard",
+	"downloads": {
+		"editorMacArm64": "https://github.com/somecatco/kastard/releases/latest/download/Kastard-arm64.dmg"
+	},
 	"docs": {
 		"home": "https://kastard.mintlify.site",
 		"gettingStarted": "https://kastard.mintlify.site/en/getting-started",
