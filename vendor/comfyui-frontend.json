@@ -1,0 +1,8 @@
+{
+	"version": "v1.49.6",
+	"archiveUrl": "https://files.pythonhosted.org/packages/63/cc/34c814d6691fa297ea96d521c6d90dbf187c5bd6062a7029283eb422ff89/comfyui_frontend_package-1.49.6-py3-none-any.whl",
+	"archiveRoot": "comfyui_frontend_package/static",
+	"sha256": "69cef7e67f22854852d1d7be68ff82f27bd4ff4b33de9c643d7eb1339769c421",
+	"license": "GPL-3.0-only",
+	"licenseUrl": "https://raw.githubusercontent.com/Comfy-Org/ComfyUI_frontend/v1.49.6/LICENSE"
+}

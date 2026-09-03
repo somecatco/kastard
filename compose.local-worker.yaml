@@ -1,0 +1,25 @@
+name: ${KASTARD_LOCAL_WORKER_PROJECT_NAME:-kastard-local-worker}
+
+services:
+  worker:
+    image: ${KASTARD_LOCAL_WORKER_IMAGE:-docker.io/ssinss/kastard-worker:local-cpu}
+    platform: linux/arm64
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile.cpu
+    environment:
+      CIVITAI_TOKEN: ${CIVITAI_TOKEN:-}
+      HF_TOKEN: ${HF_TOKEN:-}
+      KASTARD_COMFYUI_ROOT: /workspace/kastard
+      KASTARD_PUBLIC_ADDRESS: 127.0.0.1:${KASTARD_LOCAL_WORKER_PORT:-5278}
+    ports:
+      - "127.0.0.1:${KASTARD_LOCAL_WORKER_PORT:-5278}:22"
+    volumes:
+      - worker-data:/workspace/kastard
+      - worker-uv-cache:/var/cache/uv
+
+volumes:
+  worker-data:
+    name: ${KASTARD_LOCAL_WORKER_DATA_VOLUME:-kastard-local-worker-data}
+  worker-uv-cache:
+    name: ${KASTARD_LOCAL_WORKER_UV_CACHE_VOLUME:-kastard-local-worker-uv-cache}

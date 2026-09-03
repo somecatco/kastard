@@ -1,0 +1,29 @@
+---
+title: "시작하기"
+description: "Kastard를 준비하고 Worker에서 워크플로우를 실행합니다."
+---
+
+## 1. Kastard 준비
+
+Kastard를 [다운로드하고](https://github.com/somecatco/kastard/releases/download/editor-download/Kastard-arm64.dmg) 설치합니다.
+
+타이틀 바 오른쪽 메뉴에서 사용할 모델, Custom Node, 워크플로우를 준비합니다.
+
+- 모델 다운로드 주소로 Hugging Face와 Civitai를 지원합니다.
+- 직접 설치하거나 ComfyUI Manager로 설치한 Custom Node가 인식됩니다.
+- 추가한 모델과 Custom Node는 저장되며, Worker와 동기화할 항목을 선택할 수 있습니다.
+
+## 2. Worker 실행 및 연결
+
+Connect에서 RunPod 템플릿 링크 또는 Vast.ai를 열어 Worker를 배포합니다.
+
+<Note>
+  다른 NVIDIA GPU 서버에도 Docker로 Worker를 배포할 수 있습니다.
+  [설치 방법 보기](/ko/run-worker-with-docker)
+</Note>
+
+Worker가 시작되면 로그에 표시된 주소와 Authentication code를 Kastard에 입력하여 연결합니다.
+
+## 3. 편집 및 실행
+
+왼쪽의 `B`에 체크가 표시되면 준비가 완료된 것입니다. ComfyUI에서 워크플로우를 편집하고 실행합니다.

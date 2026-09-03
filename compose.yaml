@@ -1,0 +1,22 @@
+name: ${KASTARD_WORKER_PROJECT_NAME:-kastard-worker}
+
+services:
+  worker:
+    image: ${KASTARD_WORKER_IMAGE:?Set KASTARD_WORKER_IMAGE to a published Worker image}
+    platform: linux/amd64
+    restart: unless-stopped
+    stop_grace_period: 15s
+    gpus: all
+    environment:
+      KASTARD_PUBLIC_ADDRESS: ${KASTARD_PUBLIC_ADDRESS:?Set KASTARD_PUBLIC_ADDRESS to the reachable host:port}
+    ports:
+      - "${KASTARD_WORKER_BIND_ADDRESS:-0.0.0.0}:${KASTARD_WORKER_PORT:-5278}:22/tcp"
+    volumes:
+      - worker-data:/workspace/kastard
+      - worker-uv-cache:/var/cache/uv
+
+volumes:
+  worker-data:
+    name: ${KASTARD_WORKER_DATA_VOLUME:-kastard-worker-data}
+  worker-uv-cache:
+    name: ${KASTARD_WORKER_UV_CACHE_VOLUME:-kastard-worker-uv-cache}

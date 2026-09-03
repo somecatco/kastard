@@ -1,0 +1,28 @@
+{
+	"name": "@kastard/worker",
+	"version": "0.0.0",
+	"buildNumber": "19",
+	"private": true,
+	"license": "AGPL-3.0-or-later",
+	"type": "module",
+	"scripts": {
+		"dev": "bun run --hot src/index.ts",
+		"start": "bun run src/index.ts",
+		"test": "bun test",
+		"typecheck": "tsc --noEmit -p tsconfig.json",
+		"lint": "biome check .",
+		"format": "biome format --write ."
+	},
+	"dependencies": {
+		"@kastard/common": "workspace:*",
+		"fflate": "^0.8.3",
+		"hono": "^4.0.0",
+		"ssh2": "^1.17.0"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.5.8",
+		"@types/bun": "^1.3.14",
+		"@types/ssh2": "^1.15.5",
+		"typescript": "^7.0.2"
+	}
+}

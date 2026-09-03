@@ -1,0 +1,14 @@
+{
+	"profile": "cu128",
+	"cudaImage": "nvidia/cuda:12.8.1-devel-ubuntu24.04",
+	"cudaVersion": "12.8",
+	"pythonVersion": "3.13.12",
+	"torchVersion": "2.11.0+cu128",
+	"torchvisionVersion": "0.26.0+cu128",
+	"torchaudioVersion": "2.11.0+cu128",
+	"uvVersion": "0.12.4",
+	"dependencyLock": {
+		"path": "comfyui-worker-cu128-lock.txt",
+		"sha256": "022526ba2e0df4844190794ba6d8e0986df0db72a19f96234d7234ff464ff22c"
+	}
+}

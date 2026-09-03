@@ -1,0 +1,29 @@
+---
+title: "Getting Started"
+description: "Prepare Kastard and run a workflow on a Worker."
+---
+
+## 1. Prepare Kastard
+
+[Download](https://github.com/somecatco/kastard/releases/download/editor-download/Kastard-arm64.dmg) and install Kastard.
+
+Use the menus on the right side of the title bar to prepare the models, Custom Nodes, and workflows you want to use.
+
+- Model download URLs from Hugging Face and Civitai are supported.
+- Custom Nodes installed directly or through ComfyUI Manager are detected.
+- Added models and Custom Nodes are saved, and you can choose which items to synchronize with a Worker.
+
+## 2. Start and connect a Worker
+
+In Connect, use the RunPod template link or open Vast.ai, then deploy a Worker.
+
+<Note>
+  You can also deploy a Worker to another NVIDIA GPU server with Docker.
+  [View installation instructions](/en/run-worker-with-docker)
+</Note>
+
+After the Worker starts, enter the address and Authentication code shown in its logs to connect.
+
+## 3. Edit and run
+
+When a check appears on `B` on the left, the Worker is ready. Edit and run your workflow in ComfyUI.

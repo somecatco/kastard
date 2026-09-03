@@ -1,0 +1,30 @@
+appId: co.somecat.kastard
+productName: Kastard
+directories:
+  output: dist
+files:
+  - out/**/*
+extraResources:
+  - from: resources/Credits.html
+    to: Credits.html
+  - from: ../../LICENSE
+    to: LICENSE
+  - from: resources/comfyui-frontend
+    to: comfyui-frontend
+  - from: resources/comfyui-runtime
+    to: comfyui-runtime
+asar: true
+afterSign: ./scripts/notarize.mjs
+mac:
+  icon: ../../assets/icon/kastard.icon
+  target: dmg
+  forceCodeSigning: true
+  hardenedRuntime: true
+  notarize: false
+dmg:
+  sign: true
+  writeUpdateInfo: false
+win:
+  target: nsis
+linux:
+  target: AppImage

@@ -1,0 +1,4 @@
+extends: ./electron-builder.yml
+directories:
+  output: dist/production
+artifactName: Kastard-${version}+${buildVersion}-${arch}.${ext}

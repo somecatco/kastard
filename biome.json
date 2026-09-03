@@ -1,0 +1,39 @@
+{
+	"$schema": "https://biomejs.dev/schemas/2.4.6/schema.json",
+	"files": {
+		"includes": [
+			"**",
+			"!!**/node_modules",
+			"!!**/out",
+			"!!**/dist",
+			"!!**/coverage",
+			"!!**/playwright-report",
+			"!!**/test-results",
+			"!!**/storybook-static",
+			"!!**/resources/comfyui-frontend",
+			"!!**/resources/comfyui-runtime"
+		]
+	},
+	"formatter": {
+		"enabled": true,
+		"indentStyle": "tab",
+		"lineWidth": 88
+	},
+	"linter": {
+		"enabled": true,
+		"rules": {
+			"recommended": true
+		}
+	},
+	"javascript": {
+		"formatter": {
+			"quoteStyle": "double",
+			"semicolons": "always"
+		}
+	},
+	"css": {
+		"parser": {
+			"tailwindDirectives": true
+		}
+	}
+}

@@ -1,0 +1,8 @@
+extends: ./electron-builder.yml
+appId: co.somecat.kastard.preview
+productName: Kastard Preview
+extraMetadata:
+  productName: Kastard Preview
+directories:
+  output: dist/preview
+artifactName: Kastard-Preview-${buildVersion}-${arch}.${ext}

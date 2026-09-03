@@ -1,0 +1,43 @@
+{
+	"github": "https://github.com/somecatco/kastard",
+	"downloads": {
+		"editorMacArm64": "https://github.com/somecatco/kastard/releases/download/editor-download/Kastard-arm64.dmg"
+	},
+	"docs": {
+		"home": "https://kastard.mintlify.site",
+		"gettingStarted": "https://kastard.mintlify.site/en/getting-started",
+		"runWorkerWithDocker": "https://kastard.mintlify.site/en/run-worker-with-docker",
+		"editAndRunWorkflows": "https://kastard.mintlify.site/en/edit-and-run-workflows",
+		"addModelsAndCustomNodes": "https://kastard.mintlify.site/en/add-models-and-custom-nodes"
+	},
+	"discord": "https://discord.gg/Z9eUBVFncN",
+	"dockerHub": {
+		"cu128": "somecatco/kastard-worker-cu128",
+		"cu130": "somecatco/kastard-worker-cu130"
+	},
+	"workerTemplates": {
+		"runpod": {
+			"hub": "https://console.runpod.io/hub/template",
+			"production": {
+				"cu128": "qo1nvrleev",
+				"cu130": "panivn87zl"
+			},
+			"preview": {
+				"cu128": "5v016n842q",
+				"cu130": "ioy9cppfit"
+			}
+		},
+		"vastAi": {
+			"marketplace": "https://cloud.vast.ai/",
+			"creatorId": 153845,
+			"production": {
+				"cu128": 614932,
+				"cu130": 614935
+			},
+			"preview": {
+				"cu128": 659456,
+				"cu130": 659452
+			}
+		}
+	}
+}

@@ -1,0 +1,14 @@
+{
+	"profile": "cpu",
+	"computeBackend": "cpu",
+	"cudaVersion": null,
+	"pythonVersion": "3.13.12",
+	"torchVersion": "2.13.0+cpu",
+	"torchvisionVersion": "0.28.0+cpu",
+	"torchaudioVersion": "2.11.0+cpu",
+	"uvVersion": "0.12.4",
+	"dependencyLock": {
+		"path": "comfyui-worker-cpu-lock.txt",
+		"sha256": "29df11825ce32bf04901e35102178f54cfbeb2ade430e9cb61935ec61917e4f5"
+	}
+}

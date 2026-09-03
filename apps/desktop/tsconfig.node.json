@@ -1,0 +1,17 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"types": ["node", "electron", "vite/client"],
+		"lib": ["ES2022"]
+	},
+	"include": [
+		"electron.vite.config.ts",
+		"vitest.config.mts",
+		"playwright.config.ts",
+		".storybook/**/*",
+		"src/main/**/*.ts",
+		"src/preload/**/*.ts",
+		"src/shared/**/*.ts",
+		"e2e/**/*.ts"
+	]
+}

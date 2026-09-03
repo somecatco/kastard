@@ -1,0 +1,182 @@
+ARG CUDA_IMAGE=nvidia/cuda:13.0.2-devel-ubuntu24.04
+ARG BUN_IMAGE=oven/bun:1.3.14
+ARG UV_IMAGE=astral/uv:0.12.4
+ARG WORKER_PLATFORM=linux/amd64
+# Bump to refresh unpinned OS packages in the immutable runtime image.
+ARG RUNTIME_REVISION=1
+
+FROM --platform=${WORKER_PLATFORM} ${BUN_IMAGE} AS bun
+FROM --platform=${WORKER_PLATFORM} ${UV_IMAGE} AS uv
+
+FROM --platform=${WORKER_PLATFORM} ${CUDA_IMAGE} AS llama-cpp
+
+ARG RUNTIME_REVISION
+RUN test -n "${RUNTIME_REVISION}" \
+	&& apt-get update \
+	&& apt-get install --yes --no-install-recommends \
+		build-essential \
+		ca-certificates \
+		cmake \
+		git \
+		libgomp1 \
+	&& rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src/llama.cpp
+RUN git clone --branch v0.3.0 --depth 1 \
+		https://github.com/ggml-org/llama.cpp.git . \
+	&& test "$(git rev-parse HEAD)" = c1d0e7a004015f23bc0233470b747b596f29b264 \
+	&& cmake -B build \
+		-DCMAKE_BUILD_TYPE=Release \
+		-DGGML_BACKEND_DL=ON \
+		-DGGML_CPU_ALL_VARIANTS=ON \
+		-DGGML_CUDA=ON \
+		-DGGML_NATIVE=OFF \
+		-DLLAMA_BUILD_TESTS=OFF \
+	&& cmake --build build --config Release --target llama-cli --parallel "$(nproc)" \
+	&& install -D -m 0755 build/bin/llama-cli /opt/llama.cpp/bin/llama-cli \
+	&& install -d /opt/llama.cpp/lib /opt/llama.cpp/licenses \
+	&& find build/bin -maxdepth 1 -name '*.so*' -exec cp -P {} /opt/llama.cpp/lib/ \; \
+	&& mv \
+		/opt/llama.cpp/lib/libggml-cpu-*.so \
+		/opt/llama.cpp/lib/libggml-cuda.so \
+		/opt/llama.cpp/bin/ \
+	&& install -m 0644 LICENSE /opt/llama.cpp/licenses/LICENSE \
+	&& rm -rf /src/llama.cpp
+
+FROM --platform=${WORKER_PLATFORM} ${CUDA_IMAGE}
+
+ARG WORKER_RUNTIME=cu130
+ARG PYTHON_VERSION=3.13.12
+ARG RUNTIME_REVISION
+ARG CLEAN_UV_CACHE=false
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN test -n "${RUNTIME_REVISION}" \
+	&& apt-get update \
+	&& apt-get install --yes --no-install-recommends \
+		build-essential \
+		ca-certificates \
+		cmake \
+		curl \
+		ffmpeg \
+		git \
+		git-lfs \
+		libegl1 \
+		libffi-dev \
+		libgl1 \
+		libglib2.0-0t64 \
+		libgomp1 \
+		libsndfile1 \
+		libsm6 \
+		libssl-dev \
+		libxext6 \
+		libxrender1 \
+		ninja-build \
+		pkg-config \
+		procps \
+		rsync \
+		tini \
+		unzip \
+		wget \
+		xz-utils \
+	&& rm -rf /var/lib/apt/lists/*
+
+COPY --from=uv /uv /usr/local/bin/uv
+COPY --from=uv /uvx /usr/local/bin/uvx
+
+ENV UV_PYTHON_INSTALL_DIR=/opt/kastard/python \
+	UV_CACHE_DIR=/var/cache/uv \
+	UV_LINK_MODE=copy
+RUN --mount=type=cache,target=/var/cache/uv \
+	uv python install "${PYTHON_VERSION}" \
+	&& uv venv --python "${PYTHON_VERSION}" --managed-python /opt/kastard/runtime
+
+COPY vendor/comfyui-worker-${WORKER_RUNTIME}-layer-cuda-core.txt /opt/kastard/runtime-layers/cuda-core.txt
+RUN --mount=type=cache,target=/var/cache/uv \
+	uv pip install \
+		--python /opt/kastard/runtime/bin/python \
+		--torch-backend "${WORKER_RUNTIME}" \
+		--require-hashes \
+		--no-deps \
+		--requirement /opt/kastard/runtime-layers/cuda-core.txt
+
+COPY vendor/comfyui-worker-${WORKER_RUNTIME}-layer-cuda-auxiliary.txt /opt/kastard/runtime-layers/cuda-auxiliary.txt
+RUN --mount=type=cache,target=/var/cache/uv \
+	uv pip install \
+		--python /opt/kastard/runtime/bin/python \
+		--torch-backend "${WORKER_RUNTIME}" \
+		--require-hashes \
+		--no-deps \
+		--requirement /opt/kastard/runtime-layers/cuda-auxiliary.txt
+
+COPY vendor/comfyui-worker-${WORKER_RUNTIME}-layer-framework.txt /opt/kastard/runtime-layers/framework.txt
+RUN --mount=type=cache,target=/var/cache/uv \
+	uv pip install \
+		--python /opt/kastard/runtime/bin/python \
+		--torch-backend "${WORKER_RUNTIME}" \
+		--require-hashes \
+		--no-deps \
+		--requirement /opt/kastard/runtime-layers/framework.txt
+
+COPY vendor/comfyui-worker-${WORKER_RUNTIME}-layer-application.txt /opt/kastard/runtime-layers/application.txt
+RUN --mount=type=cache,target=/var/cache/uv \
+	uv pip install \
+		--python /opt/kastard/runtime/bin/python \
+		--torch-backend "${WORKER_RUNTIME}" \
+		--require-hashes \
+		--no-deps \
+		--requirement /opt/kastard/runtime-layers/application.txt
+
+COPY vendor/comfyui-worker-runtime-${WORKER_RUNTIME}.json /opt/kastard/runtime-manifest.json
+COPY vendor/comfyui-worker-${WORKER_RUNTIME}-lock.txt /opt/kastard/runtime-lock.txt
+COPY vendor/comfyui-worker-constraints-${WORKER_RUNTIME}.txt /opt/kastard/runtime-constraints.txt
+COPY scripts/verify-worker-runtime.py /opt/kastard/verify-worker-runtime.py
+RUN --mount=type=cache,target=/var/cache/uv \
+	uv pip sync \
+		--python /opt/kastard/runtime/bin/python \
+		--torch-backend "${WORKER_RUNTIME}" \
+		--require-hashes \
+		/opt/kastard/runtime-lock.txt \
+	&& uv pip check --python /opt/kastard/runtime/bin/python \
+	&& /opt/kastard/runtime/bin/python /opt/kastard/verify-worker-runtime.py \
+		"${WORKER_RUNTIME}" \
+		/opt/kastard/runtime-manifest.json \
+		/opt/kastard/runtime-lock.txt \
+	&& if [ "${CLEAN_UV_CACHE}" = true ]; then find /var/cache/uv -mindepth 1 -delete; fi
+
+RUN apt-get update \
+	&& apt-get install --yes --no-install-recommends openssh-server \
+	&& rm -f /etc/ssh/ssh_host_* \
+	&& rm -rf /var/lib/apt/lists/*
+
+COPY --from=llama-cpp /opt/llama.cpp/bin/ /usr/local/bin/
+COPY --from=llama-cpp /opt/llama.cpp/lib/ /usr/local/lib/
+COPY --from=llama-cpp /opt/llama.cpp/licenses/ /usr/local/share/licenses/llama.cpp/
+RUN ldconfig \
+	&& test -x /usr/local/bin/llama-cli \
+	&& test -f /usr/local/bin/libggml-cuda.so \
+	&& find /usr/local/bin -maxdepth 1 -name 'libggml-cpu-*.so' -print -quit | grep -q . \
+	&& if ldd /usr/local/bin/llama-cli | grep -q 'not found'; then exit 1; fi \
+	&& llama-cli --version
+
+COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
+
+COPY vendor/comfyui-worker-prebundle-lock.txt /opt/kastard/prebundle-lock.txt
+RUN uv pip install \
+		--python /opt/kastard/runtime/bin/python \
+		--default-index https://pypi.org/simple \
+		--require-hashes \
+		--no-deps \
+		--only-binary :all: \
+		--target /tmp/kastard-prebundle \
+		--requirement /opt/kastard/prebundle-lock.txt \
+	&& rm -rf /tmp/kastard-prebundle \
+	&& uv pip install \
+		--python /opt/kastard/runtime/bin/python \
+		--offline \
+		--require-hashes \
+		--no-deps \
+		--only-binary :all: \
+		--target /tmp/kastard-prebundle \
+		--requirement /opt/kastard/prebundle-lock.txt \
+	&& rm -rf /tmp/kastard-prebundle
