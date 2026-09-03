@@ -56,7 +56,6 @@ type RunpodGraphQLTemplate = {
 };
 
 const preservedGraphQLFields = [
-	"containerRegistryAuthId",
 	"startJupyter",
 	"startSsh",
 	"startScript",
@@ -67,8 +66,8 @@ const preservedGraphQLFields = [
 
 const runpodGraphQLUrl = "https://api.runpod.io/graphql";
 
-const getTemplatesForPortLabelsQuery = `
-	query GetTemplatesForPortLabels {
+const getTemplatesQuery = `
+	query GetTemplates {
 		myself {
 			podTemplates {
 				id
@@ -88,8 +87,8 @@ const getTemplatesForPortLabelsQuery = `
 	}
 `;
 
-const saveTemplatePortLabelsMutation = `
-	mutation SaveTemplatePortLabels($input: SaveTemplateInput) {
+const saveTemplateMutation = `
+	mutation SaveTemplate($input: SaveTemplateInput) {
 		saveTemplate(input: $input) {
 			id
 		}
@@ -177,7 +176,7 @@ async function getGraphQLTemplate(
 	fetcher: Fetcher,
 ): Promise<RunpodGraphQLTemplate> {
 	const data = await graphQLRequest(
-		getTemplatesForPortLabelsQuery,
+		getTemplatesQuery,
 		{},
 		apiKey,
 		fetcher,
@@ -225,7 +224,6 @@ async function saveGraphQLTemplate(
 		name: expected.name,
 		imageName: expected.imageName,
 		containerDiskInGb: expected.containerDiskInGb,
-		containerRegistryAuthId: current.containerRegistryAuthId,
 		dockerArgs: graphQLDockerArgs(expected.dockerStartCmd, expected.dockerEntrypoint),
 		env: environmentPairs(expected.env),
 		ports: expected.ports.join(","),
@@ -239,20 +237,23 @@ async function saveGraphQLTemplate(
 		advancedStart: current.advancedStart,
 		readme: expected.readme,
 	};
+	if (!expected.isPublic && current.containerRegistryAuthId.length !== 0) {
+		input.containerRegistryAuthId = current.containerRegistryAuthId;
+	}
 	if (current.startScript.length !== 0) input.startScript = current.startScript;
 	if (current.category.length !== 0) input.category = current.category;
 
 	const data = await graphQLRequest(
-		saveTemplatePortLabelsMutation,
+		saveTemplateMutation,
 		{ input },
 		apiKey,
 		fetcher,
-		"RunPod Worker template port label update",
+		"RunPod Worker template GraphQL update",
 	);
 	const saved = record(data.saveTemplate, "RunPod GraphQL saveTemplate");
 	if (saved.id !== current.id) {
 		throw new Error(
-			`RunPod Worker template port label update returned unexpected template ${String(saved.id)}.`,
+			`RunPod Worker template GraphQL update returned unexpected template ${String(saved.id)}.`,
 		);
 	}
 }
@@ -346,9 +347,16 @@ function samePortsConfig(
 
 function mismatchedGraphQLFields(
 	actual: RunpodGraphQLTemplate,
-	expected: RunpodGraphQLTemplate,
+	previous: RunpodGraphQLTemplate,
+	isPublic: boolean,
 ): string[] {
-	return preservedGraphQLFields.filter((key) => actual[key] !== expected[key]);
+	const expectedRegistryAuthId = isPublic ? "" : previous.containerRegistryAuthId;
+	return [
+		...(actual.containerRegistryAuthId === expectedRegistryAuthId
+			? []
+			: ["containerRegistryAuthId"]),
+		...preservedGraphQLFields.filter((key) => actual[key] !== previous[key]),
+	];
 }
 
 function desiredTemplate(
@@ -404,14 +412,14 @@ export async function syncTemplates(
 			);
 			let applied = await getTemplate(templateId, apiKey, fetcher);
 			let published = false;
-			if (mismatchedFields(applied, expected).length !== 0) {
-				await updateTemplate(templateId, apiKey, expected, fetcher);
-				applied = await getAppliedTemplate(templateId, apiKey, expected, fetcher);
-				published = true;
-			}
-
 			const graphQLTemplate = await getGraphQLTemplate(templateId, apiKey, fetcher);
-			if (!samePortsConfig(graphQLTemplate.portsConfig, expectedPortsConfig)) {
+			const restMismatches = mismatchedFields(applied, expected);
+			if (
+				!samePortsConfig(graphQLTemplate.portsConfig, expectedPortsConfig) ||
+				(expected.isPublic &&
+					(graphQLTemplate.containerRegistryAuthId.length !== 0 ||
+						restMismatches.length !== 0))
+			) {
 				await saveGraphQLTemplate(
 					apiKey,
 					graphQLTemplate,
@@ -423,12 +431,24 @@ export async function syncTemplates(
 				if (!samePortsConfig(readBack.portsConfig, expectedPortsConfig)) {
 					throw new Error(`RunPod template ${templateId} did not apply: portsConfig.`);
 				}
-				const graphQLMismatches = mismatchedGraphQLFields(readBack, graphQLTemplate);
+				const graphQLMismatches = mismatchedGraphQLFields(
+					readBack,
+					graphQLTemplate,
+					expected.isPublic,
+				);
 				if (graphQLMismatches.length !== 0) {
 					throw new Error(
 						`RunPod template ${templateId} did not preserve: ${graphQLMismatches.join(", ")}.`,
 					);
 				}
+				applied = expected.isPublic
+					? await getAppliedTemplate(templateId, apiKey, expected, fetcher)
+					: await getTemplate(templateId, apiKey, fetcher);
+				published = true;
+			}
+
+			if (!expected.isPublic && mismatchedFields(applied, expected).length !== 0) {
+				await updateTemplate(templateId, apiKey, expected, fetcher);
 				applied = await getAppliedTemplate(templateId, apiKey, expected, fetcher);
 				published = true;
 			}
