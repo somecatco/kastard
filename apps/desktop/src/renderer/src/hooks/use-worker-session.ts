@@ -7,7 +7,11 @@ import {
 } from "../../../shared/api";
 
 export const DISCONNECTED_WORKER_SESSION: WorkerSessionState = {
-	connection: { status: "disconnected", recentProvider: null, recentServerUrl: null },
+	connection: {
+		status: "disconnected",
+		recentProvider: null,
+		recentWorkerAddress: null,
+	},
 	systemMetrics: { status: "disconnected" },
 	backend: { status: "disconnected", editorComfyVersion: "" },
 	comfy: { status: "disconnected" },

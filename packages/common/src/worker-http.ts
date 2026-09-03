@@ -36,7 +36,7 @@ export type WorkerConnectionStartResponse = WorkerConnectionResponse & {
 	logCursor: string;
 };
 
-export type WorkerComfyServerState =
+export type WorkerComfyRuntimeState =
 	| { status: "stopped" }
 	| { status: "starting" }
 	| { status: "ready"; warnings?: string[] }
@@ -115,9 +115,9 @@ export function parseReleaseIdentity(value: unknown): ReleaseIdentity | null {
 		: null;
 }
 
-export function parseWorkerComfyServerState(
+export function parseWorkerComfyRuntimeState(
 	value: unknown,
-): WorkerComfyServerState | null {
+): WorkerComfyRuntimeState | null {
 	if (!isRecord(value)) return null;
 	if (value.status === "stopped" || value.status === "starting") {
 		return { status: value.status };
@@ -139,10 +139,10 @@ export function parseWorkerComfyServerState(
 		: null;
 }
 
-export function isWorkerComfyServerState(
+export function isWorkerComfyRuntimeState(
 	value: unknown,
-): value is WorkerComfyServerState {
-	return parseWorkerComfyServerState(value) !== null;
+): value is WorkerComfyRuntimeState {
+	return parseWorkerComfyRuntimeState(value) !== null;
 }
 
 export function parseWorkerComfyMemoryCleanupRequest(

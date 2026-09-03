@@ -23,7 +23,7 @@ const COLORS = {
 	disk: { border: "#fb7185", fill: "rgba(251, 113, 133, 0.18)" },
 } as const;
 
-export function ServerStatus({
+export function WorkerStatus({
 	status,
 }: {
 	status?: WorkerSystemStatus | undefined;

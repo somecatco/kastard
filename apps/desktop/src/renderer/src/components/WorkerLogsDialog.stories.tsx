@@ -1,15 +1,15 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
-import { ServerLogsDialog } from "@/components/ServerLogsDialog";
 import { Button } from "@/components/ui/button";
-import type { ServerLogEntry, ServerLogsResult } from "../../../shared/api";
-import { configureStoryServerLogs } from "../stories/desktop-api-mock";
+import { WorkerLogsDialog } from "@/components/WorkerLogsDialog";
+import type { WorkerLogEntry, WorkerLogsResult } from "../../../shared/api";
+import { configureStoryWorkerLogs } from "../stories/desktop-api-mock";
 
-type ServerLogsDialogStoryProps = {
-	result: ServerLogsResult;
+type WorkerLogsDialogStoryProps = {
+	result: WorkerLogsResult;
 };
 
-const sampleLogs: ServerLogEntry[] = [
+const sampleLogs: WorkerLogEntry[] = [
 	{
 		id: "worker-connected",
 		timestamp: "2026-08-29T08:30:12.000Z",
@@ -36,38 +36,38 @@ const sampleLogs: ServerLogEntry[] = [
 	},
 ];
 
-const activityResult: ServerLogsResult = {
+const activityResult: WorkerLogsResult = {
 	ok: true,
 	logs: sampleLogs,
 	truncated: false,
 };
 
-function ServerLogsDialogStory({
+function WorkerLogsDialogStory({
 	result,
-}: ServerLogsDialogStoryProps): React.JSX.Element {
+}: WorkerLogsDialogStoryProps): React.JSX.Element {
 	const [open, setOpen] = useState(true);
-	configureStoryServerLogs(result);
+	configureStoryWorkerLogs(result);
 
 	return (
 		<div className="flex min-h-svh items-center justify-center bg-[#090a0b] p-6">
 			<Button type="button" variant="secondary" onClick={() => setOpen(true)}>
 				Open Worker logs
 			</Button>
-			<ServerLogsDialog open={open} onOpenChange={setOpen} />
+			<WorkerLogsDialog open={open} onOpenChange={setOpen} />
 		</div>
 	);
 }
 
 const meta = {
-	title: "Desktop/Server Logs Dialog",
-	component: ServerLogsDialogStory,
+	title: "Desktop/Worker Logs Dialog",
+	component: WorkerLogsDialogStory,
 	parameters: {
 		layout: "fullscreen",
 	},
 	args: {
 		result: activityResult,
 	},
-} satisfies Meta<typeof ServerLogsDialogStory>;
+} satisfies Meta<typeof WorkerLogsDialogStory>;
 
 export default meta;
 

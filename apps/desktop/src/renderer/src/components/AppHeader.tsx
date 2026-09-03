@@ -3,7 +3,7 @@ import { useCallback, useState } from "react";
 import {
 	ConnectionControl,
 	type ConnectionPopoverId,
-	ConnectionServerStatus,
+	ConnectionWorkerStatus,
 } from "@/components/ConnectionControl";
 import {
 	Tooltip,
@@ -114,7 +114,7 @@ export function AppHeader({
 					/>
 				</div>
 				<div className="min-w-0 overflow-hidden [-webkit-app-region:no-drag]">
-					<ConnectionServerStatus />
+					<ConnectionWorkerStatus />
 				</div>
 			</div>
 		</header>

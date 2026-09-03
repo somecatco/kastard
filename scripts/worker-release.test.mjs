@@ -10,7 +10,7 @@ const sourceRevision = "b".repeat(40);
 function createFixture({ buildNumber = "11", version = "0.0.0" } = {}) {
 	const root = mkdtempSync(join(tmpdir(), "kastard-worker-release-"));
 	roots.push(root);
-	const path = join(root, "apps/server/package.json");
+	const path = join(root, "apps/worker/package.json");
 	mkdirSync(dirname(path), { recursive: true });
 	writeFileSync(path, `${JSON.stringify({ buildNumber, version }, null, 2)}\n`);
 	return root;

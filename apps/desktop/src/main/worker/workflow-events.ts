@@ -1,5 +1,5 @@
 import WebSocket, { type RawData } from "ws";
-import type { ServerCredential } from "./client";
+import type { WorkerSessionCredential } from "./client";
 
 const RECONNECT_DELAYS_MS = [1_000, 2_000, 5_000, 10_000] as const;
 const HEARTBEAT_MS = 15_000;
@@ -14,7 +14,7 @@ export type WorkerWorkflowEventConnection = {
 };
 
 export async function openWorkerWorkflowEvents(
-	credential: ServerCredential,
+	credential: WorkerSessionCredential,
 	jobId: string,
 	handlers: {
 		onMessage: (message: WorkerWorkflowLiveMessage) => void;
@@ -40,7 +40,7 @@ export async function openWorkerWorkflowEvents(
 
 	const connect = (): Promise<void> =>
 		new Promise((resolve, reject) => {
-			const next = new WebSocket(workflowEventUrl(credential.serverUrl, jobId), {
+			const next = new WebSocket(workflowEventUrl(credential.workerApiUrl, jobId), {
 				handshakeTimeout: 10_000,
 				headers: {
 					Authorization: `Bearer ${credential.sessionCapability}`,
@@ -116,10 +116,10 @@ export async function openWorkerWorkflowEvents(
 	};
 }
 
-function workflowEventUrl(serverUrl: string, jobId: string): string {
+function workflowEventUrl(workerApiUrl: string, jobId: string): string {
 	const url = new URL(
 		`workflow-jobs/${encodeURIComponent(jobId)}/events`,
-		`${serverUrl}/`,
+		`${workerApiUrl}/`,
 	);
 	url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
 	return url.toString();

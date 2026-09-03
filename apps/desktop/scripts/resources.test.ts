@@ -33,7 +33,7 @@ test("keeps static external resource mirrors aligned with resources.jsonc", () =
 			values: [resources.docs.home, resources.github, resources.discord],
 		},
 		{
-			path: "apps/server/worker-templates/template.md",
+			path: "apps/worker/worker-templates/template.md",
 			values: [resources.github, resources.docs.home, resources.discord],
 		},
 		{

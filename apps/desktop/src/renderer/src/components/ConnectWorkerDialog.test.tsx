@@ -16,7 +16,7 @@ test("shows concise Worker setup descriptions", () => {
 	render(
 		<ConnectWorkerDialog
 			initialProvider={null}
-			initialServerUrl={null}
+			initialWorkerAddress={null}
 			initialSyncAfterConnect={true}
 			onConnect={vi.fn()}
 			onConnected={vi.fn()}
@@ -47,7 +47,7 @@ test("submits the final provider, address, and authentication code", async () =>
 	render(
 		<ConnectWorkerDialog
 			initialProvider={null}
-			initialServerUrl={null}
+			initialWorkerAddress={null}
 			initialSyncAfterConnect={true}
 			onConnect={onConnect}
 			onConnected={onConnected}
@@ -107,7 +107,7 @@ test("submits the final provider, address, and authentication code", async () =>
 	await waitFor(() =>
 		expect(onConnect).toHaveBeenCalledWith({
 			provider: "vastai",
-			serverUrl: "203.0.113.10:34220",
+			workerAddress: "203.0.113.10:34220",
 			authenticationCode: "WXYZ-2345-ABCD-EFGH",
 			syncAfterConnect: true,
 		}),
@@ -121,7 +121,7 @@ test("keeps the dialog open and shows a failed connection", async () => {
 	render(
 		<ConnectWorkerDialog
 			initialProvider="other"
-			initialServerUrl="worker.example.com:22001"
+			initialWorkerAddress="worker.example.com:22001"
 			initialSyncAfterConnect={false}
 			onConnect={async () => ({ ok: false, error: "Worker unavailable." })}
 			onConnected={vi.fn()}
@@ -149,7 +149,7 @@ test("prevents dismissal while a connection is pending", async () => {
 	render(
 		<ConnectWorkerDialog
 			initialProvider="other"
-			initialServerUrl="worker.example.com:22001"
+			initialWorkerAddress="worker.example.com:22001"
 			initialSyncAfterConnect={false}
 			onConnect={onConnect}
 			onConnected={vi.fn()}
@@ -174,7 +174,7 @@ test("uses the saved sync setting when settings finish loading", async () => {
 	const onConnect = vi.fn().mockResolvedValue({ ok: true });
 	const props = {
 		initialProvider: "other" as const,
-		initialServerUrl: "worker.example.com:22001",
+		initialWorkerAddress: "worker.example.com:22001",
 		onConnect,
 		onConnected: vi.fn(),
 		onOpenChange: vi.fn(),
@@ -207,7 +207,7 @@ test("uses the saved sync setting when settings finish loading", async () => {
 	await waitFor(() =>
 		expect(onConnect).toHaveBeenCalledWith({
 			provider: "other",
-			serverUrl: "worker.example.com:22001",
+			workerAddress: "worker.example.com:22001",
 			authenticationCode: "ABCD-EFGH-JKLM-NPQR",
 			syncAfterConnect: false,
 		}),
@@ -222,7 +222,11 @@ test("restores the target when session state arrives before user input", async (
 		onOpenChange: vi.fn(),
 	};
 	const { rerender } = render(
-		<ConnectWorkerDialog {...props} initialProvider={null} initialServerUrl={null} />,
+		<ConnectWorkerDialog
+			{...props}
+			initialProvider={null}
+			initialWorkerAddress={null}
+		/>,
 	);
 	const dialog = screen.getByRole("dialog");
 	expect(
@@ -233,7 +237,7 @@ test("restores the target when session state arrives before user input", async (
 		<ConnectWorkerDialog
 			{...props}
 			initialProvider="vastai"
-			initialServerUrl="203.0.113.10:34220"
+			initialWorkerAddress="203.0.113.10:34220"
 		/>,
 	);
 

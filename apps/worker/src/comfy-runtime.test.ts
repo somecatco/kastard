@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import type { BackendProvisionerApi } from "./backend-provisioner";
 import { ComfyRuntime, ComfyRuntimeStartError } from "./comfy-runtime";
-import { ServerLogStore } from "./server-log";
+import { WorkerLogStore } from "./worker-log";
 
 const temporaryDirectories: string[] = [];
 const workerRuntime = {
@@ -69,7 +69,7 @@ test("starts the prepared backend on loopback with the fixed GPU runtime", async
 		rootDirectory,
 		runtimePython: "/opt/kastard/runtime/bin/python",
 		backend: backend({ status: "ready", version: "0.33.1", runtime: workerRuntime }),
-		logs: new ServerLogStore(),
+		logs: new WorkerLogStore(),
 		allocatePort: async () => 18_188,
 		requestFetch: (async () =>
 			new Response(null, { status: 200 })) as unknown as typeof fetch,
@@ -130,7 +130,7 @@ test("starts a CPU Worker runtime with ComfyUI CPU mode", async () => {
 		rootDirectory,
 		runtimePython: "/opt/kastard/runtime/bin/python",
 		backend: backend({ status: "ready", version: "0.33.1", runtime: cpuWorkerRuntime }),
-		logs: new ServerLogStore(),
+		logs: new WorkerLogStore(),
 		allocatePort: async () => 18_188,
 		requestFetch: (async () =>
 			new Response(null, { status: 200 })) as unknown as typeof fetch,
@@ -156,7 +156,7 @@ test("forwards memory cleanup flags to the ready ComfyUI runtime", async () => {
 		rootDirectory,
 		runtimePython: "python3",
 		backend: backend({ status: "ready", version: "0.33.1", runtime: workerRuntime }),
-		logs: new ServerLogStore(),
+		logs: new WorkerLogStore(),
 		allocatePort: async () => 18_188,
 		requestFetch: (async (input: string | URL | Request, init?: RequestInit) => {
 			const url = input.toString();
@@ -195,7 +195,7 @@ test("reports memory cleanup failures without changing runtime state", async () 
 		rootDirectory,
 		runtimePython: "python3",
 		backend: backend({ status: "ready", version: "0.33.1", runtime: workerRuntime }),
-		logs: new ServerLogStore(),
+		logs: new WorkerLogStore(),
 		allocatePort: async () => 18_188,
 		requestFetch: (async (input: string | URL | Request) => {
 			if (!input.toString().endsWith("/free")) {
@@ -230,7 +230,7 @@ test("requires a prepared backend before starting", async () => {
 		rootDirectory,
 		runtimePython: "python3",
 		backend: backend({ status: "not-installed", runtime: workerRuntime }),
-		logs: new ServerLogStore(),
+		logs: new WorkerLogStore(),
 	});
 
 	expect(() => runtime.start()).toThrow(ComfyRuntimeStartError);
@@ -245,7 +245,7 @@ test("restarts ComfyUI after the active process stops", async () => {
 		rootDirectory,
 		runtimePython: "python3",
 		backend: backend({ status: "ready", version: "0.33.1", runtime: workerRuntime }),
-		logs: new ServerLogStore(),
+		logs: new WorkerLogStore(),
 		allocatePort: async () => 18_188 + starts,
 		requestFetch: (async () =>
 			new Response(null, { status: 200 })) as unknown as typeof fetch,
@@ -277,7 +277,7 @@ test("keeps the active ComfyUI running when its backend is not ready", async () 
 			getState: () => backendState,
 			prepare: () => backendState,
 		},
-		logs: new ServerLogStore(),
+		logs: new WorkerLogStore(),
 		allocatePort: async () => 18_188,
 		requestFetch: (async () =>
 			new Response(null, { status: 200 })) as unknown as typeof fetch,
@@ -310,7 +310,7 @@ test("reports a stubborn process as active after restart cannot stop it", async 
 		rootDirectory,
 		runtimePython: "python3",
 		backend: backend({ status: "ready", version: "0.33.1", runtime: workerRuntime }),
-		logs: new ServerLogStore(),
+		logs: new WorkerLogStore(),
 		allocatePort: async () => 18_188,
 		requestFetch: (async () =>
 			new Response(null, { status: 200 })) as unknown as typeof fetch,
@@ -335,7 +335,7 @@ test("refuses to restart while a workflow is active", async () => {
 		rootDirectory,
 		runtimePython: "python3",
 		backend: backend({ status: "ready", version: "0.33.1", runtime: workerRuntime }),
-		logs: new ServerLogStore(),
+		logs: new WorkerLogStore(),
 		isBusy: () => true,
 	});
 
@@ -348,7 +348,7 @@ test("refuses to restart while a workflow is active", async () => {
 test("records normalized ComfyUI stdout and stderr while the process is running", async () => {
 	const rootDirectory = await fixture();
 	const child = new FakeProcess();
-	const logs = new ServerLogStore();
+	const logs = new WorkerLogStore();
 	const cursor = logs.getCursor();
 	const runtime = new ComfyRuntime({
 		rootDirectory,
@@ -395,7 +395,7 @@ test("records normalized ComfyUI stdout and stderr while the process is running"
 test("reports startup output when ComfyUI exits before becoming ready", async () => {
 	const rootDirectory = await fixture();
 	const child = new FakeProcess();
-	const logs = new ServerLogStore();
+	const logs = new WorkerLogStore();
 	const cursor = logs.getCursor();
 	let started = false;
 	const runtime = new ComfyRuntime({
@@ -438,7 +438,7 @@ test("keeps split custom node import failures as warnings when readiness respond
 		rootDirectory,
 		runtimePython: "python3",
 		backend: backend({ status: "ready", version: "0.33.1", runtime: workerRuntime }),
-		logs: new ServerLogStore(),
+		logs: new WorkerLogStore(),
 		allocatePort: async () => 18_188,
 		requestFetch: (async () => {
 			child.stderr.write("0.1 seconds (IMPORT");
@@ -466,7 +466,7 @@ test("keeps split custom node import failures as warnings when readiness respond
 test("adds unique sanitized custom node warnings after ComfyUI is ready", async () => {
 	const rootDirectory = await fixture();
 	const child = new FakeProcess();
-	const logs = new ServerLogStore();
+	const logs = new WorkerLogStore();
 	const cursor = logs.getCursor();
 	const runtime = new ComfyRuntime({
 		rootDirectory,
@@ -520,7 +520,7 @@ test("does not become ready when the process errors as the probe succeeds", asyn
 		rootDirectory,
 		runtimePython: "python3",
 		backend: backend({ status: "ready", version: "0.33.1", runtime: workerRuntime }),
-		logs: new ServerLogStore(),
+		logs: new WorkerLogStore(),
 		allocatePort: async () => 18_188,
 		requestFetch: (async () => {
 			child.emit("error", new Error("Process handle failed."));
@@ -547,7 +547,7 @@ test("does not restart until a failed process has exited", async () => {
 		rootDirectory,
 		runtimePython: "python3",
 		backend: backend({ status: "ready", version: "0.33.1", runtime: workerRuntime }),
-		logs: new ServerLogStore(),
+		logs: new WorkerLogStore(),
 		allocatePort: async () => 18_188,
 		requestFetch: (async () => {
 			throw new Error("not ready");
@@ -578,7 +578,7 @@ test("returns to stopped when a ready ComfyUI exits cleanly", async () => {
 		rootDirectory,
 		runtimePython: "python3",
 		backend: backend({ status: "ready", version: "0.33.1", runtime: workerRuntime }),
-		logs: new ServerLogStore(),
+		logs: new WorkerLogStore(),
 		allocatePort: async () => 18_188,
 		requestFetch: (async () =>
 			new Response(null, { status: 200 })) as unknown as typeof fetch,
@@ -596,7 +596,7 @@ test("returns to stopped when a ready ComfyUI exits cleanly", async () => {
 test("keeps immediate late output intact and stops after the close grace", async () => {
 	const rootDirectory = await fixture();
 	const child = new FakeProcess();
-	const logs = new ServerLogStore();
+	const logs = new WorkerLogStore();
 	const cursor = logs.getCursor();
 	const runtime = new ComfyRuntime({
 		rootDirectory,
@@ -635,7 +635,7 @@ test("keeps terminating an unresponsive ComfyUI process until it exits", async (
 		rootDirectory,
 		runtimePython: "python3",
 		backend: backend({ status: "ready", version: "0.33.1", runtime: workerRuntime }),
-		logs: new ServerLogStore(),
+		logs: new WorkerLogStore(),
 		allocatePort: async () => 18_188,
 		requestFetch: (async () => {
 			probes += 1;
@@ -669,7 +669,7 @@ test("keeps ComfyUI ready when health probes complete within the configured time
 		rootDirectory,
 		runtimePython: "python3",
 		backend: backend({ status: "ready", version: "0.33.1", runtime: workerRuntime }),
-		logs: new ServerLogStore(),
+		logs: new WorkerLogStore(),
 		allocatePort: async () => 18_190,
 		requestFetch: (async (_url: unknown, init: RequestInit) => {
 			probes += 1;
@@ -709,7 +709,7 @@ test("keeps ComfyUI ready when a slow health probe completes within the default 
 		rootDirectory,
 		runtimePython: "python3",
 		backend: backend({ status: "ready", version: "0.33.1", runtime: workerRuntime }),
-		logs: new ServerLogStore(),
+		logs: new WorkerLogStore(),
 		allocatePort: async () => 18_191,
 		requestFetch: (async (_url: unknown, init: RequestInit) => {
 			probes += 1;
@@ -743,7 +743,7 @@ test("keeps ComfyUI ready when a slow health probe completes within the default 
 test("tolerates an unresponsive ComfyUI while a workflow is running", async () => {
 	const rootDirectory = await fixture();
 	const child = new StubbornProcess();
-	const logs = new ServerLogStore();
+	const logs = new WorkerLogStore();
 	const cursor = logs.getCursor();
 	let probes = 0;
 	let busy = false;

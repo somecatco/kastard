@@ -1,6 +1,6 @@
 import type { WorkerComfyMemoryCleanupRequest } from "@kastard/common";
 import type {
-	BackendServerState,
+	BackendState,
 	BackendTarget,
 	ConnectionResult,
 	WorkerBackendResult,
@@ -16,9 +16,9 @@ import {
 	freeWorkerComfyMemory,
 	prepareWorkerBackend,
 	restartWorkerComfy,
-	type ServerCredential,
 	startWorkerComfy,
 	type WorkerComfyRequestResult,
+	type WorkerSessionCredential,
 } from "../client";
 import { replacedConnectionResult } from "./machine";
 import type {
@@ -30,24 +30,24 @@ import type { WorkerSessionStateStore } from "./state";
 
 export type WorkerRuntimeStateOptions = {
 	readBackend?: (
-		credential: ServerCredential,
+		credential: WorkerSessionCredential,
 		requestFetch?: WorkerSessionRequestFetch,
 	) => Promise<BackendRequestResult>;
 	prepareBackend?: (
-		credential: ServerCredential,
+		credential: WorkerSessionCredential,
 		target: BackendTarget,
 		requestFetch?: WorkerSessionRequestFetch,
 	) => Promise<BackendRequestResult>;
 	readComfy?: (
-		credential: ServerCredential,
+		credential: WorkerSessionCredential,
 		requestFetch?: WorkerSessionRequestFetch,
 	) => Promise<WorkerComfyRequestResult>;
 	startComfy?: (
-		credential: ServerCredential,
+		credential: WorkerSessionCredential,
 		requestFetch?: WorkerSessionRequestFetch,
 	) => Promise<WorkerComfyRequestResult>;
 	restartComfy?: (
-		credential: ServerCredential,
+		credential: WorkerSessionCredential,
 		requestFetch?: WorkerSessionRequestFetch,
 	) => Promise<WorkerComfyRequestResult>;
 	freeComfyMemory?: typeof freeWorkerComfyMemory;
@@ -59,7 +59,7 @@ export type WorkerRuntimeStateOptions = {
 type WorkerRuntimeStateDependencies = {
 	state: WorkerSessionStateStore;
 	requests: WorkerSessionRequestScope<WorkerSessionResource>;
-	getCredential: () => ServerCredential | null;
+	getCredential: () => WorkerSessionCredential | null;
 	getBackendTarget: () => BackendTarget | null;
 	getBackendTargetError: () => string | undefined;
 	invalidateVerification: () => void;
@@ -160,7 +160,7 @@ export class WorkerRuntimeState {
 			if (result.retryable === true) this.scheduleBackendPoll(generation);
 			return result;
 		}
-		const state = this.setBackendServerState(result.state);
+		const state = this.setBackendState(result.state);
 		if (result.state.status === "preparing") this.scheduleBackendPoll(generation);
 		return { ok: true, state };
 	}
@@ -344,7 +344,7 @@ export class WorkerRuntimeState {
 			if (result.retryable === true) this.scheduleBackendPoll(generation);
 			return;
 		}
-		this.setBackendServerState(result.state);
+		this.setBackendState(result.state);
 		if (result.state.status === "preparing") this.scheduleBackendPoll(generation);
 	}
 
@@ -451,7 +451,7 @@ export class WorkerRuntimeState {
 		return state;
 	}
 
-	private setBackendServerState(state: BackendServerState): WorkerBackendState {
+	private setBackendState(state: BackendState): WorkerBackendState {
 		return this.setBackend({ ...state, editorComfyVersion: this.editorComfyVersion() });
 	}
 

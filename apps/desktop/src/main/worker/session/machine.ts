@@ -47,7 +47,7 @@ export type WorkerSessionMachineServices = {
 	disconnect: () => void;
 	goOffline: (message: string, reconnectRequired?: boolean) => void;
 	recoverConnection: (
-		serverUrl: string,
+		workerAddress: string,
 		connectedAt: number,
 		worker?: ReleaseIdentity,
 	) => void;
@@ -101,7 +101,7 @@ type WorkerSessionMachineEvent =
 	| { type: "connection.offline"; message: string; reconnectRequired?: boolean }
 	| {
 			type: "connection.recovered";
-			serverUrl: string;
+			workerAddress: string;
 			connectedAt: number;
 			worker?: ReleaseIdentity;
 	  }
@@ -466,7 +466,7 @@ const workerSessionMachine = setup({
 		setRecovered: ({ context, event }) => {
 			if (event.type === "connection.recovered") {
 				context.services.recoverConnection(
-					event.serverUrl,
+					event.workerAddress,
 					event.connectedAt,
 					event.worker,
 				);

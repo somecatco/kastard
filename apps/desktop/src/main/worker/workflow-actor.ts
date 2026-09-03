@@ -4,8 +4,8 @@ import {
 	cancelWorkerWorkflowJob,
 	discardWorkerWorkflowInputs,
 	fetchWorkerWorkflowJob,
-	type ServerCredential,
 	startWorkerWorkflowJob,
+	type WorkerSessionCredential,
 	type WorkflowJobFailure,
 	type WorkflowJobState,
 } from "./client";
@@ -50,7 +50,7 @@ export type WorkerWorkflowCurrent = {
 	id: string;
 	phase: CurrentWorkflow["phase"];
 	cancellation: CurrentWorkflow["cancellation"];
-	workerUrl: string;
+	workerAddress: string;
 	lastConfirmedStatus: WorkflowJobState["status"] | null;
 	lastConfirmedAt: number | null;
 };
@@ -73,7 +73,7 @@ export type WorkerWorkflowLiveEvent = {
 };
 
 type StartWorkerWorkflow = (
-	credential: ServerCredential,
+	credential: WorkerSessionCredential,
 	jobId: string,
 	snapshot: WorkflowInputSnapshot,
 	extraData: Record<string, unknown>,
@@ -86,7 +86,7 @@ export type WorkerWorkflowActorOptions = {
 	cancel?: typeof cancelWorkerWorkflowJob;
 	openEvents?: typeof openWorkerWorkflowEvents;
 	collect?: (
-		credential: ServerCredential,
+		credential: WorkerSessionCredential,
 		context: WorkflowResultContext,
 		signal: AbortSignal,
 	) => Promise<void>;
@@ -114,14 +114,14 @@ type QueuedWorkflow = WorkerWorkflowQueueItem & {
 	promptBytes: number;
 	dispatchAfterVersion: number;
 	snapshot: WorkflowInputSnapshot | null;
-	assignedCredential: ServerCredential | null;
+	assignedCredential: WorkerSessionCredential | null;
 };
 
 type CurrentWorkflow = WorkerWorkflowQueueItem & {
 	extraData: Record<string, unknown>;
 	promptBytes: number;
 	snapshot: WorkflowInputSnapshot;
-	credential: ServerCredential;
+	credential: WorkerSessionCredential;
 	operation: number;
 	stateVersion: number;
 	startedNotified: boolean;
@@ -144,10 +144,10 @@ type ActiveRequest = {
 	done: Promise<void>;
 };
 type RemoteCleanup = {
-	credential: ServerCredential;
+	credential: WorkerSessionCredential;
 	jobId: string;
 	active: Promise<void> | null;
-	retryCredential: ServerCredential | null;
+	retryCredential: WorkerSessionCredential | null;
 };
 
 type WorkerWorkflowMachineInput = {
@@ -173,7 +173,7 @@ type WorkerWorkflowMachineContext = WorkerWorkflowMachineInput & {
 	pending: QueuedWorkflow[];
 	current: CurrentWorkflow | null;
 	terminal: TerminalWorkflow | null;
-	readyCredential: ServerCredential | null;
+	readyCredential: WorkerSessionCredential | null;
 	pendingPromptBytes: number;
 	pendingFailureRecords: number;
 	nextNumber: number;
@@ -202,7 +202,7 @@ type WorkerWorkflowMachineEvent =
 	| { type: "workflow.delete"; ids: string[] }
 	| { type: "workflow.clear" }
 	| { type: "workflow.cancel" }
-	| { type: "worker.changed"; credential: ServerCredential | null }
+	| { type: "worker.changed"; credential: WorkerSessionCredential | null }
 	| { type: "worker.offline" }
 	| {
 			type: "dispatch.resolved";
@@ -534,7 +534,7 @@ const workerWorkflowMachine = setup({
 		retryRemoteCleanups: ({ context, event, self }) => {
 			if (event.type !== "worker.changed" || event.credential === null) return;
 			for (const cleanup of workflowRemoteCleanups.get(self)?.values() ?? []) {
-				if (cleanup.credential.serverUrl === event.credential.serverUrl) {
+				if (cleanup.credential.workerApiUrl === event.credential.workerApiUrl) {
 					void attemptRemoteCleanup(self, context, cleanup, event.credential);
 				}
 			}
@@ -1544,7 +1544,8 @@ export function getCurrentWorkerWorkflow(
 				id: current.id,
 				phase: current.phase,
 				cancellation: current.cancellation,
-				workerUrl: current.credential.workerUrl ?? current.credential.serverUrl,
+				workerAddress:
+					current.credential.workerAddress ?? current.credential.workerApiUrl,
 				lastConfirmedStatus: current.lastConfirmedStatus,
 				lastConfirmedAt: current.lastConfirmedAt,
 			};
@@ -1579,7 +1580,7 @@ export function cancelCurrentWorkerWorkflow(actor: WorkerWorkflowActor): string 
 
 export function updateWorkerWorkflowReadiness(
 	actor: WorkerWorkflowActor,
-	credential: ServerCredential | null,
+	credential: WorkerSessionCredential | null,
 ): void {
 	if (actor.getSnapshot().status !== "active") return;
 	actor.send({ type: "worker.changed", credential });
@@ -1621,11 +1622,11 @@ function currentEventMatches(
 
 function dispatchCredential(
 	item: QueuedWorkflow,
-	ready: ServerCredential | null,
-): ServerCredential | null {
+	ready: WorkerSessionCredential | null,
+): WorkerSessionCredential | null {
 	if (ready === null) return null;
 	return item.assignedCredential === null ||
-		item.assignedCredential.serverUrl === ready.serverUrl
+		item.assignedCredential.workerApiUrl === ready.workerApiUrl
 		? ready
 		: null;
 }
@@ -1745,7 +1746,7 @@ async function cleanupWorkflowInputs(
 	owner: object,
 	context: WorkerWorkflowMachineInput,
 	jobId: string,
-	credential: ServerCredential | null,
+	credential: WorkerSessionCredential | null,
 ): Promise<void> {
 	await Promise.allSettled([
 		context.cleanupInputs(jobId),
@@ -1758,14 +1759,14 @@ async function cleanupWorkflowInputs(
 function queueRemoteCleanup(
 	owner: object,
 	context: WorkerWorkflowMachineInput,
-	credential: ServerCredential,
+	credential: WorkerSessionCredential,
 	jobId: string,
 ): Promise<void> {
 	const cleanups = workflowRemoteCleanups.get(owner);
 	if (cleanups === undefined) {
 		return context.discardInputs(credential, jobId).catch(() => undefined);
 	}
-	const key = `${credential.serverUrl}\n${jobId}`;
+	const key = `${credential.workerApiUrl}\n${jobId}`;
 	const cleanup = cleanups.get(key) ?? {
 		credential,
 		jobId,
@@ -1780,7 +1781,7 @@ function attemptRemoteCleanup(
 	owner: object,
 	context: WorkerWorkflowMachineInput,
 	cleanup: RemoteCleanup,
-	credential: ServerCredential,
+	credential: WorkerSessionCredential,
 ): Promise<void> {
 	if (cleanup.active !== null) {
 		cleanup.retryCredential = credential;
@@ -1788,7 +1789,7 @@ function attemptRemoteCleanup(
 	}
 	cleanup.credential = credential;
 	cleanup.retryCredential = null;
-	const key = `${credential.serverUrl}\n${cleanup.jobId}`;
+	const key = `${credential.workerApiUrl}\n${cleanup.jobId}`;
 	const attempt = context
 		.discardInputs(credential, cleanup.jobId)
 		.then(() => {

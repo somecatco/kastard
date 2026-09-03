@@ -11,7 +11,7 @@ import {
 	expect,
 } from "@playwright/test";
 
-export type TestServer = {
+export type TestWorker = {
 	process: ChildProcessWithoutNullStreams;
 	url: string;
 	address: string;
@@ -72,12 +72,12 @@ export async function launchDesktop(
 	});
 }
 
-export async function startServer(): Promise<TestServer> {
-	const backendRoot = await mkdtemp(join(tmpdir(), "kastard-server-backend-e2e-"));
+export async function startWorker(): Promise<TestWorker> {
+	const backendRoot = await mkdtemp(join(tmpdir(), "kastard-worker-backend-e2e-"));
 	const sessionPort = await availablePort();
-	const serverProcess = spawn(
+	const workerProcess = spawn(
 		"bun",
-		["run", resolve(process.cwd(), "../server/src/index.ts")],
+		["run", resolve(process.cwd(), "../worker/src/index.ts")],
 		{
 			env: {
 				...process.env,
@@ -95,10 +95,10 @@ export async function startServer(): Promise<TestServer> {
 	let latestAuthenticationCode = "";
 	let observedDisconnects = 0;
 	const disconnectWaiters = new Set<() => void>();
-	return new Promise<TestServer>((resolveServer, rejectServer) => {
+	return new Promise<TestWorker>((resolveWorker, rejectWorker) => {
 		const timeout = setTimeout(() => {
-			serverProcess.kill();
-			rejectServer(new Error(`Kastard server did not start.\n${output}`));
+			workerProcess.kill();
+			rejectWorker(new Error(`Kastard Worker did not start.\n${output}`));
 		}, 10_000);
 		const inspect = (chunk: Buffer): void => {
 			output += chunk.toString();
@@ -116,8 +116,8 @@ export async function startServer(): Promise<TestServer> {
 			const address = [...output.matchAll(/Worker address: (\S+)/g)].at(-1)?.[1];
 			if (!port || address === undefined || latestAuthenticationCode === "") return;
 			clearTimeout(timeout);
-			resolveServer({
-				process: serverProcess,
+			resolveWorker({
+				process: workerProcess,
 				url: `http://127.0.0.1:${port}`,
 				address,
 				authenticationCode: latestAuthenticationCode,
@@ -128,11 +128,11 @@ export async function startServer(): Promise<TestServer> {
 					}),
 			});
 		};
-		serverProcess.stdout.on("data", inspect);
-		serverProcess.stderr.on("data", inspect);
-		serverProcess.once("exit", (code) => {
+		workerProcess.stdout.on("data", inspect);
+		workerProcess.stderr.on("data", inspect);
+		workerProcess.once("exit", (code) => {
 			clearTimeout(timeout);
-			rejectServer(new Error(`Kastard server exited with ${code}.\n${output}`));
+			rejectWorker(new Error(`Kastard Worker exited with ${code}.\n${output}`));
 		});
 	});
 }
@@ -152,19 +152,19 @@ async function availablePort(): Promise<number> {
 	return port;
 }
 
-export async function stopServer(server: TestServer): Promise<void> {
-	const serverProcess = server.process;
-	if (serverProcess.exitCode === null) {
-		serverProcess.kill("SIGTERM");
+export async function stopWorker(worker: TestWorker): Promise<void> {
+	const workerProcess = worker.process;
+	if (workerProcess.exitCode === null) {
+		workerProcess.kill("SIGTERM");
 		await new Promise<void>((resolveExit) => {
-			const forceTimer = setTimeout(() => serverProcess.kill("SIGKILL"), 5_000);
-			serverProcess.once("exit", () => {
+			const forceTimer = setTimeout(() => workerProcess.kill("SIGKILL"), 5_000);
+			workerProcess.once("exit", () => {
 				clearTimeout(forceTimer);
 				resolveExit();
 			});
 		});
 	}
-	await rm(server.backendRoot, { recursive: true, force: true });
+	await rm(worker.backendRoot, { recursive: true, force: true });
 }
 
 export async function closeDesktop(desktop: ElectronApplication): Promise<void> {

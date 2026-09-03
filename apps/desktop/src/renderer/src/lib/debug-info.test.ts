@@ -33,7 +33,8 @@ const WORKER_SESSION: WorkerSessionState = {
 	connection: {
 		status: "connected",
 		provider: "other",
-		serverUrl: "https://user:secret@worker.example.com:8443/api?token=hidden#details",
+		workerAddress:
+			"https://user:secret@worker.example.com:8443/api?token=hidden#details",
 		connectedAt: 1_787_542_000_000,
 		worker: {
 			buildNumber: "15",
@@ -172,7 +173,7 @@ describe("formatDebugInfo", () => {
 					connection: {
 						status: "disconnected",
 						recentProvider: "other",
-						recentServerUrl: "https://worker.example.com/path?credential=hidden",
+						recentWorkerAddress: "https://worker.example.com/path?credential=hidden",
 					},
 					systemMetrics: { status: "disconnected" },
 					backend: { status: "disconnected", editorComfyVersion: "0.34.0" },

@@ -5,7 +5,7 @@ import {
 } from "@kastard/common";
 import type {
 	ModelSyncRequest,
-	ModelSyncServerState,
+	ModelSyncState,
 	WorkerModelSyncResult,
 	WorkerModelSyncState,
 	WorkerModelTargetState,
@@ -14,9 +14,9 @@ import {
 	cancelWorkerModelSync,
 	fetchWorkerModelSync,
 	type ModelSyncRequestResult,
-	type ServerCredential,
 	startWorkerModelRedownload,
 	startWorkerModelSync,
+	type WorkerSessionCredential,
 } from "../client";
 import type {
 	WorkerSessionRequestFetch,
@@ -29,21 +29,21 @@ const SYNC_IN_PROGRESS_ERROR = "Models are already synchronizing.";
 
 export type WorkerModelSyncOptions = {
 	read?: (
-		credential: ServerCredential,
+		credential: WorkerSessionCredential,
 		requestFetch?: WorkerSessionRequestFetch,
 	) => Promise<ModelSyncRequestResult>;
 	start?: (
-		credential: ServerCredential,
+		credential: WorkerSessionCredential,
 		request: ModelSyncRequest,
 		requestFetch?: WorkerSessionRequestFetch,
 	) => Promise<ModelSyncRequestResult>;
 	redownload?: (
-		credential: ServerCredential,
+		credential: WorkerSessionCredential,
 		request: ModelSyncRequest,
 		requestFetch?: WorkerSessionRequestFetch,
 	) => Promise<ModelSyncRequestResult>;
 	cancel?: (
-		credential: ServerCredential,
+		credential: WorkerSessionCredential,
 		operationId: string | null,
 		requestFetch?: WorkerSessionRequestFetch,
 	) => Promise<ModelSyncRequestResult>;
@@ -53,7 +53,7 @@ export type WorkerModelSyncOptions = {
 type WorkerModelSyncDependencies = {
 	state: WorkerSessionStateStore;
 	requests: WorkerSessionRequestScope<WorkerSessionResource>;
-	getCredential: () => ServerCredential | null;
+	getCredential: () => WorkerSessionCredential | null;
 	buildPlan: () => Promise<ModelSyncRequest>;
 	setupStartError: () => string | null;
 	invalidateSetup: () => void;
@@ -69,7 +69,7 @@ export class WorkerModelSync {
 	private target: Pick<ModelSyncRequest, "models"> | null = null;
 	private targetOperation = 0;
 	private intentOperation = 0;
-	private serverState: ModelSyncServerState | null = null;
+	private remoteState: ModelSyncState | null = null;
 	private targetModels: WorkerModelTargetState[] | null = null;
 	private cancellation: {
 		operationId: string | null;
@@ -96,7 +96,7 @@ export class WorkerModelSync {
 		this.dependencies.invalidateSetup();
 		if (this.cancellation === null) this.dependencies.requests.invalidate("models");
 		this.dependencies.invalidateVerification();
-		this.reprojectServerState();
+		this.reprojectRemoteState();
 		const generation = this.dependencies.requests.currentGeneration;
 		void this.refreshTarget(generation).then(async () => {
 			if (!this.isCurrent(generation, intent)) return;
@@ -143,7 +143,7 @@ export class WorkerModelSync {
 			if (retryable) this.schedulePoll(generation);
 			return result;
 		}
-		const state = this.setServerState(result.state);
+		const state = this.setRemoteState(result.state);
 		if (modelRunning(state)) this.schedulePoll(generation);
 		return { ok: true, state };
 	}
@@ -151,7 +151,7 @@ export class WorkerModelSync {
 	async redownload(path: string): Promise<WorkerModelSyncResult> {
 		const setupError = this.dependencies.setupStartError();
 		if (setupError !== null) return { ok: false, error: setupError };
-		if (this.serverState?.capabilities?.forceRedownload !== true) {
+		if (this.remoteState?.capabilities?.forceRedownload !== true) {
 			return {
 				ok: false,
 				error: "This Worker does not support individual model redownload.",
@@ -206,21 +206,21 @@ export class WorkerModelSync {
 			!sameModelSyncTarget(result.state.target.models[0] as typeof target, target)
 		) {
 			const error = "The Worker returned an invalid model redownload status.";
-			this.serverState = null;
+			this.remoteState = null;
 			this.setState({ status: "unavailable", error, retryable: false });
 			return { ok: false, error };
 		}
-		const state = this.setServerState(result.state);
+		const state = this.setRemoteState(result.state);
 		if (modelRunning(state)) this.schedulePoll(generation);
 		return { ok: true, state };
 	}
 
 	cancel(): Promise<WorkerModelSyncResult> {
-		return this.cancelOperation(this.serverState?.operationId ?? null);
+		return this.cancelOperation(this.remoteState?.operationId ?? null);
 	}
 
 	cancelStaleOperation(): Promise<WorkerModelSyncResult> | null {
-		const state = this.serverState;
+		const state = this.remoteState;
 		const target = this.target;
 		if (
 			state === null ||
@@ -248,7 +248,7 @@ export class WorkerModelSync {
 			if (this.isTargetCurrent(generation, operation)) {
 				this.target = null;
 				this.targetModels = null;
-				this.reprojectServerState();
+				this.reprojectRemoteState();
 			}
 			return null;
 		}
@@ -268,7 +268,7 @@ export class WorkerModelSync {
 				: { ...current, target: model };
 		});
 		this.target = target;
-		this.reprojectServerState();
+		this.reprojectRemoteState();
 		return target;
 	}
 
@@ -283,7 +283,7 @@ export class WorkerModelSync {
 		);
 		if (result === null) return;
 		if (!result.ok) {
-			this.serverState = null;
+			this.remoteState = null;
 			this.setState({
 				status: "unavailable",
 				error: result.error,
@@ -292,7 +292,7 @@ export class WorkerModelSync {
 			if (result.retryable === true) this.schedulePoll(generation);
 			return;
 		}
-		const state = this.setServerState(result.state);
+		const state = this.setRemoteState(result.state);
 		if (modelRunning(state)) this.schedulePoll(generation);
 	}
 
@@ -304,7 +304,7 @@ export class WorkerModelSync {
 		this.target = null;
 		this.targetOperation += 1;
 		this.intentOperation += 1;
-		this.serverState = null;
+		this.remoteState = null;
 		this.targetModels = null;
 		this.cancellation = null;
 	}
@@ -344,26 +344,26 @@ export class WorkerModelSync {
 			if (result.retryable === true) this.schedulePoll(generation);
 			return result;
 		}
-		const state = this.setServerState(result.state);
+		const state = this.setRemoteState(result.state);
 		if (modelRunning(state)) this.schedulePoll(generation);
 		return { ok: true, state };
 	}
 
-	private setServerState(state: ModelSyncServerState): WorkerModelSyncState {
+	private setRemoteState(state: ModelSyncState): WorkerModelSyncState {
 		const normalized = parseModelSyncState(state);
 		if (normalized === null) {
-			this.serverState = null;
+			this.remoteState = null;
 			return this.setState({
 				status: "unavailable",
 				error: "The Worker returned an invalid model sync status.",
 				retryable: false,
 			});
 		}
-		this.serverState = normalized;
-		return this.setState(this.projectServerState(normalized));
+		this.remoteState = normalized;
+		return this.setState(this.projectRemoteState(normalized));
 	}
 
-	private projectServerState(state: ModelSyncServerState): WorkerModelSyncState {
+	private projectRemoteState(state: ModelSyncState): WorkerModelSyncState {
 		const targetStatus =
 			this.target === null || state.target === null
 				? "unknown"
@@ -405,9 +405,9 @@ export class WorkerModelSync {
 		};
 	}
 
-	private reprojectServerState(): void {
-		if (this.serverState !== null)
-			this.setState(this.projectServerState(this.serverState));
+	private reprojectRemoteState(): void {
+		if (this.remoteState !== null)
+			this.setState(this.projectRemoteState(this.remoteState));
 	}
 
 	private setState(state: WorkerModelSyncState): WorkerModelSyncState {
@@ -473,7 +473,7 @@ export function modelTerminal(state: WorkerModelSyncState): boolean {
 	);
 }
 
-function projectSnapshot(state: ModelSyncServerState): WorkerModelTargetState[] {
+function projectSnapshot(state: ModelSyncState): WorkerModelTargetState[] {
 	if (state.target === null || state.modelSnapshot === undefined) return [];
 	return state.target.models.map((target, index) => {
 		const snapshot = state.modelSnapshot?.models[index];
@@ -500,7 +500,7 @@ function projectSnapshot(state: ModelSyncServerState): WorkerModelTargetState[] 
 }
 
 function operationMatchesTarget(
-	state: ModelSyncServerState,
+	state: ModelSyncState,
 	target: Pick<ModelSyncRequest, "models">,
 ): boolean {
 	if (state.target === null) return false;

@@ -36,11 +36,11 @@ import {
 	isModelLibraryMutationResult,
 	isModelProviderFilesResult,
 	isModelProviderSettingsResult,
-	isServerLogsResult,
 	isSyncCompletionNotificationSettingsResult,
 	isSyncVerificationResult,
 	isWorkerBackendResult,
 	isWorkerCustomNodeSyncResult,
+	isWorkerLogsResult,
 	isWorkerModelSyncResult,
 	isWorkerSessionSnapshot,
 	isWorkerSessionStateChange,
@@ -300,12 +300,12 @@ const api: KastardApi = {
 			}
 			return result;
 		},
-		copyServerLogs: (text) =>
-			invokeConnection(CONNECTION_COPY_LOGS_CHANNEL, "server-log copy", text),
+		copyWorkerLogs: (text) =>
+			invokeConnection(CONNECTION_COPY_LOGS_CHANNEL, "worker-log copy", text),
 		getLogs: async () => {
 			const result: unknown = await ipcRenderer.invoke(CONNECTION_LOGS_CHANNEL);
-			if (!isServerLogsResult(result)) {
-				throw new Error("Kastard returned an invalid server-logs result.");
+			if (!isWorkerLogsResult(result)) {
+				throw new Error("Kastard returned an invalid worker-logs result.");
 			}
 			return result;
 		},

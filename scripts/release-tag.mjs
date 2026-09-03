@@ -48,7 +48,7 @@ export function resolveReleaseTag(
 		return tag;
 	}
 
-	const { buildNumber } = readPackage(root, "apps/server/package.json");
+	const { buildNumber } = readPackage(root, "apps/worker/package.json");
 	const tag =
 		channel === "preview"
 			? `worker-preview.${buildNumber}`

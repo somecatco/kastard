@@ -1,7 +1,7 @@
 import { useLayoutEffect } from "react";
 import type {
 	ConnectionState,
-	ServerLogsResult,
+	WorkerLogsResult,
 	WorkerSessionState,
 } from "../../../shared/api";
 import { createDesktopApiMock, type DesktopApiMock } from "../desktop-api-mock";
@@ -13,7 +13,7 @@ let activeStoryId: string | undefined;
 function installStoryDesktopApiMock(): void {
 	storyDesktopApiMock = createDesktopApiMock();
 	storyDesktopApiMock.api.workerSession.retry = async () => ({ ok: true });
-	storyDesktopApiMock.api.connection.copyServerLogs = async () => ({ ok: true });
+	storyDesktopApiMock.api.connection.copyWorkerLogs = async () => ({ ok: true });
 	(globalThis as typeof globalThis & { kastard: DesktopApiMock["api"] }).kastard =
 		storyDesktopApiMock.api;
 }
@@ -57,8 +57,8 @@ export function useConfigureStoryWorker(
 	);
 }
 
-export function configureStoryServerLogs(result: ServerLogsResult): void {
-	storyDesktopApiMock.setServerLogsResult(result);
+export function configureStoryWorkerLogs(result: WorkerLogsResult): void {
+	storyDesktopApiMock.setWorkerLogsResult(result);
 }
 
 installStoryDesktopApiMock();

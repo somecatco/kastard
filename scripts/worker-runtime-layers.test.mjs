@@ -65,9 +65,9 @@ function createRoot() {
 }
 
 function writeRuntimeImageInputs(root) {
-	mkdirSync(join(root, "apps/server"), { recursive: true });
+	mkdirSync(join(root, "apps/worker"), { recursive: true });
 	mkdirSync(join(root, "scripts"), { recursive: true });
-	writeFileSync(join(root, "apps/server/Dockerfile.runtime"), "FROM fixture\n");
+	writeFileSync(join(root, "apps/worker/Dockerfile.runtime"), "FROM fixture\n");
 	writeFileSync(join(root, "scripts/verify-worker-runtime.py"), "# fixture\n");
 	for (const profile of ["cu128", "cu130"]) {
 		writeFileSync(

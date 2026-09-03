@@ -10,7 +10,7 @@ import {
 	type WorkflowResultFile,
 	type WorkflowResultManifest,
 } from "@kastard/common";
-import type { ServerLogStore } from "./server-log";
+import type { WorkerLogStore } from "./worker-log";
 import { WorkflowEventHub } from "./workflow-events";
 import {
 	type WorkflowInputManifestEntry,
@@ -61,7 +61,7 @@ type WorkflowJobOptions = {
 	getRootDirectory?: () => string | null;
 	getRuntimeUrl: () => string | null;
 	getRuntimeGeneration?: () => number | null;
-	logs: ServerLogStore;
+	logs: WorkerLogStore;
 	requestFetch?: typeof fetch;
 	pollMs?: number;
 	events?: WorkflowEventHub;

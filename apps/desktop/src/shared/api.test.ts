@@ -75,14 +75,14 @@ test("requires a provider in Worker connection requests and states", () => {
 	expect(
 		isConnectionRequest({
 			provider: "runpod",
-			serverUrl: "203.0.113.10:22001",
+			workerAddress: "203.0.113.10:22001",
 			authenticationCode: "ABCD-EFGH-JKLM-NPQR",
 			syncAfterConnect: true,
 		}),
 	).toBe(true);
 	expect(
 		isConnectionRequest({
-			serverUrl: "203.0.113.10:22001",
+			workerAddress: "203.0.113.10:22001",
 			authenticationCode: "ABCD-EFGH-JKLM-NPQR",
 			syncAfterConnect: true,
 		}),
@@ -91,21 +91,21 @@ test("requires a provider in Worker connection requests and states", () => {
 		isConnectionState({
 			status: "disconnected",
 			recentProvider: "vastai",
-			recentServerUrl: "http://203.0.113.10:34220",
+			recentWorkerAddress: "http://203.0.113.10:34220",
 		}),
 	).toBe(true);
 	expect(
 		isConnectionState({
 			status: "disconnected",
 			recentProvider: null,
-			recentServerUrl: "https://worker.example.com",
+			recentWorkerAddress: "https://worker.example.com",
 		}),
 	).toBe(false);
 	expect(
 		isConnectionState({
 			status: "connected",
 			provider: "unsupported",
-			serverUrl: "https://worker.example.com",
+			workerAddress: "https://worker.example.com",
 			connectedAt: 1,
 		}),
 	).toBe(false);
@@ -113,7 +113,7 @@ test("requires a provider in Worker connection requests and states", () => {
 		isConnectionState({
 			status: "connected",
 			provider: "other",
-			serverUrl: "https://worker.example.com",
+			workerAddress: "https://worker.example.com",
 			connectedAt: 1,
 			worker: {
 				buildNumber: "15",
@@ -127,7 +127,7 @@ test("requires a provider in Worker connection requests and states", () => {
 		isConnectionState({
 			status: "connected",
 			provider: "other",
-			serverUrl: "https://worker.example.com",
+			workerAddress: "https://worker.example.com",
 			connectedAt: 1,
 			worker: {
 				buildNumber: "15",
@@ -192,7 +192,7 @@ test("accepts an unavailable backend without a retryable field", () => {
 			connection: {
 				status: "connected",
 				provider: "other",
-				serverUrl: "https://kastard.example.com",
+				workerAddress: "https://kastard.example.com",
 				connectedAt: 1_787_073_600_000,
 			},
 			systemMetrics: { status: "unavailable", error: "Metrics unavailable." },
@@ -210,7 +210,7 @@ test("accepts an unavailable backend without a retryable field", () => {
 				id: "019d2a56-3c30-7000-8000-000000000001",
 				phase: "reconciling",
 				cancellation: "unconfirmed",
-				workerUrl: "https://kastard.example.com",
+				workerAddress: "https://kastard.example.com",
 				lastConfirmedStatus: "running",
 				lastConfirmedAt: 1_787_073_600_000,
 			},
@@ -223,7 +223,7 @@ test("validates revisioned Worker session snapshots and changes", () => {
 		connection: {
 			status: "disconnected" as const,
 			recentProvider: null,
-			recentServerUrl: null,
+			recentWorkerAddress: null,
 		},
 		systemMetrics: { status: "disconnected" as const },
 		backend: {
@@ -261,7 +261,7 @@ test("requires a valid connection timestamp for connected sessions", () => {
 		connection: {
 			status: "connected",
 			provider: "other",
-			serverUrl: "https://kastard.example.com",
+			workerAddress: "https://kastard.example.com",
 			connectedAt: 1_787_073_600_000,
 		},
 		systemMetrics: { status: "disconnected" },
@@ -291,7 +291,7 @@ test("requires a valid connection timestamp for connected sessions", () => {
 			...session,
 			connection: {
 				status: session.connection.status,
-				serverUrl: session.connection.serverUrl,
+				workerAddress: session.connection.workerAddress,
 			},
 		}),
 	).toBe(false);
@@ -302,7 +302,7 @@ test("requires system metrics as an independent Worker session state", () => {
 		connection: {
 			status: "disconnected",
 			recentProvider: null,
-			recentServerUrl: null,
+			recentWorkerAddress: null,
 		},
 		backend: { status: "disconnected", editorComfyVersion: "0.33.1" },
 		comfy: { status: "disconnected" },

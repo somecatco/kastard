@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 import { expect, test, vi } from "vitest";
-import type { CustomNodeSyncServerState } from "../../../shared/api";
+import type { CustomNodeSyncState } from "../../../shared/api";
 import type { CustomNodeSyncPlan } from "../sync-plan";
 import {
 	CUSTOM_NODE_TARGET,
@@ -9,10 +9,10 @@ import {
 	currentCustomNodeState,
 	deferred,
 	initializeAndConnect,
-	SERVER_URL,
 	type SessionOptions,
 	STALE_CUSTOM_NODE_TARGET,
 	verification,
+	WORKER_ADDRESS,
 } from "./test-harness";
 
 test("invalidates Worker verification after the Editor Manager selection changes", async () => {
@@ -657,7 +657,7 @@ test("projects an idle Worker inventory as the current Editor target", async () 
 test("waits for Manager target cancellation before starting a new custom-node sync", async () => {
 	const canceled = deferred<{
 		ok: true;
-		state: CustomNodeSyncServerState;
+		state: CustomNodeSyncState;
 	}>();
 	const readCustomNodes = vi.fn().mockResolvedValue({
 		ok: true,
@@ -701,7 +701,7 @@ test("waits for Manager target cancellation before starting a new custom-node sy
 test("cancels a stale Worker custom-node sync before automatic setup", async () => {
 	const canceled = deferred<{
 		ok: true;
-		state: CustomNodeSyncServerState;
+		state: CustomNodeSyncState;
 	}>();
 	const readCustomNodes = vi.fn().mockResolvedValue({
 		ok: true,
@@ -726,7 +726,7 @@ test("cancels a stale Worker custom-node sync before automatic setup", async () 
 	expect(
 		await session.connect({
 			provider: "other",
-			serverUrl: SERVER_URL,
+			workerAddress: WORKER_ADDRESS,
 			authenticationCode: "ABCD-EFGH-JKLM-NPQR",
 			syncAfterConnect: true,
 		}),
@@ -749,7 +749,7 @@ test("cancels a stale Worker custom-node sync before automatic setup", async () 
 test("keeps Manager target cancellation active when setup starts", async () => {
 	const canceled = deferred<{
 		ok: true;
-		state: CustomNodeSyncServerState;
+		state: CustomNodeSyncState;
 	}>();
 	const readCustomNodes = vi.fn().mockResolvedValue({
 		ok: true,
@@ -792,7 +792,7 @@ test("keeps Manager target cancellation active when setup starts", async () => {
 test("keeps Manager target cancellation active across repeated Manager changes", async () => {
 	const canceled = deferred<{
 		ok: true;
-		state: CustomNodeSyncServerState;
+		state: CustomNodeSyncState;
 	}>();
 	const readCustomNodes = vi.fn().mockResolvedValue({
 		ok: true,
@@ -838,7 +838,7 @@ test("keeps manual cancellation tied to its operation across a Manager change", 
 	let managerVersion = "4.2.2";
 	const canceled = deferred<{
 		ok: true;
-		state: CustomNodeSyncServerState;
+		state: CustomNodeSyncState;
 	}>();
 	const cancelCustomNodes = vi.fn().mockReturnValue(canceled.promise);
 	const { session, options } = createHarness(
@@ -900,7 +900,7 @@ test("resynchronizes a stale custom-node target while Worker ComfyUI is ready", 
 	expect(
 		await session.connect({
 			provider: "other",
-			serverUrl: SERVER_URL,
+			workerAddress: WORKER_ADDRESS,
 			authenticationCode: "ABCD-EFGH-JKLM-NPQR",
 			syncAfterConnect: true,
 		}),

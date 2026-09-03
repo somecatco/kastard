@@ -19,20 +19,20 @@ export type StoryWorkerScenario = {
 export const disconnectedConnection = {
 	status: "disconnected",
 	recentProvider: null,
-	recentServerUrl: null,
+	recentWorkerAddress: null,
 } satisfies ConnectionState;
 
 export const connectedConnection = {
 	status: "connected",
 	provider: "other",
-	serverUrl: "worker.example.com:22001",
+	workerAddress: "worker.example.com:22001",
 	connectedAt: Date.now(),
 } satisfies ConnectionState;
 
 export const offlineConnection = {
 	status: "offline",
 	provider: "other",
-	serverUrl: "https://kastard.example.com",
+	workerAddress: "https://kastard.example.com",
 	message: "Worker is unreachable.",
 } satisfies ConnectionState;
 

@@ -6,7 +6,7 @@ services:
     platform: linux/arm64
     build:
       context: .
-      dockerfile: apps/server/Dockerfile.cpu
+      dockerfile: apps/worker/Dockerfile.cpu
     environment:
       CIVITAI_TOKEN: ${CIVITAI_TOKEN:-}
       HF_TOKEN: ${HF_TOKEN:-}

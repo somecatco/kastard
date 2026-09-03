@@ -1,5 +1,5 @@
 {
-	"name": "@kastard/server",
+	"name": "@kastard/worker",
 	"version": "0.0.0",
 	"buildNumber": "18",
 	"private": true,

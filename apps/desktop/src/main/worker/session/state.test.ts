@@ -87,7 +87,7 @@ function initialState(): WorkerSessionState {
 		connection: {
 			status: "disconnected",
 			recentProvider: null,
-			recentServerUrl: null,
+			recentWorkerAddress: null,
 		},
 		systemMetrics: { status: "disconnected" },
 		backend: { status: "disconnected", editorComfyVersion: "0.33.1" },

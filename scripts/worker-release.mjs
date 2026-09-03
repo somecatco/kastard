@@ -10,7 +10,7 @@ const PRODUCTION_TAG_PATTERN = /^worker-v(\d+\.\d+\.\d+)(?:-([1-9]\d*))?$/;
 const VERSION_PATTERN = /^\d+\.\d+\.\d+$/;
 
 function readWorkerPackage(root) {
-	const path = join(root, "apps/server/package.json");
+	const path = join(root, "apps/worker/package.json");
 	let packageJson;
 	try {
 		packageJson = JSON.parse(readFileSync(path, "utf8"));
@@ -21,7 +21,7 @@ function readWorkerPackage(root) {
 	const { buildNumber, version: packageVersion } = packageJson;
 	if (typeof packageVersion !== "string" || !VERSION_PATTERN.test(packageVersion)) {
 		throw new Error(
-			"apps/server/package.json must contain a technical semantic version.",
+			"apps/worker/package.json must contain a technical semantic version.",
 		);
 	}
 	if (
@@ -30,7 +30,7 @@ function readWorkerPackage(root) {
 		!Number.isSafeInteger(Number(buildNumber))
 	) {
 		throw new Error(
-			"apps/server/package.json must contain a safe positive integer buildNumber.",
+			"apps/worker/package.json must contain a safe positive integer buildNumber.",
 		);
 	}
 

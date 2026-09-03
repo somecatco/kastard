@@ -113,8 +113,6 @@ export type CustomNodeSyncState =
 			error: string;
 	  });
 
-export type CustomNodeSyncServerState = CustomNodeSyncState;
-
 export type GitCustomNodeState = {
 	id: string;
 	repository: string;
@@ -201,9 +199,7 @@ export function parseCustomNodeRemovalRequest(
 	};
 }
 
-export function parseCustomNodeSyncServerState(
-	value: unknown,
-): CustomNodeSyncServerState | null {
+export function parseCustomNodeSyncState(value: unknown): CustomNodeSyncState | null {
 	if (!isRecord(value) || value.contractVersion !== CUSTOM_NODE_SYNC_CONTRACT_VERSION) {
 		return null;
 	}
@@ -301,13 +297,11 @@ function isOptionalCustomNodeSyncOperationKind(
 	);
 }
 
-export function isCustomNodeSyncServerState(
-	value: unknown,
-): value is CustomNodeSyncServerState {
+export function isCustomNodeSyncState(value: unknown): value is CustomNodeSyncState {
 	return (
 		isRecord(value) &&
 		value.contractVersion === CUSTOM_NODE_SYNC_CONTRACT_VERSION &&
-		parseCustomNodeSyncServerState(value) !== null
+		parseCustomNodeSyncState(value) !== null
 	);
 }
 

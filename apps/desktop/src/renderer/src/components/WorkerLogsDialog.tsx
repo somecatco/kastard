@@ -8,9 +8,9 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
-import type { ServerLogEntry } from "../../../shared/api";
+import type { WorkerLogEntry } from "../../../shared/api";
 
-export const SERVER_LOG_POLL_MS = 1_000;
+export const WORKER_LOG_POLL_MS = 1_000;
 
 const timestampFormatter = new Intl.DateTimeFormat(undefined, {
 	year: "numeric",
@@ -21,7 +21,7 @@ const timestampFormatter = new Intl.DateTimeFormat(undefined, {
 	second: "2-digit",
 });
 
-const levelClassNames: Record<ServerLogEntry["level"], string> = {
+const levelClassNames: Record<WorkerLogEntry["level"], string> = {
 	info: "font-semibold text-info",
 	warning: "font-semibold text-warning",
 	error: "font-semibold text-destructive",
@@ -31,14 +31,14 @@ type CopyState =
 	| { status: "idle" | "copying" }
 	| { status: "success" | "error"; message: string };
 
-export function ServerLogsDialog({
+export function WorkerLogsDialog({
 	open,
 	onOpenChange,
 }: {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 }): React.JSX.Element {
-	const [logs, setLogs] = useState<ServerLogEntry[]>([]);
+	const [logs, setLogs] = useState<WorkerLogEntry[]>([]);
 	const [loading, setLoading] = useState(false);
 	const [truncated, setTruncated] = useState(false);
 	const [error, setError] = useState<string | null>(null);
@@ -76,7 +76,7 @@ export function ServerLogsDialog({
 			} finally {
 				if (active) {
 					setLoading(false);
-					timer = window.setTimeout(() => void poll(), SERVER_LOG_POLL_MS);
+					timer = window.setTimeout(() => void poll(), WORKER_LOG_POLL_MS);
 				}
 			}
 		};
@@ -100,8 +100,8 @@ export function ServerLogsDialog({
 		const operation = ++copyOperation.current;
 		setCopyState({ status: "copying" });
 		try {
-			const result = await window.kastard.connection.copyServerLogs(
-				formatServerLogs(logs),
+			const result = await window.kastard.connection.copyWorkerLogs(
+				formatWorkerLogs(logs),
 			);
 			if (operation !== copyOperation.current) return;
 			setCopyState(
@@ -155,7 +155,7 @@ export function ServerLogsDialog({
 				) : null}
 				<div
 					ref={scrollArea}
-					data-testid="server-log-list"
+					data-testid="worker-log-list"
 					className="h-80 overflow-y-auto rounded-lg border bg-background/60 p-3 font-mono text-xs"
 					role="log"
 					aria-busy={loading}
@@ -230,7 +230,7 @@ function formatTimestamp(timestamp: string): string {
 	return Number.isNaN(date.getTime()) ? timestamp : timestampFormatter.format(date);
 }
 
-function formatServerLogs(logs: ServerLogEntry[]): string {
+function formatWorkerLogs(logs: WorkerLogEntry[]): string {
 	return logs
 		.map(
 			(entry) =>

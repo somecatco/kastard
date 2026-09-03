@@ -4,14 +4,14 @@ import { expect, test, vi } from "vitest";
 import type {
 	ModelSyncFileState,
 	ModelSyncRequest,
-	ModelSyncServerState,
+	ModelSyncState,
 	ModelSyncTarget,
 } from "../../../shared/api";
 import {
 	createHarness,
 	initializeAndConnect,
 	type SessionOptions,
-	WORKER_ENDPOINT,
+	WORKER_API_URL,
 } from "./test-harness";
 
 const FIRST_MODEL = modelTarget("first", "huggingface");
@@ -203,7 +203,7 @@ test("force redownload sends only the selected model credential and merges its r
 		},
 	});
 	expect(redownloadModel).toHaveBeenCalledWith(
-		expect.objectContaining({ serverUrl: WORKER_ENDPOINT }),
+		expect.objectContaining({ workerApiUrl: WORKER_API_URL }),
 		{
 			models: [FIRST_MODEL],
 			credentials: { huggingface: "huggingface-token" },
@@ -355,7 +355,7 @@ test("cancels a stale model operation by its exact operation id", async () => {
 	session.refreshEditorModelTarget();
 	await vi.waitFor(() => expect(cancelModels).toHaveBeenCalledOnce());
 	expect(cancelModels).toHaveBeenCalledWith(
-		expect.objectContaining({ serverUrl: WORKER_ENDPOINT }),
+		expect.objectContaining({ workerApiUrl: WORKER_API_URL }),
 		"model-operation",
 		expect.any(Function),
 	);
@@ -381,7 +381,7 @@ function modelTarget(
 	};
 }
 
-function idleModelState(): ModelSyncServerState {
+function idleModelState(): ModelSyncState {
 	return {
 		contractVersion: 2,
 		capabilities: { forceRedownload: true },
@@ -410,7 +410,7 @@ function modelOperationState(
 		[key: string]: unknown;
 	},
 	snapshot: ModelSyncFileState[],
-): ModelSyncServerState {
+): ModelSyncState {
 	return {
 		...state,
 		contractVersion: 2,
@@ -419,5 +419,5 @@ function modelOperationState(
 		operationId: "model-operation",
 		operationKind: kind,
 		modelSnapshot: { models: snapshot },
-	} as ModelSyncServerState;
+	} as ModelSyncState;
 }

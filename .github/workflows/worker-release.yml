@@ -136,5 +136,5 @@ jobs:
           KASTARD_SOURCE_REVISION: ${{ needs.prepare.outputs.source_revision }}
           WORKER_CHANNEL: ${{ needs.prepare.outputs.channel }}
         run: |
-          bun apps/server/scripts/runpod-worker-templates.ts "--${WORKER_CHANNEL}"
-          bun apps/server/scripts/vastai-worker-templates.ts "--${WORKER_CHANNEL}"
+          bun apps/worker/scripts/runpod-worker-templates.ts "--${WORKER_CHANNEL}"
+          bun apps/worker/scripts/vastai-worker-templates.ts "--${WORKER_CHANNEL}"

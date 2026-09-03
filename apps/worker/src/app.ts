@@ -8,7 +8,7 @@ import {
 } from "@kastard/common";
 import { Hono } from "hono";
 import { secureHeaders } from "hono/secure-headers";
-import serverPackage from "../package.json" with { type: "json" };
+import workerPackage from "../package.json" with { type: "json" };
 import {
 	type BackendProvisionerApi,
 	BackendProvisionerUnavailableError,
@@ -29,9 +29,9 @@ import {
 	ModelProvisionerUnavailableError,
 	ModelSyncError,
 } from "./model-provisioner";
-import { ServerLogStore } from "./server-log";
 import { SyncVerificationError, verifySynchronization } from "./sync-verification";
 import type { SystemStatusApi } from "./system-status";
+import { WorkerLogStore } from "./worker-log";
 import { type WorkflowJobApi, WorkflowJobError } from "./workflow-job";
 
 const COMFY_RUNTIME_SYNC_CONFLICT =
@@ -44,7 +44,7 @@ export function readWorkerIdentity(
 	if (!isReleaseChannel(channel)) {
 		throw new Error(`Invalid KASTARD_CHANNEL: ${channel}.`);
 	}
-	const buildNumber = serverPackage.buildNumber;
+	const buildNumber = workerPackage.buildNumber;
 	if (channel === "development") {
 		return { buildNumber, channel, productVersion: null, sourceRevision: null };
 	}
@@ -66,8 +66,8 @@ export function readWorkerIdentity(
 	return { buildNumber, channel, productVersion, sourceRevision };
 }
 
-export function createServerApp(
-	serverLogs = new ServerLogStore(),
+export function createWorkerApp(
+	workerLogs = new WorkerLogStore(),
 	backendProvisioner?: BackendProvisionerApi,
 	customNodeProvisioner?: CustomNodeProvisionerApi,
 	modelProvisioner?: ModelProvisionerApi,
@@ -99,8 +99,8 @@ export function createServerApp(
 		return context.json(systemStatus.getState());
 	});
 	app.post("/connection", (context) => {
-		const logCursor = serverLogs.getCursor();
-		serverLogs.write("info", "Editor connected.");
+		const logCursor = workerLogs.getCursor();
+		workerLogs.write("info", "Editor connected.");
 		return context.json({
 			status: "connected",
 			logCursor,
@@ -110,12 +110,12 @@ export function createServerApp(
 	app.get("/logs", (context) => {
 		const cursor = context.req.query("after");
 		if (cursor === undefined) {
-			return context.json({ error: "A server log cursor is required." }, 400);
+			return context.json({ error: "A Worker log cursor is required." }, 400);
 		}
 		try {
-			return context.json(serverLogs.readAfter(cursor));
+			return context.json(workerLogs.readAfter(cursor));
 		} catch {
-			return context.json({ error: "Invalid server log cursor." }, 400);
+			return context.json({ error: "Invalid Worker log cursor." }, 400);
 		}
 	});
 	app.get("/comfyui", (context) => {
@@ -672,9 +672,9 @@ export function createServerApp(
 		if (error instanceof ComfyRuntimeUnavailableError) {
 			return context.json({ error: error.message, retryable: error.retryable }, 503);
 		}
-		serverLogs.write("error", "A server request failed.");
-		console.error("Kastard server request failed:", error);
-		return context.json({ error: "Internal server error." }, 500);
+		workerLogs.write("error", "A Worker request failed.");
+		console.error("Kastard Worker request failed:", error);
+		return context.json({ error: "Internal Worker error." }, 500);
 	});
 	return app;
 }

@@ -57,7 +57,7 @@ type Logger = Pick<typeof console, "info" | "error">;
 export function parseArguments(args: string[]): WorkerTemplateChannel {
 	return parseWorkerImageArguments(
 		args,
-		"apps/server/scripts/vastai-worker-templates.ts",
+		"apps/worker/scripts/vastai-worker-templates.ts",
 	);
 }
 

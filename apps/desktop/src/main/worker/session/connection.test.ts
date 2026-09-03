@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 import { expect, test, vi } from "vitest";
-import type { ConnectionAttemptResult, ServerCredential } from "../client";
+import type { ConnectionAttemptResult, WorkerSessionCredential } from "../client";
 import {
 	createHarness,
 	currentCustomNodeState,
@@ -11,13 +11,13 @@ import {
 	initializeAndConnect,
 	inputlessPrompt,
 	runtime,
-	SECOND_SERVER_URL,
-	SERVER_URL,
+	SECOND_WORKER_ADDRESS,
 	SESSION_CAPABILITY,
 	type SessionOptions,
 	syncingModelState,
 	systemMetrics,
-	WORKER_ENDPOINT,
+	WORKER_ADDRESS,
+	WORKER_API_URL,
 	workerTunnel,
 } from "./test-harness";
 
@@ -50,7 +50,7 @@ test("refreshes Worker resources after the connection becomes connected", async 
 	expect(
 		await harness.session.connect({
 			provider: "other",
-			serverUrl: SERVER_URL,
+			workerAddress: WORKER_ADDRESS,
 			authenticationCode: "ABCD-EFGH-JKLM-NPQR",
 			syncAfterConnect: false,
 		}),
@@ -59,7 +59,7 @@ test("refreshes Worker resources after the connection becomes connected", async 
 	expect(new Set(observedConnectionStatuses)).toEqual(new Set(["connected"]));
 	expect(harness.store.save).toHaveBeenCalledWith({
 		recentProvider: "other",
-		recentServerUrl: SERVER_URL,
+		recentWorkerAddress: WORKER_ADDRESS,
 		syncAfterConnect: false,
 		systemMetricsEnabled: true,
 	});
@@ -67,7 +67,7 @@ test("refreshes Worker resources after the connection becomes connected", async 
 });
 
 test("requests the same authentication code after the encrypted session ends", async () => {
-	const tunnel = workerTunnel(SERVER_URL);
+	const tunnel = workerTunnel(WORKER_ADDRESS);
 	const { session } = createHarness({
 		connect: vi.fn().mockResolvedValue({
 			ok: true,
@@ -82,7 +82,7 @@ test("requests the same authentication code after the encrypted session ends", a
 		expect(session.getState().connection).toEqual({
 			status: "offline",
 			provider: "other",
-			serverUrl: SERVER_URL,
+			workerAddress: WORKER_ADDRESS,
 			message:
 				"The encrypted Worker session ended. Reconnect with the same authentication code while this Worker is running.",
 			reconnectRequired: true,
@@ -92,7 +92,7 @@ test("requests the same authentication code after the encrypted session ends", a
 });
 
 test("does not connect when the tunnel closed before its listener was registered", async () => {
-	const tunnel = workerTunnel(SERVER_URL);
+	const tunnel = workerTunnel(WORKER_ADDRESS);
 	tunnel.emitClose();
 	const { session } = createHarness({
 		connect: vi.fn().mockResolvedValue({
@@ -106,7 +106,7 @@ test("does not connect when the tunnel closed before its listener was registered
 	expect(
 		await session.connect({
 			provider: "other",
-			serverUrl: SERVER_URL,
+			workerAddress: WORKER_ADDRESS,
 			authenticationCode: "ABCD-EFGH-JKLM-NPQR",
 			syncAfterConnect: false,
 		}),
@@ -160,7 +160,7 @@ test("rejects workflows until Worker ComfyUI becomes ready", async () => {
 	expect(
 		await session.connect({
 			provider: "other",
-			serverUrl: SERVER_URL,
+			workerAddress: WORKER_ADDRESS,
 			authenticationCode: "ABCD-EFGH-JKLM-NPQR",
 			syncAfterConnect: false,
 		}),
@@ -346,7 +346,7 @@ test("waits for retrying workflow input cleanup when stopping", async () => {
 	const discarded = deferred<void>();
 	const cleanupInputs = vi.fn(async (_jobId: string) => undefined);
 	const discardInputs = vi.fn(
-		(_credential: ServerCredential, _jobId: string) => discarded.promise,
+		(_credential: WorkerSessionCredential, _jobId: string) => discarded.promise,
 	);
 	const start = vi.fn(async () => ({
 		outcome: "rejected" as const,
@@ -372,7 +372,10 @@ test("waits for retrying workflow input cleanup when stopping", async () => {
 	});
 	await vi.waitFor(() =>
 		expect(discardInputs).toHaveBeenCalledWith(
-			expect.objectContaining({ serverUrl: WORKER_ENDPOINT, workerUrl: SERVER_URL }),
+			expect.objectContaining({
+				workerApiUrl: WORKER_API_URL,
+				workerAddress: WORKER_ADDRESS,
+			}),
 			workflow.id,
 		),
 	);
@@ -415,7 +418,7 @@ test("keeps current on its original Worker while a replacement Worker owns later
 	expect(
 		await session.connect({
 			provider: "other",
-			serverUrl: SECOND_SERVER_URL,
+			workerAddress: SECOND_WORKER_ADDRESS,
 			authenticationCode: "ABCD-EFGH-JKLM-NPQR",
 			syncAfterConnect: false,
 		}),
@@ -426,8 +429,8 @@ test("keeps current on its original Worker while a replacement Worker owns later
 	});
 	await vi.waitFor(() => expect(terminal).toHaveBeenCalledOnce());
 	expect(read.mock.calls[0]?.[0]).toMatchObject({
-		serverUrl: WORKER_ENDPOINT,
-		workerUrl: SERVER_URL,
+		workerApiUrl: WORKER_API_URL,
+		workerAddress: WORKER_ADDRESS,
 	});
 	expect(session.getWorkflowQueue()).toMatchObject({
 		running: [],
@@ -438,8 +441,8 @@ test("keeps current on its original Worker while a replacement Worker owns later
 	expect(session.startSetup()).toEqual({ ok: true });
 	await vi.waitFor(() => expect(start).toHaveBeenCalledTimes(2));
 	expect(start.mock.calls[1]?.[0]).toMatchObject({
-		serverUrl: WORKER_ENDPOINT,
-		workerUrl: SECOND_SERVER_URL,
+		workerApiUrl: WORKER_API_URL,
+		workerAddress: SECOND_WORKER_ADDRESS,
 	});
 	await vi.waitFor(() =>
 		expect(session.getWorkflowQueue()).toEqual({ running: [], pending: [] }),
@@ -476,7 +479,7 @@ test("keeps an unconfirmed cancellation visible after disconnect", async () => {
 		expect(session.getState().workflow).toMatchObject({
 			id: workflow.id,
 			phase: "running",
-			workerUrl: SERVER_URL,
+			workerAddress: WORKER_ADDRESS,
 		}),
 	);
 	expect(session.cancelCurrentWorkflow()).toBe(workflow.id);
@@ -492,12 +495,12 @@ test("keeps an unconfirmed cancellation visible after disconnect", async () => {
 		connection: {
 			status: "disconnected",
 			recentProvider: "other",
-			recentServerUrl: SERVER_URL,
+			recentWorkerAddress: WORKER_ADDRESS,
 		},
 		workflow: {
 			id: workflow.id,
 			cancellation: "unconfirmed",
-			workerUrl: SERVER_URL,
+			workerAddress: WORKER_ADDRESS,
 		},
 	});
 	await session.stop();
@@ -599,7 +602,7 @@ test("initialization restores only the recent Worker address without auto-connec
 	const { session, store, options } = createHarness();
 	store.load.mockResolvedValue({
 		recentProvider: "runpod",
-		recentServerUrl: SERVER_URL,
+		recentWorkerAddress: WORKER_ADDRESS,
 		syncAfterConnect: true,
 	});
 
@@ -608,7 +611,7 @@ test("initialization restores only the recent Worker address without auto-connec
 		connection: {
 			status: "disconnected",
 			recentProvider: "runpod",
-			recentServerUrl: SERVER_URL,
+			recentWorkerAddress: WORKER_ADDRESS,
 		},
 		setup: { status: "idle" },
 	});
@@ -619,13 +622,13 @@ test("initialization restores only the recent Worker address without auto-connec
 test("keeps the latest initialization when an older preference load finishes late", async () => {
 	const firstLoad = deferred<{
 		recentProvider: "runpod" | "vastai";
-		recentServerUrl: string;
+		recentWorkerAddress: string;
 		syncAfterConnect: boolean;
 	}>();
 	const { session, store } = createHarness();
 	store.load.mockReset().mockReturnValueOnce(firstLoad.promise).mockResolvedValueOnce({
 		recentProvider: "vastai",
-		recentServerUrl: SECOND_SERVER_URL,
+		recentWorkerAddress: SECOND_WORKER_ADDRESS,
 		syncAfterConnect: false,
 	});
 
@@ -639,14 +642,14 @@ test("keeps the latest initialization when an older preference load finishes lat
 
 	firstLoad.resolve({
 		recentProvider: "runpod",
-		recentServerUrl: SERVER_URL,
+		recentWorkerAddress: WORKER_ADDRESS,
 		syncAfterConnect: true,
 	});
 	await new Promise((resolve) => setTimeout(resolve, 0));
 	expect(session.getState().connection).toEqual({
 		status: "disconnected",
 		recentProvider: "vastai",
-		recentServerUrl: SECOND_SERVER_URL,
+		recentWorkerAddress: SECOND_WORKER_ADDRESS,
 	});
 	await session.stop();
 });
@@ -684,9 +687,9 @@ test("polls system metrics independently from Worker readiness", async () => {
 	expect(readSystemMetrics).toHaveBeenNthCalledWith(
 		1,
 		{
-			serverUrl: WORKER_ENDPOINT,
+			workerApiUrl: WORKER_API_URL,
 			sessionCapability: SESSION_CAPABILITY,
-			workerUrl: SERVER_URL,
+			workerAddress: WORKER_ADDRESS,
 		},
 		expect.any(Function),
 	);
@@ -694,7 +697,7 @@ test("polls system metrics independently from Worker readiness", async () => {
 	failed.resolve({ ok: false, error: "Metrics temporarily unavailable." });
 	await vi.waitFor(() =>
 		expect(session.getState()).toMatchObject({
-			connection: { status: "connected", serverUrl: SERVER_URL },
+			connection: { status: "connected", workerAddress: WORKER_ADDRESS },
 			systemMetrics: {
 				status: "unavailable",
 				error: "Metrics temporarily unavailable.",
@@ -729,7 +732,7 @@ test("does not poll system metrics when the saved setting is disabled", async ()
 	const { session, store } = createHarness({ readSystemMetrics });
 	store.load.mockResolvedValue({
 		recentProvider: null,
-		recentServerUrl: null,
+		recentWorkerAddress: null,
 		syncAfterConnect: true,
 		systemMetricsEnabled: false,
 	});
@@ -842,7 +845,7 @@ test("discards system metrics returned by a replaced Worker", async () => {
 	expect(
 		await session.connect({
 			provider: "other",
-			serverUrl: SECOND_SERVER_URL,
+			workerAddress: SECOND_WORKER_ADDRESS,
 			authenticationCode: "ABCD-EFGH-JKLM-NPQR",
 			syncAfterConnect: false,
 		}),
@@ -866,7 +869,7 @@ test("discards system metrics returned by a replaced Worker", async () => {
 	await firstMetrics.promise;
 	await new Promise((resolve) => setTimeout(resolve, 0));
 	expect(session.getState()).toMatchObject({
-		connection: { status: "connected", serverUrl: SECOND_SERVER_URL },
+		connection: { status: "connected", workerAddress: SECOND_WORKER_ADDRESS },
 		systemMetrics: {
 			status: "available",
 			metrics: { cpu: { usagePercent: 24 } },
@@ -918,10 +921,10 @@ test("does not replace active Worker work after a successful connection recheck"
 test("clears stale Worker identity when a connection recheck omits it", async () => {
 	const recheck = deferred<Awaited<ReturnType<NonNullable<SessionOptions["probe"]>>>>();
 	const { session, options } = createHarness({
-		connect: vi.fn().mockImplementation(async (serverUrl: string) => ({
+		connect: vi.fn().mockImplementation(async (workerAddress: string) => ({
 			ok: true as const,
 			logCursor: "cursor-1",
-			tunnel: workerTunnel(serverUrl),
+			tunnel: workerTunnel(workerAddress),
 			worker: previewWorker,
 		})),
 		probe: vi.fn().mockReturnValue(recheck.promise),
@@ -939,7 +942,7 @@ test("clears stale Worker identity when a connection recheck omits it", async ()
 		expect(session.getState().connection).toEqual({
 			status: "connected",
 			provider: "other",
-			serverUrl: SERVER_URL,
+			workerAddress: WORKER_ADDRESS,
 			connectedAt: expect.any(Number),
 		}),
 	);
@@ -1030,7 +1033,7 @@ test("allows setup after an automatic connection recovery", async () => {
 		recovery.resolve({ status: "connected" });
 		await vi.waitFor(() =>
 			expect(session.getState()).toMatchObject({
-				connection: { status: "connected", serverUrl: SERVER_URL },
+				connection: { status: "connected", workerAddress: WORKER_ADDRESS },
 				backend: { status: "ready" },
 				comfy: { status: "stopped" },
 				customNodes: { status: "idle" },
@@ -1064,7 +1067,7 @@ test("keeps a successful retry when an older health check finishes late", async 
 		expect(await session.retry()).toEqual({ ok: true });
 		expect(session.getState().connection).toMatchObject({
 			status: "connected",
-			serverUrl: SERVER_URL,
+			workerAddress: WORKER_ADDRESS,
 		});
 		olderCheck.resolve({ status: "offline", error: "Stale health result." });
 		await new Promise((resolve) => setTimeout(resolve, 0));
@@ -1168,27 +1171,27 @@ test("ignores work completed after the Worker session was replaced", async () =>
 
 	const firstConnection = session.connect({
 		provider: "other",
-		serverUrl: SERVER_URL,
+		workerAddress: WORKER_ADDRESS,
 		authenticationCode: "ABCD-EFGH-JKLM-NPQR",
 		syncAfterConnect: false,
 	});
 	const secondConnection = session.connect({
 		provider: "other",
-		serverUrl: SECOND_SERVER_URL,
+		workerAddress: SECOND_WORKER_ADDRESS,
 		authenticationCode: "ABCD-EFGH-JKLM-NPQR",
 		syncAfterConnect: false,
 	});
 	second.resolve({
 		ok: true,
 		logCursor: "second",
-		tunnel: workerTunnel(SECOND_SERVER_URL),
+		tunnel: workerTunnel(SECOND_WORKER_ADDRESS),
 		worker: productionWorker,
 	});
 	expect(await secondConnection).toEqual({ ok: true });
 	first.resolve({
 		ok: true,
 		logCursor: "first",
-		tunnel: workerTunnel(SERVER_URL),
+		tunnel: workerTunnel(WORKER_ADDRESS),
 		worker: {
 			buildNumber: "1",
 			channel: "preview",
@@ -1203,7 +1206,7 @@ test("ignores work completed after the Worker session was replaced", async () =>
 	expect(session.getState().connection).toEqual({
 		status: "connected",
 		provider: "other",
-		serverUrl: SECOND_SERVER_URL,
+		workerAddress: SECOND_WORKER_ADDRESS,
 		connectedAt: expect.any(Number),
 		worker: productionWorker,
 	});
@@ -1220,7 +1223,7 @@ test("settles an active connection request when the session stops", async () => 
 
 	const connection = session.connect({
 		provider: "other",
-		serverUrl: SERVER_URL,
+		workerAddress: WORKER_ADDRESS,
 		authenticationCode: "ABCD-EFGH-JKLM-NPQR",
 		syncAfterConnect: false,
 	});
@@ -1232,7 +1235,7 @@ test("settles an active connection request when the session stops", async () => 
 	pending.resolve({
 		ok: true,
 		logCursor: "late",
-		tunnel: workerTunnel(SERVER_URL),
+		tunnel: workerTunnel(WORKER_ADDRESS),
 	});
 });
 
@@ -1244,7 +1247,7 @@ test("replaces a completed connection result when disconnect wins before its rep
 	try {
 		const connection = session.connect({
 			provider: "other",
-			serverUrl: SERVER_URL,
+			workerAddress: WORKER_ADDRESS,
 			authenticationCode: "ABCD-EFGH-JKLM-NPQR",
 			syncAfterConnect: false,
 		});
@@ -1265,7 +1268,7 @@ test("replaces a completed connection result when disconnect wins before its rep
 
 test("closes a connected tunnel when disconnect wins during preference persistence", async () => {
 	const saved = deferred<void>();
-	const tunnel = workerTunnel(SERVER_URL);
+	const tunnel = workerTunnel(WORKER_ADDRESS);
 	const { session, store } = createHarness({
 		connect: vi.fn().mockResolvedValue({
 			ok: true,
@@ -1278,7 +1281,7 @@ test("closes a connected tunnel when disconnect wins during preference persisten
 
 	const connection = session.connect({
 		provider: "other",
-		serverUrl: SERVER_URL,
+		workerAddress: WORKER_ADDRESS,
 		authenticationCode: "ABCD-EFGH-JKLM-NPQR",
 		syncAfterConnect: false,
 	});
@@ -1302,7 +1305,7 @@ test("clears Worker-specific state while replacing an active connection", async 
 		.mockResolvedValueOnce({
 			ok: true,
 			logCursor: "first",
-			tunnel: workerTunnel(SERVER_URL),
+			tunnel: workerTunnel(WORKER_ADDRESS),
 		})
 		.mockReturnValueOnce(replacement.promise);
 	const { session } = createHarness({ connect });
@@ -1311,14 +1314,14 @@ test("clears Worker-specific state while replacing an active connection", async 
 	expect(session.startSetup()).toEqual({ ok: true });
 	await vi.waitFor(() => expect(session.getState().setup.status).toBe("succeeded"));
 	expect(session.getState()).toMatchObject({
-		connection: { status: "connected", serverUrl: SERVER_URL },
+		connection: { status: "connected", workerAddress: WORKER_ADDRESS },
 		comfy: { status: "ready" },
 		verification: { status: "synced" },
 	});
 
 	const result = session.connect({
 		provider: "other",
-		serverUrl: SECOND_SERVER_URL,
+		workerAddress: SECOND_WORKER_ADDRESS,
 		authenticationCode: "ABCD-EFGH-JKLM-NPQR",
 		syncAfterConnect: false,
 	});
@@ -1326,7 +1329,7 @@ test("clears Worker-specific state while replacing an active connection", async 
 		connection: {
 			status: "connecting",
 			provider: "other",
-			serverUrl: SECOND_SERVER_URL,
+			workerAddress: SECOND_WORKER_ADDRESS,
 		},
 		systemMetrics: { status: "disconnected" },
 		backend: { status: "disconnected", editorComfyVersion: "0.33.1" },
@@ -1343,7 +1346,7 @@ test("clears Worker-specific state while replacing an active connection", async 
 		connection: {
 			status: "disconnected",
 			recentProvider: "other",
-			recentServerUrl: SERVER_URL,
+			recentWorkerAddress: WORKER_ADDRESS,
 		},
 		systemMetrics: { status: "disconnected" },
 		backend: { status: "disconnected", editorComfyVersion: "0.33.1" },

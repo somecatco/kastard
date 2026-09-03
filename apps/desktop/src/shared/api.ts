@@ -1,10 +1,9 @@
 import {
-	type BackendServerState,
-	type ModelSyncServerState as CommonModelSyncServerState,
+	type BackendState,
 	type CustomNodeInventoryEntry,
 	type CustomNodeSyncNodeStatus,
-	type CustomNodeSyncServerState,
-	isBackendServerState,
+	type CustomNodeSyncState,
+	isBackendState,
 	isCustomNodeInventoryEntry,
 	isCustomNodeManagerId,
 	isCustomNodeManagerVersion,
@@ -14,33 +13,34 @@ import {
 	isModelArtifact,
 	isModelRelativePath,
 	isModelSyncState,
-	isServerLogEntry,
 	isSyncVerification,
-	isWorkerComfyServerState,
+	isWorkerComfyRuntimeState,
+	isWorkerLogEntry,
 	isWorkerSystemStatus,
 	type ModelArtifact,
 	type ModelProvider,
 	type ModelSyncFileStatus,
+	type ModelSyncState,
 	type ModelSyncTarget,
 	normalizeGitHubRepository,
-	parseCustomNodeSyncServerState,
+	parseCustomNodeSyncState,
 	parseModelSyncTarget,
 	parseReleaseIdentity,
 	type ReleaseIdentity,
-	type ServerLogEntry,
 	type SyncVerification,
-	type WorkerComfyServerState,
+	type WorkerComfyRuntimeState,
+	type WorkerLogEntry,
 	type WorkerSystemStatus,
 } from "@kastard/common";
 
 export type {
-	BackendServerState,
+	BackendState,
 	BackendTarget,
 	BackendVerification,
 	CollectionVerification,
 	CustomNodeInventoryEntry,
 	CustomNodeSyncNodeStatus,
-	CustomNodeSyncServerState,
+	CustomNodeSyncState,
 	CustomNodeSyncTarget,
 	GpuSystemStatus,
 	ModelArtifact,
@@ -50,28 +50,30 @@ export type {
 	ModelSyncFileStatus,
 	ModelSyncRequest,
 	ModelSyncSnapshot,
+	ModelSyncState,
 	ModelSyncTarget,
 	ReleaseChannel,
 	ReleaseIdentity,
-	ServerLogEntry,
-	ServerLogLevel,
 	SyncVerification,
 	SyncVerificationRequest,
 	VerificationProblem,
 	VerificationStatus,
-	WorkerComfyServerState,
+	WorkerComfyRuntimeState,
+	WorkerLogEntry,
+	WorkerLogLevel,
 	WorkerRuntime,
 	WorkerSystemStatus,
 } from "@kastard/common";
 export {
-	isBackendServerState,
-	isCustomNodeSyncServerState,
+	isBackendState,
+	isCustomNodeSyncState,
 	isModelArtifact,
-	isServerLogEntry,
+	isModelSyncState,
 	isSyncVerification,
-	isWorkerComfyServerState,
+	isWorkerComfyRuntimeState,
+	isWorkerLogEntry,
 	isWorkerSystemStatus,
-	parseCustomNodeSyncServerState,
+	parseCustomNodeSyncState,
 } from "@kastard/common";
 
 export const APP_INFO_GET_CHANNEL = "app-info:get";
@@ -161,20 +163,20 @@ export type ConnectionState =
 	| {
 			status: "disconnected";
 			recentProvider: WorkerProvider | null;
-			recentServerUrl: string | null;
+			recentWorkerAddress: string | null;
 	  }
-	| { status: "connecting"; provider: WorkerProvider; serverUrl: string }
+	| { status: "connecting"; provider: WorkerProvider; workerAddress: string }
 	| {
 			status: "connected";
 			provider: WorkerProvider;
-			serverUrl: string;
+			workerAddress: string;
 			connectedAt: number;
 			worker?: ReleaseIdentity;
 	  }
 	| {
 			status: "offline";
 			provider: WorkerProvider;
-			serverUrl: string;
+			workerAddress: string;
 			message: string;
 			reconnectRequired?: boolean;
 	  }
@@ -182,7 +184,7 @@ export type ConnectionState =
 
 export type ConnectionRequest = {
 	provider: WorkerProvider;
-	serverUrl: string;
+	workerAddress: string;
 	authenticationCode: string;
 	syncAfterConnect: boolean;
 };
@@ -198,8 +200,8 @@ export type ConnectionSettingsResult =
 	| { ok: true; settings: ConnectionSettings }
 	| { ok: false; error: string };
 
-export type ServerLogsResult =
-	| { ok: true; logs: ServerLogEntry[]; truncated: boolean }
+export type WorkerLogsResult =
+	| { ok: true; logs: WorkerLogEntry[]; truncated: boolean }
 	| { ok: false; error: string };
 
 export type WorkerBackendState =
@@ -211,7 +213,7 @@ export type WorkerBackendState =
 			error: string;
 			retryable?: boolean;
 	  }
-	| (BackendServerState & { editorComfyVersion: string });
+	| (BackendState & { editorComfyVersion: string });
 
 export type WorkerBackendResult =
 	| { ok: true; state: WorkerBackendState }
@@ -221,7 +223,7 @@ export type WorkerComfyState =
 	| { status: "disconnected" }
 	| { status: "loading" }
 	| { status: "unavailable"; error: string; retryable?: boolean }
-	| WorkerComfyServerState;
+	| WorkerComfyRuntimeState;
 
 export type WorkerSystemMetricsState =
 	| { status: "disconnected" }
@@ -268,8 +270,8 @@ export type WorkerCustomNodeTargetState = {
 	error?: string;
 };
 
-type WorkerCustomNodeServerState = CustomNodeSyncServerState extends infer State
-	? State extends CustomNodeSyncServerState
+type WorkerCustomNodeRemoteState = CustomNodeSyncState extends infer State
+	? State extends CustomNodeSyncState
 		? Omit<State, "contractVersion" | "target" | "operationId">
 		: never
 	: never;
@@ -278,7 +280,7 @@ export type WorkerCustomNodeSyncState =
 	| { status: "disconnected" }
 	| { status: "loading" }
 	| { status: "unavailable"; error: string; retryable: boolean }
-	| (WorkerCustomNodeServerState & WorkerCustomNodeSyncSelection);
+	| (WorkerCustomNodeRemoteState & WorkerCustomNodeSyncSelection);
 
 export type WorkerCustomNodeSyncResult =
 	| { ok: true; state: WorkerCustomNodeSyncState }
@@ -286,8 +288,6 @@ export type WorkerCustomNodeSyncResult =
 
 export type WorkerCustomNodeReinstallRequest = { id: string };
 export type WorkerCustomNodeRemovalRequest = { node: CustomNodeInventoryEntry };
-
-export type ModelSyncServerState = CommonModelSyncServerState;
 
 export type WorkerModelTargetStatus =
 	| ModelSyncFileStatus
@@ -301,8 +301,8 @@ export type WorkerModelTargetState = {
 	error?: string;
 };
 
-type WorkerModelServerState = ModelSyncServerState extends infer State
-	? State extends ModelSyncServerState
+type WorkerModelRemoteState = ModelSyncState extends infer State
+	? State extends ModelSyncState
 		? Omit<State, "contractVersion" | "target" | "operationId" | "operationKind"> & {
 				operationKind?: State["operationKind"];
 			}
@@ -318,7 +318,7 @@ export type WorkerModelSyncState =
 	| { status: "disconnected" }
 	| { status: "loading" }
 	| { status: "unavailable"; error: string; retryable: boolean }
-	| (WorkerModelServerState & WorkerModelSyncSelection);
+	| (WorkerModelRemoteState & WorkerModelSyncSelection);
 
 export type WorkerModelSyncResult =
 	| { ok: true; state: WorkerModelSyncState }
@@ -348,7 +348,7 @@ export type WorkerWorkflowCurrentState = {
 	id: string;
 	phase: "dispatching" | "running" | "reconciling" | "collecting";
 	cancellation: "none" | "requested" | "unconfirmed";
-	workerUrl: string;
+	workerAddress: string;
 	lastConfirmedStatus:
 		| "running"
 		| "canceling"
@@ -621,8 +621,8 @@ export type KastardApi = {
 	connection: {
 		getSettings: () => Promise<ConnectionSettingsResult>;
 		updateSettings: (settings: ConnectionSettings) => Promise<ConnectionSettingsResult>;
-		copyServerLogs: (text: string) => Promise<ConnectionResult>;
-		getLogs: () => Promise<ServerLogsResult>;
+		copyWorkerLogs: (text: string) => Promise<ConnectionResult>;
+		getLogs: () => Promise<WorkerLogsResult>;
 	};
 	customNodes: {
 		list: () => Promise<CustomNodesListResult>;
@@ -829,20 +829,21 @@ export function isConnectionState(value: unknown): value is ConnectionState {
 	const candidate = value as Partial<ConnectionState>;
 	if (candidate.status === "disconnected") {
 		return (
-			(candidate.recentProvider === null && candidate.recentServerUrl === null) ||
+			(candidate.recentProvider === null && candidate.recentWorkerAddress === null) ||
 			(isWorkerProvider(candidate.recentProvider) &&
-				typeof candidate.recentServerUrl === "string")
+				typeof candidate.recentWorkerAddress === "string")
 		);
 	}
 	if (candidate.status === "connecting") {
 		return (
-			isWorkerProvider(candidate.provider) && typeof candidate.serverUrl === "string"
+			isWorkerProvider(candidate.provider) &&
+			typeof candidate.workerAddress === "string"
 		);
 	}
 	if (candidate.status === "connected") {
 		return (
 			isWorkerProvider(candidate.provider) &&
-			typeof candidate.serverUrl === "string" &&
+			typeof candidate.workerAddress === "string" &&
 			typeof candidate.connectedAt === "number" &&
 			Number.isFinite(candidate.connectedAt) &&
 			candidate.connectedAt >= 0 &&
@@ -853,7 +854,7 @@ export function isConnectionState(value: unknown): value is ConnectionState {
 	if (candidate.status === "offline") {
 		return (
 			isWorkerProvider(candidate.provider) &&
-			typeof candidate.serverUrl === "string" &&
+			typeof candidate.workerAddress === "string" &&
 			typeof candidate.message === "string" &&
 			(candidate.reconnectRequired === undefined ||
 				typeof candidate.reconnectRequired === "boolean")
@@ -899,14 +900,14 @@ export function isConnectionSettingsResult(
 		: typeof value.error === "string";
 }
 
-export function isServerLogsResult(value: unknown): value is ServerLogsResult {
+export function isWorkerLogsResult(value: unknown): value is WorkerLogsResult {
 	if (typeof value !== "object" || value === null || !("ok" in value)) return false;
 	if (value.ok === false) return "error" in value && typeof value.error === "string";
 	return (
 		value.ok === true &&
 		"logs" in value &&
 		Array.isArray(value.logs) &&
-		value.logs.every(isServerLogEntry) &&
+		value.logs.every(isWorkerLogEntry) &&
 		"truncated" in value &&
 		typeof value.truncated === "boolean"
 	);
@@ -932,7 +933,7 @@ export function isWorkerBackendState(value: unknown): value is WorkerBackendStat
 			(!("retryable" in value) || typeof value.retryable === "boolean")
 		);
 	}
-	return isBackendServerState(value);
+	return isBackendState(value);
 }
 
 export function isWorkerBackendResult(value: unknown): value is WorkerBackendResult {
@@ -954,7 +955,7 @@ export function isWorkerComfyState(value: unknown): value is WorkerComfyState {
 			(!("retryable" in value) || typeof value.retryable === "boolean")
 		);
 	}
-	return isWorkerComfyServerState(value);
+	return isWorkerComfyRuntimeState(value);
 }
 
 export function isWorkerSystemMetricsState(
@@ -988,7 +989,7 @@ export function isWorkerCustomNodeSyncState(
 		);
 	}
 	return (
-		parseCustomNodeSyncServerState(value) !== null &&
+		parseCustomNodeSyncState(value) !== null &&
 		"unsupportedNodes" in value &&
 		Array.isArray(value.unsupportedNodes) &&
 		value.unsupportedNodes.every(isUnsupportedCustomNode) &&
@@ -1062,8 +1063,6 @@ export function isWorkerCustomNodeSyncResult(
 		: value.ok === false && "error" in value && typeof value.error === "string";
 }
 
-export const isModelSyncServerState = isModelSyncState;
-
 export function isWorkerModelSyncState(value: unknown): value is WorkerModelSyncState {
 	if (typeof value !== "object" || value === null || !("status" in value)) {
 		return false;
@@ -1078,7 +1077,7 @@ export function isWorkerModelSyncState(value: unknown): value is WorkerModelSync
 		);
 	}
 	return (
-		isModelSyncServerState(value) &&
+		isModelSyncState(value) &&
 		(!("targetStatus" in value) ||
 			value.targetStatus === "current" ||
 			value.targetStatus === "stale" ||
@@ -1266,7 +1265,7 @@ function isWorkerWorkflowCurrentState(
 		(value.cancellation === "none" ||
 			value.cancellation === "requested" ||
 			value.cancellation === "unconfirmed") &&
-		typeof value.workerUrl === "string" &&
+		typeof value.workerAddress === "string" &&
 		(value.lastConfirmedStatus === null ||
 			value.lastConfirmedStatus === "running" ||
 			value.lastConfirmedStatus === "canceling" ||
@@ -1384,8 +1383,8 @@ export function isConnectionRequest(value: unknown): value is ConnectionRequest 
 		value !== null &&
 		"provider" in value &&
 		isWorkerProvider(value.provider) &&
-		"serverUrl" in value &&
-		typeof value.serverUrl === "string" &&
+		"workerAddress" in value &&
+		typeof value.workerAddress === "string" &&
 		"authenticationCode" in value &&
 		typeof value.authenticationCode === "string" &&
 		"syncAfterConnect" in value &&

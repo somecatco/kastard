@@ -5,12 +5,12 @@ import {
 	type CustomNodeSyncTarget,
 	customNodeInventoryId,
 	customNodeSyncNodeSnapshot,
-	parseCustomNodeSyncServerState,
+	parseCustomNodeSyncState,
 	sameCustomNodeInventoryEntry,
 	sameCustomNodeSyncRequest,
 } from "@kastard/common";
 import type {
-	CustomNodeSyncServerState,
+	CustomNodeSyncState,
 	UnsupportedCustomNode,
 	WorkerCustomNodeSyncResult,
 	WorkerCustomNodeSyncState,
@@ -19,11 +19,11 @@ import type {
 import {
 	cancelWorkerCustomNodeSync,
 	fetchWorkerCustomNodeSync,
-	type ServerCredential,
 	type SyncRequestResult,
 	startWorkerCustomNodeReinstall,
 	startWorkerCustomNodeRemoval,
 	startWorkerCustomNodeSync,
+	type WorkerSessionCredential,
 } from "../client";
 import type { CustomNodeSyncPlan } from "../sync-plan";
 import type {
@@ -38,29 +38,29 @@ const SYNC_IN_PROGRESS_ERROR = "Custom nodes are already synchronizing.";
 
 export type WorkerCustomNodeSyncOptions = {
 	read?: (
-		credential: ServerCredential,
+		credential: WorkerSessionCredential,
 		requestFetch?: WorkerSessionRequestFetch,
 	) => Promise<SyncRequestResult>;
 	start?: (
-		credential: ServerCredential,
+		credential: WorkerSessionCredential,
 		managerVersion: string,
 		nodes: CustomNodeSyncPlan["nodes"],
 		requestFetch?: WorkerSessionRequestFetch,
 	) => Promise<SyncRequestResult>;
 	reinstall?: (
-		credential: ServerCredential,
+		credential: WorkerSessionCredential,
 		managerVersion: string,
 		node: CustomNodeSyncTarget,
 		requestFetch?: WorkerSessionRequestFetch,
 	) => Promise<SyncRequestResult>;
 	remove?: (
-		credential: ServerCredential,
+		credential: WorkerSessionCredential,
 		target: CustomNodeSyncRequest,
 		node: CustomNodeInventoryEntry,
 		requestFetch?: WorkerSessionRequestFetch,
 	) => Promise<SyncRequestResult>;
 	cancel?: (
-		credential: ServerCredential,
+		credential: WorkerSessionCredential,
 		operationId: string | null,
 		requestFetch?: WorkerSessionRequestFetch,
 	) => Promise<SyncRequestResult>;
@@ -70,7 +70,7 @@ export type WorkerCustomNodeSyncOptions = {
 type WorkerCustomNodeSyncDependencies = {
 	state: WorkerSessionStateStore;
 	requests: WorkerSessionRequestScope<WorkerSessionResource>;
-	getCredential: () => ServerCredential | null;
+	getCredential: () => WorkerSessionCredential | null;
 	buildPlan: () => Promise<CustomNodeSyncPlan>;
 	setupStartError: () => string | null;
 	invalidateSetup: () => void;
@@ -93,7 +93,7 @@ export class WorkerCustomNodeSync {
 		operationId: string | null;
 		remainingReads: number;
 	} | null = null;
-	private serverState: CustomNodeSyncServerState | null = null;
+	private remoteState: CustomNodeSyncState | null = null;
 	private cancellation: {
 		operationId: string | null;
 		request: Promise<WorkerCustomNodeSyncResult>;
@@ -125,7 +125,7 @@ export class WorkerCustomNodeSync {
 			this.dependencies.requests.has("customNodes")
 		) {
 			this.reconciliation = {
-				operationId: this.serverState?.operationId ?? null,
+				operationId: this.remoteState?.operationId ?? null,
 				remainingReads: RECONCILIATION_READ_LIMIT,
 			};
 		}
@@ -135,7 +135,7 @@ export class WorkerCustomNodeSync {
 		this.unsupportedNodes = [];
 		this.dependencies.invalidateVerification();
 		this.dependencies.state.setVerification(null);
-		this.reprojectServerState();
+		this.reprojectRemoteState();
 		const generation = this.dependencies.requests.currentGeneration;
 		void this.refreshTarget(generation).then(() => {
 			if (this.reconciliation !== null) {
@@ -178,7 +178,7 @@ export class WorkerCustomNodeSync {
 		);
 		if (result === null) return replacedResult();
 		if (!result.ok) return this.failRequest(result, generation);
-		const state = this.setServerState(result.state);
+		const state = this.setRemoteState(result.state);
 		if (customNodeRunning(state)) this.schedulePoll(generation);
 		return { ok: true, state };
 	}
@@ -186,7 +186,7 @@ export class WorkerCustomNodeSync {
 	async reinstall(id: string): Promise<WorkerCustomNodeSyncResult> {
 		const setupError = this.dependencies.setupStartError();
 		if (setupError !== null) return { ok: false, error: setupError };
-		if (this.serverState?.capabilities?.forceReinstall !== true) {
+		if (this.remoteState?.capabilities?.forceReinstall !== true) {
 			return {
 				ok: false,
 				error: "This Worker does not support individual custom node reinstall.",
@@ -232,7 +232,7 @@ export class WorkerCustomNodeSync {
 			this.setState({ status: "unavailable", error, retryable: false });
 			return { ok: false, error };
 		}
-		const state = this.setServerState(result.state);
+		const state = this.setRemoteState(result.state);
 		if (customNodeRunning(state)) this.schedulePoll(generation);
 		return { ok: true, state };
 	}
@@ -240,7 +240,7 @@ export class WorkerCustomNodeSync {
 	async remove(node: CustomNodeInventoryEntry): Promise<WorkerCustomNodeSyncResult> {
 		const setupError = this.dependencies.setupStartError();
 		if (setupError !== null) return { ok: false, error: setupError };
-		if (this.serverState?.capabilities?.remove !== true) {
+		if (this.remoteState?.capabilities?.remove !== true) {
 			return {
 				ok: false,
 				error: "This Worker does not support individual custom node removal.",
@@ -306,13 +306,13 @@ export class WorkerCustomNodeSync {
 			this.setState({ status: "unavailable", error, retryable: false });
 			return { ok: false, error };
 		}
-		const state = this.setServerState(result.state);
+		const state = this.setRemoteState(result.state);
 		if (customNodeRunning(state)) this.schedulePoll(generation);
 		return { ok: true, state };
 	}
 
 	cancel(): Promise<WorkerCustomNodeSyncResult> {
-		return this.cancelOperation(this.serverState?.operationId ?? null);
+		return this.cancelOperation(this.remoteState?.operationId ?? null);
 	}
 
 	markUnavailable(error: string): void {
@@ -320,7 +320,7 @@ export class WorkerCustomNodeSync {
 	}
 
 	cancelStaleOperation(): Promise<WorkerCustomNodeSyncResult> | null {
-		const state = this.serverState;
+		const state = this.remoteState;
 		const target = this.target;
 		if (
 			state === null ||
@@ -344,14 +344,14 @@ export class WorkerCustomNodeSync {
 			if (this.isTargetCurrent(generation, operation)) {
 				this.target = null;
 				this.unsupportedNodes = [];
-				this.reprojectServerState();
+				this.reprojectRemoteState();
 			}
 			return null;
 		}
 		if (!this.isTargetCurrent(generation, operation)) return null;
 		this.target = targetFromPlan(plan);
 		this.unsupportedNodes = plan.unsupportedNodes;
-		this.reprojectServerState();
+		this.reprojectRemoteState();
 		return this.target;
 	}
 
@@ -366,7 +366,7 @@ export class WorkerCustomNodeSync {
 		);
 		if (result === null) return;
 		if (!result.ok) {
-			this.serverState = null;
+			this.remoteState = null;
 			this.setState({
 				status: "unavailable",
 				error: result.error,
@@ -376,7 +376,7 @@ export class WorkerCustomNodeSync {
 			this.continueReconciliation(generation);
 			return;
 		}
-		const state = this.setServerState(result.state);
+		const state = this.setRemoteState(result.state);
 		if (customNodeRunning(state)) this.schedulePoll(generation);
 		if (this.reconciliationObserved()) {
 			this.reconciliation = null;
@@ -394,7 +394,7 @@ export class WorkerCustomNodeSync {
 		this.intentOperation += 1;
 		this.mutation = null;
 		this.reconciliation = null;
-		this.serverState = null;
+		this.remoteState = null;
 		this.cancellation = null;
 	}
 
@@ -433,7 +433,7 @@ export class WorkerCustomNodeSync {
 			if (result.retryable === true) this.schedulePoll(generation);
 			return result;
 		}
-		let state = this.setServerState(result.state);
+		let state = this.setRemoteState(result.state);
 		if (customNodeRunning(state)) {
 			this.schedulePoll(generation);
 			const settled = await this.waitForState(
@@ -472,7 +472,7 @@ export class WorkerCustomNodeSync {
 			this.continueReconciliation(generation);
 			return;
 		}
-		const state = this.setServerState(result.state);
+		const state = this.setRemoteState(result.state);
 		if (customNodeRunning(state)) this.schedulePoll(generation);
 		if (this.reconciliationObserved()) {
 			this.reconciliation = null;
@@ -496,9 +496,9 @@ export class WorkerCustomNodeSync {
 	private reconciliationObserved(): boolean {
 		return (
 			this.reconciliation !== null &&
-			this.serverState !== null &&
-			this.serverState.operationId !== null &&
-			this.serverState.operationId !== this.reconciliation.operationId
+			this.remoteState !== null &&
+			this.remoteState.operationId !== null &&
+			this.remoteState.operationId !== this.reconciliation.operationId
 		);
 	}
 
@@ -526,23 +526,21 @@ export class WorkerCustomNodeSync {
 		return result;
 	}
 
-	private setServerState(state: CustomNodeSyncServerState): WorkerCustomNodeSyncState {
-		const normalized = parseCustomNodeSyncServerState(state);
+	private setRemoteState(state: CustomNodeSyncState): WorkerCustomNodeSyncState {
+		const normalized = parseCustomNodeSyncState(state);
 		if (normalized === null) {
-			this.serverState = null;
+			this.remoteState = null;
 			return this.setState({
 				status: "unavailable",
 				error: "The Worker returned an invalid custom node sync status.",
 				retryable: false,
 			});
 		}
-		this.serverState = normalized;
-		return this.setState(this.projectServerState(normalized));
+		this.remoteState = normalized;
+		return this.setState(this.projectRemoteState(normalized));
 	}
 
-	private projectServerState(
-		state: CustomNodeSyncServerState,
-	): WorkerCustomNodeSyncState {
+	private projectRemoteState(state: CustomNodeSyncState): WorkerCustomNodeSyncState {
 		const reinstalling = state.operationKind === "reinstall";
 		const projectedIdle =
 			state.status === "idle" &&
@@ -588,9 +586,9 @@ export class WorkerCustomNodeSync {
 		};
 	}
 
-	private reprojectServerState(): void {
-		if (this.serverState !== null)
-			this.setState(this.projectServerState(this.serverState));
+	private reprojectRemoteState(): void {
+		if (this.remoteState !== null)
+			this.setState(this.projectRemoteState(this.remoteState));
 	}
 
 	private setState(state: WorkerCustomNodeSyncState): WorkerCustomNodeSyncState {
@@ -677,7 +675,7 @@ function targetFromPlan(plan: CustomNodeSyncPlan): CustomNodeSyncRequest {
 }
 
 function operationMatchesTarget(
-	state: CustomNodeSyncServerState,
+	state: CustomNodeSyncState,
 	target: CustomNodeSyncRequest,
 ): boolean {
 	if (state.target === null) return false;

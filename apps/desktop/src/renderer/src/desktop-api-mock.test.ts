@@ -3,8 +3,8 @@ import { expect, test, vi } from "vitest";
 import { connectedState, createDesktopApiMock } from "./desktop-api-mock";
 import {
 	activateStoryDesktopApiMock,
-	configureStoryServerLogs,
 	configureStoryWorker,
+	configureStoryWorkerLogs,
 	useConfigureStoryWorker,
 } from "./stories/desktop-api-mock";
 
@@ -29,11 +29,11 @@ test("isolates mutable state and listeners between Desktop API mocks", async () 
 	first.emitConnection({
 		status: "disconnected",
 		recentProvider: null,
-		recentServerUrl: null,
+		recentWorkerAddress: null,
 	});
 	expect(listener).toHaveBeenCalledOnce();
 
-	first.setServerLogsResult({ ok: false, error: "Unavailable." });
+	first.setWorkerLogsResult({ ok: false, error: "Unavailable." });
 	expect(await first.api.connection.getLogs()).toEqual({
 		ok: false,
 		error: "Unavailable.",
@@ -64,7 +64,7 @@ test("retains a configured mock within a story and isolates the next story", asy
 	activateStoryDesktopApiMock("desktop-api-mock-second");
 	const secondApi = environment.kastard;
 	configureStoryWorker(connectedState());
-	configureStoryServerLogs({ ok: false, error: "Unavailable." });
+	configureStoryWorkerLogs({ ok: false, error: "Unavailable." });
 
 	expect(secondApi).not.toBe(firstApi);
 	expect((await secondApi.workerSession.getSnapshot()).state.connection.status).toBe(
@@ -75,7 +75,7 @@ test("retains a configured mock within a story and isolates the next story", asy
 		error: "Unavailable.",
 	});
 	expect(await secondApi.workerSession.retry()).toEqual({ ok: true });
-	expect(await secondApi.connection.copyServerLogs("Worker log")).toEqual({ ok: true });
+	expect(await secondApi.connection.copyWorkerLogs("Worker log")).toEqual({ ok: true });
 	expect((await firstApi.workerSession.getSnapshot()).state.connection.status).toBe(
 		"connected",
 	);
@@ -86,7 +86,7 @@ test("keeps Worker session revisions monotonic across story configuration", asyn
 	const desktopApiMock = createDesktopApiMock();
 	await desktopApiMock.api.workerSession.connect({
 		provider: "other",
-		serverUrl: "worker.example.com:22001",
+		workerAddress: "worker.example.com:22001",
 		authenticationCode: "ABCD-EFGH-JKLM-NPQR",
 		syncAfterConnect: true,
 	});

@@ -9,20 +9,20 @@ import type {
 	ConnectionSettings,
 	ConnectionSettingsResult,
 	ModelSyncRequest,
-	ServerLogsResult,
 	SyncVerificationRequest,
 	SyncVerificationResult,
 	WorkerBackendResult,
 	WorkerCustomNodeSyncResult,
+	WorkerLogsResult,
 	WorkerModelSyncResult,
 	WorkerSessionSnapshot,
 	WorkerSessionState,
 	WorkerSessionStateChange,
 } from "../../../shared/api";
 import {
-	type ServerCredential,
 	type SyncVerificationRequestResult,
 	verifyWorkerSynchronization,
+	type WorkerSessionCredential,
 } from "../client";
 import type { CustomNodeSyncPlan } from "../sync-plan";
 import {
@@ -85,7 +85,7 @@ type WorkerSessionOptions = {
 	models?: WorkerModelSyncOptions;
 	verification?: {
 		verify?: (
-			credential: ServerCredential,
+			credential: WorkerSessionCredential,
 			request: SyncVerificationRequest,
 			requestFetch?: RequestFetch,
 		) => Promise<SyncVerificationRequestResult>;
@@ -201,10 +201,10 @@ export class WorkerSession {
 					this.models.reset();
 				},
 				invalidateSessionWork: () => this.invalidateSessionWork(),
-				onRecovered: (serverUrl, connectedAt, worker) =>
+				onRecovered: (workerAddress, connectedAt, worker) =>
 					this.actor.send({
 						type: "connection.recovered",
-						serverUrl,
+						workerAddress,
 						connectedAt,
 						...(worker === undefined ? {} : { worker }),
 					}),
@@ -242,8 +242,8 @@ export class WorkerSession {
 			disconnect: () => this.connection.disconnect(),
 			goOffline: (message, reconnectRequired) =>
 				this.connection.goOffline(message, reconnectRequired),
-			recoverConnection: (serverUrl, connectedAt, worker) =>
-				this.connection.recover(serverUrl, connectedAt, worker),
+			recoverConnection: (workerAddress, connectedAt, worker) =>
+				this.connection.recover(workerAddress, connectedAt, worker),
 			setSetupState: (setup) => this.state.setSetup(setup),
 			getComfyState: () => this.getState().comfy,
 			prepareSetup: (signal, initialRefresh) =>
@@ -292,7 +292,7 @@ export class WorkerSession {
 		return this.state.subscribe((_state, change) => listener(change));
 	}
 
-	getActiveCredential(): ServerCredential | null {
+	getActiveCredential(): WorkerSessionCredential | null {
 		return this.connection.credential;
 	}
 
@@ -355,7 +355,7 @@ export class WorkerSession {
 		return { ok: true };
 	}
 
-	async getLogs(): Promise<ServerLogsResult> {
+	async getLogs(): Promise<WorkerLogsResult> {
 		return this.connection.getLogs();
 	}
 

@@ -17,7 +17,7 @@ import {
 	type WorkflowResultFile as WorkerResultFile,
 	type WorkflowResultManifest as WorkerResultManifest,
 } from "@kastard/common";
-import type { ServerCredential, WorkflowJobFailure } from "./client";
+import type { WorkerSessionCredential, WorkflowJobFailure } from "./client";
 
 const RESULT_REQUEST_TIMEOUT_MS = 15 * 60_000;
 const RESULT_RETRY_DELAYS_MS = [250, 1_000] as const;
@@ -79,7 +79,7 @@ export class WorkflowResultStore {
 	}
 
 	async collect(
-		credential: ServerCredential,
+		credential: WorkerSessionCredential,
 		context: WorkflowResultContext,
 		requestFetch: typeof fetch = fetch,
 		signal?: AbortSignal,
@@ -103,7 +103,7 @@ export class WorkflowResultStore {
 	}
 
 	private async collectOnce(
-		credential: ServerCredential,
+		credential: WorkerSessionCredential,
 		context: WorkflowResultContext,
 		requestFetch: typeof fetch,
 		signal?: AbortSignal,
@@ -267,13 +267,13 @@ function delay(milliseconds: number): Promise<void> {
 }
 
 async function fetchManifest(
-	credential: ServerCredential,
+	credential: WorkerSessionCredential,
 	jobId: string,
 	requestFetch: typeof fetch,
 	signal?: AbortSignal,
 ): Promise<WorkerResultManifest> {
 	const response = await requestFetch(
-		`${credential.serverUrl}/workflow-jobs/${encodeURIComponent(jobId)}/results`,
+		`${credential.workerApiUrl}/workflow-jobs/${encodeURIComponent(jobId)}/results`,
 		{
 			cache: "no-store",
 			headers: sessionHeaders(credential),
@@ -290,7 +290,7 @@ async function fetchManifest(
 }
 
 async function downloadResultFile(
-	credential: ServerCredential,
+	credential: WorkerSessionCredential,
 	jobId: string,
 	metadata: WorkerResultFile,
 	destination: string,
@@ -301,7 +301,7 @@ async function downloadResultFile(
 		throw new Error("The Worker returned an invalid result filename.");
 	}
 	const response = await requestFetch(
-		`${credential.serverUrl}/workflow-jobs/${encodeURIComponent(jobId)}/results/${metadata.id}`,
+		`${credential.workerApiUrl}/workflow-jobs/${encodeURIComponent(jobId)}/results/${metadata.id}`,
 		{
 			cache: "no-store",
 			headers: sessionHeaders(credential),
@@ -332,7 +332,7 @@ async function downloadResultFile(
 	}
 }
 
-function sessionHeaders(credential: ServerCredential): Record<string, string> {
+function sessionHeaders(credential: WorkerSessionCredential): Record<string, string> {
 	return { Authorization: `Bearer ${credential.sessionCapability}` };
 }
 

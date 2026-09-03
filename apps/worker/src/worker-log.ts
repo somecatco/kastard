@@ -1,35 +1,35 @@
 import { randomUUID } from "node:crypto";
 import type {
-	ServerLogEntry,
-	ServerLogLevel,
-	ServerLogSnapshot,
+	WorkerLogEntry,
+	WorkerLogLevel,
+	WorkerLogSnapshot,
 } from "@kastard/common";
 
 export type {
-	ServerLogEntry,
-	ServerLogLevel,
-	ServerLogSnapshot,
+	WorkerLogEntry,
+	WorkerLogLevel,
+	WorkerLogSnapshot,
 } from "@kastard/common";
 
-type ServerLogStoreOptions = {
+type WorkerLogStoreOptions = {
 	maxEntries?: number;
 	now?: () => Date;
 	instanceId?: string;
 };
 
-export const DEFAULT_SERVER_LOG_LIMIT = 1_000;
+export const DEFAULT_WORKER_LOG_LIMIT = 1_000;
 
-export class ServerLogStore {
-	private readonly entries: Array<ServerLogEntry & { sequence: number }> = [];
+export class WorkerLogStore {
+	private readonly entries: Array<WorkerLogEntry & { sequence: number }> = [];
 	private readonly maxEntries: number;
 	private readonly now: () => Date;
 	private readonly instanceId: string;
 	private sequence = 0;
 
-	constructor(options?: ServerLogStoreOptions) {
-		this.maxEntries = options?.maxEntries ?? DEFAULT_SERVER_LOG_LIMIT;
+	constructor(options?: WorkerLogStoreOptions) {
+		this.maxEntries = options?.maxEntries ?? DEFAULT_WORKER_LOG_LIMIT;
 		if (!Number.isInteger(this.maxEntries) || this.maxEntries < 1) {
-			throw new Error("Server log limit must be a positive integer.");
+			throw new Error("Worker log limit must be a positive integer.");
 		}
 		this.now = options?.now ?? (() => new Date());
 		this.instanceId = options?.instanceId ?? randomUUID();
@@ -39,7 +39,7 @@ export class ServerLogStore {
 		return this.cursorFor(this.sequence);
 	}
 
-	write(level: ServerLogLevel, message: string): void {
+	write(level: WorkerLogLevel, message: string): void {
 		this.sequence += 1;
 		this.entries.push({
 			id: this.cursorFor(this.sequence),
@@ -51,11 +51,11 @@ export class ServerLogStore {
 		if (this.entries.length > this.maxEntries) this.entries.shift();
 	}
 
-	readAfter(cursor: string): ServerLogSnapshot {
+	readAfter(cursor: string): WorkerLogSnapshot {
 		const requested = parseCursor(cursor);
 		const sameInstance = requested.instanceId === this.instanceId;
 		if (sameInstance && requested.sequence > this.sequence) {
-			throw new Error("Invalid server log cursor.");
+			throw new Error("Invalid Worker log cursor.");
 		}
 
 		const oldestSequence = this.entries[0]?.sequence ?? this.sequence + 1;
@@ -87,7 +87,7 @@ function parseCursor(cursor: string): { instanceId: string; sequence: number } {
 		!Number.isSafeInteger(sequence) ||
 		sequence < 0
 	) {
-		throw new Error("Invalid server log cursor.");
+		throw new Error("Invalid Worker log cursor.");
 	}
 	return { instanceId, sequence };
 }

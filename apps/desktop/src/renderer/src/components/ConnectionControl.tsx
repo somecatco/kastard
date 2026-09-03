@@ -27,8 +27,6 @@ import { Popover, PopoverContent } from "@/components/common/popover";
 import { ProgressBar } from "@/components/common/progress-bar";
 import { Tooltip } from "@/components/common/tooltip";
 import { ModelRedownloadDialog } from "@/components/ModelRedownloadDialog";
-import { ServerLogsDialog } from "@/components/ServerLogsDialog";
-import { ServerStatus } from "@/components/ServerStatus";
 import { Button } from "@/components/ui/button";
 import { PopoverTrigger } from "@/components/ui/popover";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -36,7 +34,9 @@ import {
 	verifiedCustomNodeTargets,
 	WorkerCustomNodeSyncStatus,
 } from "@/components/WorkerCustomNodeSyncStatus";
+import { WorkerLogsDialog } from "@/components/WorkerLogsDialog";
 import { WorkerModelSyncStatus } from "@/components/WorkerModelSyncStatus";
+import { WorkerStatus } from "@/components/WorkerStatus";
 import { WorkerSyncCancelButton } from "@/components/WorkerSyncList";
 import { useWorkerSession, useWorkerSessionChanges } from "@/hooks/use-worker-session";
 import { useModelDownloadRate } from "@/hooks/useModelDownloadRate";
@@ -61,7 +61,7 @@ import type {
 	WorkerWorkflowCurrentState,
 } from "../../../shared/api";
 
-const DEFAULT_SERVER_URL = import.meta.env.DEV ? "127.0.0.1:5279" : "";
+const DEFAULT_WORKER_ADDRESS = import.meta.env.DEV ? "127.0.0.1:5279" : "";
 const CONNECTION_MINUTE_MS = 60_000;
 type ActionFeedback = { type: "success" | "error"; message: string };
 type SyncAreaStatus = "pending" | "syncing" | "synced" | "warning" | "error";
@@ -628,7 +628,7 @@ export function ConnectionProvider({
 					void redownloadModel(path);
 				}}
 			/>
-			<ServerLogsDialog open={logsOpen} onOpenChange={setLogsOpen} />
+			<WorkerLogsDialog open={logsOpen} onOpenChange={setLogsOpen} />
 			{open ? (
 				<ConnectWorkerDialog
 					initialProvider={
@@ -638,15 +638,15 @@ export function ConnectionProvider({
 								? null
 								: state.provider
 					}
-					initialServerUrl={
+					initialWorkerAddress={
 						state.status === "disconnected"
-							? state.recentServerUrl
+							? state.recentWorkerAddress
 							: state.status === "error"
 								? null
-								: state.serverUrl
+								: state.workerAddress
 					}
 					initialSyncAfterConnect={connectSyncAfterConnect}
-					defaultServerUrl={DEFAULT_SERVER_URL}
+					defaultWorkerAddress={DEFAULT_WORKER_ADDRESS}
 					settingsLoading={settingsLoading}
 					onConnect={async (request) => {
 						await settingsUpdateTailRef.current;
@@ -1233,11 +1233,11 @@ function SyncAreaItem({
 	);
 }
 
-export function ConnectionServerStatus(): React.JSX.Element | null {
+export function ConnectionWorkerStatus(): React.JSX.Element | null {
 	const controller = useConnectionController();
 
 	return controller.state.status === "connected" && controller.systemMetricsEnabled ? (
-		<ServerStatus
+		<WorkerStatus
 			status={
 				controller.systemMetrics.status === "available"
 					? controller.systemMetrics.metrics
@@ -1475,7 +1475,7 @@ function ConnectionDetails({
 		<div data-testid="connection-popover" className="select-text cursor-text">
 			{offline ? null : <WorkerSynchronizationStatus controller={controller} />}
 
-			<ServerConnectionDetails
+			<WorkerConnectionDetails
 				controller={controller}
 				state={state}
 				onReconnect={onReconnect}
@@ -1484,7 +1484,7 @@ function ConnectionDetails({
 	);
 }
 
-function ServerConnectionDetails({
+function WorkerConnectionDetails({
 	controller,
 	state,
 	onReconnect,
@@ -1516,7 +1516,7 @@ function ServerConnectionDetails({
 			) : null}
 			<div>
 				<p className="text-xs text-muted-foreground">Worker address</p>
-				<p className="mt-1 break-all font-mono text-sm">{state.serverUrl}</p>
+				<p className="mt-1 break-all font-mono text-sm">{state.workerAddress}</p>
 			</div>
 			<div className="flex flex-wrap items-center justify-between gap-2">
 				{offline ? (
@@ -1580,8 +1580,8 @@ function CompactWorkflowStatus({
 			role="status"
 		>
 			<p>{workflowStatusLabel(workflow)}</p>
-			<p className="max-w-64 truncate font-mono" title={workflow.workerUrl}>
-				{workflow.workerUrl}
+			<p className="max-w-64 truncate font-mono" title={workflow.workerAddress}>
+				{workflow.workerAddress}
 			</p>
 		</div>
 	);

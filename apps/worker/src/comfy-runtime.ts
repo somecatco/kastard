@@ -4,25 +4,23 @@ import { createServer } from "node:net";
 import { join } from "node:path";
 import type {
 	WorkerComfyMemoryCleanupRequest,
-	WorkerComfyServerState,
+	WorkerComfyRuntimeState,
 } from "@kastard/common";
 import type { BackendProvisionerApi } from "./backend-provisioner";
 import { ProcessOutputLineBuffer, type ProcessOutputStream } from "./process-output";
-import type { ServerLogStore } from "./server-log";
 import { workerChildEnvironment } from "./worker-child-environment";
+import type { WorkerLogStore } from "./worker-log";
 
 const HEALTH_FAILURE_THRESHOLD = 3;
 const BUSY_HEALTH_FAILURE_THRESHOLD = 12;
 const PROBE_TIMEOUT_MS = 10_000;
 const PROCESS_OUTPUT_CLOSE_GRACE_MS = 1_000;
 
-export type ComfyRuntimeState = WorkerComfyServerState;
-
 export interface ComfyRuntimeApi {
-	getState(): ComfyRuntimeState;
+	getState(): WorkerComfyRuntimeState;
 	isActive(): boolean;
-	start(): ComfyRuntimeState;
-	restart(): Promise<ComfyRuntimeState>;
+	start(): WorkerComfyRuntimeState;
+	restart(): Promise<WorkerComfyRuntimeState>;
 	freeMemory(request: WorkerComfyMemoryCleanupRequest): Promise<void>;
 }
 
@@ -41,7 +39,7 @@ type ComfyRuntimeOptions = {
 	rootDirectory: string;
 	runtimePython: string;
 	backend: BackendProvisionerApi;
-	logs: ServerLogStore;
+	logs: WorkerLogStore;
 	startProcess?: StartProcess;
 	requestFetch?: typeof fetch;
 	allocatePort?: () => Promise<number>;
@@ -88,7 +86,7 @@ export class ComfyRuntimeController implements ComfyRuntimeApi {
 		this.runtime = null;
 	}
 
-	getState(): ComfyRuntimeState {
+	getState(): WorkerComfyRuntimeState {
 		return this.current().getState();
 	}
 
@@ -96,11 +94,11 @@ export class ComfyRuntimeController implements ComfyRuntimeApi {
 		return this.current().isActive();
 	}
 
-	start(): ComfyRuntimeState {
+	start(): WorkerComfyRuntimeState {
 		return this.current().start();
 	}
 
-	restart(): Promise<ComfyRuntimeState> {
+	restart(): Promise<WorkerComfyRuntimeState> {
 		return this.current().restart();
 	}
 
@@ -117,7 +115,7 @@ export class ComfyRuntimeController implements ComfyRuntimeApi {
 }
 
 export class ComfyRuntime implements ComfyRuntimeApi {
-	private state: ComfyRuntimeState = { status: "stopped" };
+	private state: WorkerComfyRuntimeState = { status: "stopped" };
 	private readonly startProcess: StartProcess;
 	private readonly requestFetch: typeof fetch;
 	private readonly allocatePort: () => Promise<number>;
@@ -146,7 +144,7 @@ export class ComfyRuntime implements ComfyRuntimeApi {
 			options.processOutputCloseGraceMs ?? PROCESS_OUTPUT_CLOSE_GRACE_MS;
 	}
 
-	getState(): ComfyRuntimeState {
+	getState(): WorkerComfyRuntimeState {
 		return this.state;
 	}
 
@@ -166,7 +164,7 @@ export class ComfyRuntime implements ComfyRuntimeApi {
 		return this.operation;
 	}
 
-	start(): ComfyRuntimeState {
+	start(): WorkerComfyRuntimeState {
 		if (this.state.status === "starting" || this.state.status === "ready") {
 			return this.state;
 		}
@@ -190,7 +188,7 @@ export class ComfyRuntime implements ComfyRuntimeApi {
 		return this.state;
 	}
 
-	async restart(): Promise<ComfyRuntimeState> {
+	async restart(): Promise<WorkerComfyRuntimeState> {
 		if (this.options.isBusy?.()) {
 			throw new ComfyRuntimeStartError(
 				"Worker ComfyUI cannot restart while a workflow is running.",
@@ -428,7 +426,7 @@ export class ComfyRuntime implements ComfyRuntimeApi {
 		throw new Error(`ComfyUI did not start within ${this.startupTimeoutMs}ms.`);
 	}
 
-	private readyState(): ComfyRuntimeState {
+	private readyState(): WorkerComfyRuntimeState {
 		return this.startupWarnings.size === 0
 			? { status: "ready" }
 			: { status: "ready", warnings: [...this.startupWarnings] };

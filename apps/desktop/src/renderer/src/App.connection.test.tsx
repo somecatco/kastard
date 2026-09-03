@@ -18,7 +18,7 @@ import {
 	openConnectionDetails,
 	setSyncAfterConnect,
 } from "./App.test-harness";
-import { SERVER_LOG_POLL_MS } from "./components/ServerLogsDialog";
+import { WORKER_LOG_POLL_MS } from "./components/WorkerLogsDialog";
 
 test("connects a selected RunPod Worker and shows its connected state", async () => {
 	render(<App />);
@@ -84,7 +84,7 @@ test("connects a selected RunPod Worker and shows its connected state", async ()
 	).toHaveTextContent("M0/0");
 	expect(window.kastard.workerSession.connect).toHaveBeenCalledWith({
 		provider: "runpod",
-		serverUrl: "203.0.113.10:22001",
+		workerAddress: "203.0.113.10:22001",
 		authenticationCode: "ABCD-EFGH-JKLM-NPQR",
 		syncAfterConnect: true,
 	});
@@ -182,7 +182,7 @@ test("updates connected time by the minute and resets it for a recovered connect
 		emitConnection({
 			status: "offline",
 			provider: "other",
-			serverUrl: "worker.example.com:22001",
+			workerAddress: "worker.example.com:22001",
 			message: "Worker unavailable.",
 		});
 	});
@@ -204,7 +204,7 @@ test("shows workflow ownership after disconnect", async () => {
 		id: "019d2a56-3c30-7000-8000-000000000001",
 		phase: "reconciling" as const,
 		cancellation: "unconfirmed" as const,
-		workerUrl: "https://original-worker.example.com",
+		workerAddress: "https://original-worker.example.com",
 		lastConfirmedStatus: "running" as const,
 		lastConfirmedAt: 1_787_073_600_000,
 	};
@@ -212,7 +212,7 @@ test("shows workflow ownership after disconnect", async () => {
 	await act(async () => {
 		emitWorkerSession({
 			connection: connectedState({
-				serverUrl: "https://replacement-worker.example.com",
+				workerAddress: "https://replacement-worker.example.com",
 			}),
 			workflow,
 		});
@@ -224,7 +224,7 @@ test("shows workflow ownership after disconnect", async () => {
 			connection: {
 				status: "disconnected",
 				recentProvider: "other",
-				recentServerUrl: "https://replacement-worker.example.com",
+				recentWorkerAddress: "https://replacement-worker.example.com",
 			},
 		});
 	});
@@ -234,7 +234,7 @@ test("shows workflow ownership after disconnect", async () => {
 		.getByText("Cancellation unconfirmed")
 		.closest('[role="status"]');
 	expect(compactStatus).toHaveClass("select-text");
-	expect(compactStatus).toHaveTextContent(workflow.workerUrl);
+	expect(compactStatus).toHaveTextContent(workflow.workerAddress);
 });
 
 test("shows current connection logs and refreshes them while the dialog is open", async () => {
@@ -243,7 +243,7 @@ test("shows current connection logs and refreshes them while the dialog is open"
 			ok: true,
 			logs: [
 				{
-					id: "server-one:1",
+					id: "worker-one:1",
 					timestamp: "2026-08-15T12:00:00.000Z",
 					level: "info",
 					message: "Editor connected.",
@@ -255,19 +255,19 @@ test("shows current connection logs and refreshes them while the dialog is open"
 			ok: true,
 			logs: [
 				{
-					id: "server-one:1",
+					id: "worker-one:1",
 					timestamp: "2026-08-15T12:00:00.000Z",
 					level: "info",
 					message: "Editor connected.",
 				},
 				{
-					id: "server-one:2",
+					id: "worker-one:2",
 					timestamp: "2026-08-15T12:00:01.000Z",
 					level: "warning",
 					message: "Retrying download.",
 				},
 				{
-					id: "server-one:3",
+					id: "worker-one:3",
 					timestamp: "2026-08-15T12:00:02.000Z",
 					level: "info",
 					message: "[stdout] Prompt executed.",
@@ -304,7 +304,7 @@ test("shows current connection logs and refreshes them while the dialog is open"
 	expect(window.kastard.connection.getLogs).toHaveBeenCalledOnce();
 
 	await act(async () => {
-		await vi.advanceTimersByTimeAsync(SERVER_LOG_POLL_MS);
+		await vi.advanceTimersByTimeAsync(WORKER_LOG_POLL_MS);
 	});
 
 	expect(screen.getByText("Retrying download.")).toBeVisible();
@@ -322,7 +322,7 @@ test("shows current connection logs and refreshes them while the dialog is open"
 		fireEvent.click(screen.getByRole("button", { name: "Copy all" }));
 		await Promise.resolve();
 	});
-	const copiedLogs = vi.mocked(window.kastard.connection.copyServerLogs).mock
+	const copiedLogs = vi.mocked(window.kastard.connection.copyWorkerLogs).mock
 		.calls[0]?.[0];
 	expect(copiedLogs?.split("\n")).toHaveLength(3);
 	expect(copiedLogs).toMatch(
@@ -330,7 +330,7 @@ test("shows current connection logs and refreshes them while the dialog is open"
 	);
 	expect(screen.getByText("Worker logs copied.")).toHaveAttribute("role", "status");
 
-	vi.mocked(window.kastard.connection.copyServerLogs).mockResolvedValueOnce({
+	vi.mocked(window.kastard.connection.copyWorkerLogs).mockResolvedValueOnce({
 		ok: false,
 		error: "Could not copy Worker logs.",
 	});
@@ -345,7 +345,7 @@ test("shows current connection logs and refreshes them while the dialog is open"
 	const closeButtons = screen.getAllByRole("button", { name: "Close" });
 	fireEvent.click(closeButtons.at(-1) as HTMLElement);
 	await act(async () => {
-		await vi.advanceTimersByTimeAsync(SERVER_LOG_POLL_MS);
+		await vi.advanceTimersByTimeAsync(WORKER_LOG_POLL_MS);
 	});
 	expect(window.kastard.connection.getLogs).toHaveBeenCalledTimes(2);
 });
@@ -370,7 +370,7 @@ test("does not overwrite a live connection update with an older initial read", a
 				connection: {
 					status: "disconnected",
 					recentProvider: null,
-					recentServerUrl: null,
+					recentWorkerAddress: null,
 				},
 			},
 		});
@@ -468,7 +468,7 @@ test("disables titlebar dragging while the connection popover is open", async ()
 	);
 });
 
-test("prefills the recent server without connecting on startup", async () => {
+test("prefills the recent Worker without connecting on startup", async () => {
 	setSyncAfterConnect(false);
 	vi.mocked(window.kastard.workerSession.getSnapshot).mockResolvedValue({
 		revision: 0,
@@ -477,7 +477,7 @@ test("prefills the recent server without connecting on startup", async () => {
 			connection: {
 				status: "disconnected",
 				recentProvider: "other",
-				recentServerUrl: "recent-worker.example.com:22001",
+				recentWorkerAddress: "recent-worker.example.com:22001",
 			},
 		},
 	});
@@ -494,14 +494,14 @@ test("prefills the recent server without connecting on startup", async () => {
 	expect(window.kastard.workerSession.connect).not.toHaveBeenCalled();
 });
 
-test("shows an active server as clickable Offline", async () => {
+test("shows an active Worker as clickable Offline", async () => {
 	render(<App />);
 
 	await act(async () => {
 		emitConnection({
 			status: "offline",
 			provider: "other",
-			serverUrl: "worker.example.com:22001",
+			workerAddress: "worker.example.com:22001",
 			message: "Could not reach the Worker.",
 		});
 	});
@@ -533,7 +533,7 @@ test("opens a fresh authentication dialog after the encrypted session ends", asy
 		emitConnection({
 			status: "offline",
 			provider: "other",
-			serverUrl: "worker.example.com:22001",
+			workerAddress: "worker.example.com:22001",
 			message:
 				"The encrypted Worker session ended. Reconnect with the same authentication code while this Worker is running.",
 			reconnectRequired: true,

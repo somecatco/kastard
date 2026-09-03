@@ -6,8 +6,8 @@ import type {
 	ModelSyncState,
 	ModelSyncTarget,
 } from "@kastard/common";
-import serverPackage from "../package.json" with { type: "json" };
-import { createServerApp, readWorkerIdentity } from "./app";
+import workerPackage from "../package.json" with { type: "json" };
+import { createWorkerApp, readWorkerIdentity } from "./app";
 import {
 	type BackendProvisionerApi,
 	BackendProvisionerController,
@@ -29,8 +29,8 @@ import {
 	ModelProvisionerController,
 	ModelSyncError,
 } from "./model-provisioner";
-import { ServerLogStore } from "./server-log";
 import type { WorkerSystemStatus } from "./system-status";
+import { WorkerLogStore } from "./worker-log";
 import { type WorkflowJobApi, WorkflowJobError } from "./workflow-job";
 
 const CUSTOM_NODE_TARGET: CustomNodeSyncRequest = {
@@ -90,7 +90,7 @@ function modelOperationState(state: {
 	} as ModelSyncState;
 }
 
-describe("Kastard server HTTP API", () => {
+describe("Kastard Worker HTTP API", () => {
 	test("reports the Worker release identity", () => {
 		const sourceRevision = "a".repeat(40);
 		expect(
@@ -100,7 +100,7 @@ describe("Kastard server HTTP API", () => {
 				KASTARD_SOURCE_REVISION: sourceRevision,
 			}),
 		).toEqual({
-			buildNumber: serverPackage.buildNumber,
+			buildNumber: workerPackage.buildNumber,
 			channel: "production",
 			productVersion: "0.2.0",
 			sourceRevision,
@@ -111,7 +111,7 @@ describe("Kastard server HTTP API", () => {
 				KASTARD_SOURCE_REVISION: sourceRevision,
 			}),
 		).toEqual({
-			buildNumber: serverPackage.buildNumber,
+			buildNumber: workerPackage.buildNumber,
 			channel: "preview",
 			productVersion: null,
 			sourceRevision,
@@ -131,7 +131,7 @@ describe("Kastard server HTTP API", () => {
 	});
 
 	test("reports health and accepts a connection", async () => {
-		const app = createServerApp();
+		const app = createWorkerApp();
 
 		const health = await app.request("/health");
 		expect(health.status).toBe(200);
@@ -142,7 +142,7 @@ describe("Kastard server HTTP API", () => {
 		expect(await connection.json()).toEqual({
 			status: "connected",
 			worker: {
-				buildNumber: serverPackage.buildNumber,
+				buildNumber: workerPackage.buildNumber,
 				channel: "development",
 				productVersion: null,
 				sourceRevision: null,
@@ -152,11 +152,11 @@ describe("Kastard server HTTP API", () => {
 
 	test("returns logs recorded after the explicit connection", async () => {
 		let now = 0;
-		const logs = new ServerLogStore({
-			instanceId: "server-one",
+		const logs = new WorkerLogStore({
+			instanceId: "worker-one",
 			now: () => new Date(now++ * 1_000),
 		});
-		const app = createServerApp(logs);
+		const app = createWorkerApp(logs);
 		logs.write("info", "Before connection.");
 
 		const connection = await app.request("/connection", {
@@ -165,40 +165,40 @@ describe("Kastard server HTTP API", () => {
 		expect(connection.status).toBe(200);
 		expect(await connection.json()).toEqual({
 			status: "connected",
-			logCursor: "server-one:1",
+			logCursor: "worker-one:1",
 			worker: {
-				buildNumber: serverPackage.buildNumber,
+				buildNumber: workerPackage.buildNumber,
 				channel: "development",
 				productVersion: null,
 				sourceRevision: null,
 			},
 		});
 
-		const response = await app.request("/logs?after=server-one%3A1");
+		const response = await app.request("/logs?after=worker-one%3A1");
 		expect(response.status).toBe(200);
 		expect(await response.json()).toEqual({
 			logs: [
 				{
-					id: "server-one:2",
+					id: "worker-one:2",
 					timestamp: "1970-01-01T00:00:01.000Z",
 					level: "info",
 					message: "Editor connected.",
 				},
 			],
-			cursor: "server-one:2",
+			cursor: "worker-one:2",
 			truncated: false,
 		});
 	});
 
 	test("requires a valid log cursor", async () => {
-		const app = createServerApp();
+		const app = createWorkerApp();
 
 		expect((await app.request("/logs")).status).toBe(400);
 		expect((await app.request("/logs?after=invalid")).status).toBe(400);
 	});
 
 	test("does not expose pairing and session endpoints", async () => {
-		const app = createServerApp();
+		const app = createWorkerApp();
 
 		expect((await app.request("/pair", { method: "POST" })).status).toBe(404);
 		expect((await app.request("/session")).status).toBe(404);
@@ -212,8 +212,8 @@ describe("Kastard server HTTP API", () => {
 			disk: { path: "/workspace", usedBytes: 3, totalBytes: 10, usagePercent: 30 },
 			gpus: [],
 		};
-		const app = createServerApp(
-			new ServerLogStore(),
+		const app = createWorkerApp(
+			new WorkerLogStore(),
 			undefined,
 			undefined,
 			undefined,
@@ -228,7 +228,7 @@ describe("Kastard server HTTP API", () => {
 
 	test("reads and starts backend preparation", async () => {
 		const backend = backendStub();
-		const app = createServerApp(new ServerLogStore(), backend);
+		const app = createWorkerApp(new WorkerLogStore(), backend);
 		const headers = {
 			"Content-Type": "application/json",
 		};
@@ -256,7 +256,7 @@ describe("Kastard server HTTP API", () => {
 
 	test("returns preparation conflicts", async () => {
 		const backend = backendStub(true);
-		const app = createServerApp(new ServerLogStore(), backend);
+		const app = createWorkerApp(new WorkerLogStore(), backend);
 		const headers = {
 			"Content-Type": "application/json",
 		};
@@ -272,9 +272,9 @@ describe("Kastard server HTTP API", () => {
 		).toBe(409);
 	});
 
-	test("keeps the server reachable while backend provisioning is unavailable", async () => {
+	test("keeps the Worker reachable while backend provisioning is unavailable", async () => {
 		const backend = new BackendProvisionerController();
-		const app = createServerApp(new ServerLogStore(), backend);
+		const app = createWorkerApp(new WorkerLogStore(), backend);
 		const headers = {};
 
 		expect((await app.request("/health")).status).toBe(200);
@@ -309,8 +309,8 @@ describe("Kastard server HTTP API", () => {
 			},
 			freeMemory: async () => undefined,
 		};
-		const app = createServerApp(
-			new ServerLogStore(),
+		const app = createWorkerApp(
+			new WorkerLogStore(),
 			backendStub(),
 			undefined,
 			undefined,
@@ -346,8 +346,8 @@ describe("Kastard server HTTP API", () => {
 				cleanupRequests.push(request);
 			},
 		};
-		const app = createServerApp(
-			new ServerLogStore(),
+		const app = createWorkerApp(
+			new WorkerLogStore(),
 			backendStub(),
 			undefined,
 			undefined,
@@ -385,8 +385,8 @@ describe("Kastard server HTTP API", () => {
 
 	test("reports unavailable Worker ComfyUI memory cleanup", async () => {
 		const controller = new ComfyRuntimeController();
-		const app = createServerApp(
-			new ServerLogStore(),
+		const app = createWorkerApp(
+			new WorkerLogStore(),
 			backendStub(),
 			undefined,
 			undefined,
@@ -407,8 +407,8 @@ describe("Kastard server HTTP API", () => {
 
 	test("returns Worker ComfyUI conflicts and initialization errors", async () => {
 		const controller = new ComfyRuntimeController();
-		const app = createServerApp(
-			new ServerLogStore(),
+		const app = createWorkerApp(
+			new WorkerLogStore(),
 			backendStub(),
 			undefined,
 			undefined,
@@ -503,8 +503,8 @@ describe("Kastard server HTTP API", () => {
 			redownload: () => modelState,
 			cancel: () => modelOperationState({ status: "canceling" }),
 		};
-		const app = createServerApp(
-			new ServerLogStore(),
+		const app = createWorkerApp(
+			new WorkerLogStore(),
 			backendStub(),
 			customNodes,
 			models,
@@ -667,8 +667,8 @@ describe("Kastard server HTTP API", () => {
 			cancel: () => modelOperationState({ status: "canceling" }),
 		};
 		const backend = backendStub();
-		const app = createServerApp(
-			new ServerLogStore(),
+		const app = createWorkerApp(
+			new WorkerLogStore(),
 			backend,
 			customNodes,
 			models,
@@ -798,7 +798,7 @@ describe("Kastard server HTTP API", () => {
 				return { ...CUSTOM_NODE_OPERATION, status: "canceling" };
 			},
 		};
-		const app = createServerApp(new ServerLogStore(), backendStub(), customNodes);
+		const app = createWorkerApp(new WorkerLogStore(), backendStub(), customNodes);
 		const headers = {
 			"Content-Type": "application/json",
 		};
@@ -861,7 +861,7 @@ describe("Kastard server HTTP API", () => {
 
 	test("returns custom node conflicts and initialization errors", async () => {
 		const controller = new CustomNodeProvisionerController();
-		const app = createServerApp(new ServerLogStore(), backendStub(), controller);
+		const app = createWorkerApp(new WorkerLogStore(), backendStub(), controller);
 		const headers = {
 			"Content-Type": "application/json",
 		};
@@ -925,7 +925,7 @@ describe("Kastard server HTTP API", () => {
 				return modelOperationState({ status: "canceling" });
 			},
 		};
-		const app = createServerApp(new ServerLogStore(), backendStub(), undefined, models);
+		const app = createWorkerApp(new WorkerLogStore(), backendStub(), undefined, models);
 		const headers = {
 			"Content-Type": "application/json",
 		};
@@ -972,8 +972,8 @@ describe("Kastard server HTTP API", () => {
 			},
 			cancel: () => MODEL_IDLE,
 		};
-		const app = createServerApp(
-			new ServerLogStore(),
+		const app = createWorkerApp(
+			new WorkerLogStore(),
 			undefined,
 			undefined,
 			models,
@@ -1008,8 +1008,8 @@ describe("Kastard server HTTP API", () => {
 			},
 			cancel: () => CUSTOM_NODE_IDLE,
 		};
-		const app = createServerApp(
-			new ServerLogStore(),
+		const app = createWorkerApp(
+			new WorkerLogStore(),
 			undefined,
 			customNodes,
 			undefined,
@@ -1037,8 +1037,8 @@ describe("Kastard server HTTP API", () => {
 
 	test("returns model sync conflicts and initialization errors", async () => {
 		const controller = new ModelProvisionerController();
-		const app = createServerApp(
-			new ServerLogStore(),
+		const app = createWorkerApp(
+			new WorkerLogStore(),
 			backendStub(),
 			undefined,
 			controller,
@@ -1118,7 +1118,7 @@ describe("Kastard server HTTP API", () => {
 			redownload: () => modelOperationState({ status: "synced", models: [] }),
 			cancel: () => modelOperationState({ status: "canceling" }),
 		};
-		const app = createServerApp(new ServerLogStore(), backend, customNodes, models);
+		const app = createWorkerApp(new WorkerLogStore(), backend, customNodes, models);
 		const request = {
 			backendVersion: "0.33.1",
 			models: [],
@@ -1265,8 +1265,8 @@ describe("Kastard server HTTP API", () => {
 				requestedId === jobId ? { id: jobId, status: "completed" } : null,
 			hasActiveJob: () => busy,
 		};
-		const app = createServerApp(
-			new ServerLogStore(),
+		const app = createWorkerApp(
+			new WorkerLogStore(),
 			undefined,
 			customNodes,
 			models,

@@ -18,7 +18,7 @@ import {
 	type ModelSyncState,
 	type ModelSyncTarget,
 } from "./model-provisioner";
-import { ServerLogStore } from "./server-log";
+import { WorkerLogStore } from "./worker-log";
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -39,7 +39,7 @@ describe("ModelProvisioner", () => {
 		await ModelProvisioner.create({
 			rootDirectory: root,
 			runtimePython: "/runtime/python",
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 		});
 
 		await expect(access(abandoned)).rejects.toThrow();
@@ -55,7 +55,7 @@ describe("ModelProvisioner", () => {
 		const provisioner = await ModelProvisioner.create({
 			rootDirectory: root,
 			runtimePython: "/runtime/python",
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			download: async (model, token, staging) => {
 				tokens.set(model.artifact.provider, token);
 				const path = join(staging, "download");
@@ -88,7 +88,7 @@ describe("ModelProvisioner", () => {
 		const provisioner = await ModelProvisioner.create({
 			rootDirectory: root,
 			runtimePython: "/runtime/python",
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			download: async (model, token, staging) => {
 				tokens.push(token);
 				const path = join(staging, "download");
@@ -149,7 +149,7 @@ console.log(JSON.stringify({ path }));
 `,
 		);
 		await chmod(runtimePython, 0o755);
-		const logs = new ServerLogStore({ instanceId: "worker" });
+		const logs = new WorkerLogStore({ instanceId: "worker" });
 		const cursor = logs.getCursor();
 		const model = target("streamed-progress", "huggingface", 5);
 		const provisioner = await ModelProvisioner.create({
@@ -250,7 +250,7 @@ console.log(JSON.stringify({ path }));
 				`#!/bin/sh\nprintf '%s\\n' '${JSON.stringify({ error: { status: 403, message: `denied ${token ?? "anonymous"}` } })}'\nexit 1\n`,
 			);
 			await chmod(runtimePython, 0o755);
-			const logs = new ServerLogStore({ instanceId: "worker" });
+			const logs = new WorkerLogStore({ instanceId: "worker" });
 			const cursor = logs.getCursor();
 			const provisioner = await ModelProvisioner.create({
 				rootDirectory: root,
@@ -334,7 +334,7 @@ console.log(JSON.stringify({ path }));
 			const provisioner = await ModelProvisioner.create({
 				rootDirectory: root,
 				runtimePython: "/runtime/python",
-				logs: new ServerLogStore(),
+				logs: new WorkerLogStore(),
 			});
 
 			provisioner.sync({
@@ -368,7 +368,7 @@ console.log(JSON.stringify({ path }));
 		const provisioner = await ModelProvisioner.create({
 			rootDirectory: root,
 			runtimePython: "/runtime/python",
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			download: async (model, _token, staging, onProgress) => {
 				downloaded.push(model.path);
 				onProgress(model.artifact.sizeBytes);
@@ -393,7 +393,7 @@ console.log(JSON.stringify({ path }));
 
 	test("records model download milestones instead of every progress update", async () => {
 		const root = await temporaryDirectory();
-		const logs = new ServerLogStore({ instanceId: "worker" });
+		const logs = new WorkerLogStore({ instanceId: "worker" });
 		const cursor = logs.getCursor();
 		const model = target("logged-progress", "civitai", 100);
 		const provisioner = await ModelProvisioner.create({
@@ -430,7 +430,7 @@ console.log(JSON.stringify({ path }));
 		const provisioner = await ModelProvisioner.create({
 			rootDirectory: root,
 			runtimePython: "/runtime/python",
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			download: async (target, _token, staging) => {
 				const path = join(staging, "download");
 				await writeFile(path, Buffer.alloc(target.artifact.sizeBytes));
@@ -482,7 +482,7 @@ console.log(JSON.stringify({ path }));
 		const provisioner = await ModelProvisioner.create({
 			rootDirectory: root,
 			runtimePython: "/runtime/python",
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			download: async (model, _token, staging) => {
 				downloads.push(model.path);
 				const path = join(staging, "download");
@@ -541,7 +541,7 @@ console.log(JSON.stringify({ path }));
 			ModelProvisioner.create({
 				rootDirectory: root,
 				runtimePython: "/runtime/python",
-				logs: new ServerLogStore(),
+				logs: new WorkerLogStore(),
 			}),
 		).rejects.toThrow("Stored model synchronization state is invalid.");
 	});
@@ -564,7 +564,7 @@ console.log(JSON.stringify({ path }));
 		const provisioner = await ModelProvisioner.create({
 			rootDirectory: root,
 			runtimePython: "/runtime/python",
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			download: async (model, _token, staging) => {
 				active += 1;
 				maxActive = Math.max(maxActive, active);
@@ -619,7 +619,7 @@ console.log(JSON.stringify({ path }));
 		const provisioner = await ModelProvisioner.create({
 			rootDirectory: root,
 			runtimePython: "/runtime/python",
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			download: async () => {
 				downloads += 1;
 				return destination;
@@ -638,7 +638,7 @@ console.log(JSON.stringify({ path }));
 		const root = await temporaryDirectory();
 		const failed = target("failed", "huggingface", 5);
 		const successful = target("successful", "civitai", 6);
-		const logs = new ServerLogStore({ instanceId: "worker" });
+		const logs = new WorkerLogStore({ instanceId: "worker" });
 		const cursor = logs.getCursor();
 		const provisioner = await ModelProvisioner.create({
 			rootDirectory: root,
@@ -677,7 +677,7 @@ console.log(JSON.stringify({ path }));
 		const restored = await ModelProvisioner.create({
 			rootDirectory: root,
 			runtimePython: "/runtime/python",
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 		});
 		expect(restored.getState()).toMatchObject({
 			status: "idle",
@@ -698,7 +698,7 @@ console.log(JSON.stringify({ path }));
 		const provisioner = await ModelProvisioner.create({
 			rootDirectory: root,
 			runtimePython: "/runtime/python",
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			download: async (model, _token, staging, _onProgress, signal) => {
 				downloads.push(model.name);
 				const path = join(staging, "download");
@@ -734,7 +734,7 @@ console.log(JSON.stringify({ path }));
 		const restored = await ModelProvisioner.create({
 			rootDirectory: root,
 			runtimePython: "/runtime/python",
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 		});
 		expect(restored.getState()).toMatchObject({
 			status: "idle",
@@ -759,7 +759,7 @@ console.log(JSON.stringify({ path }));
 		const provisioner = await ModelProvisioner.create({
 			rootDirectory: root,
 			runtimePython: "/runtime/python",
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			download: async (target, _token, staging) => {
 				downloadCount += 1;
 				if (downloadCount === 2)
@@ -809,7 +809,7 @@ console.log(JSON.stringify({ path }));
 		const provisioner = await ModelProvisioner.create({
 			rootDirectory: root,
 			runtimePython: "/runtime/python",
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			download: async (target, _token, staging) => {
 				const path = join(staging, "download");
 				await writeFile(path, Buffer.alloc(target.artifact.sizeBytes));
@@ -833,7 +833,7 @@ console.log(JSON.stringify({ path }));
 		const restored = await ModelProvisioner.create({
 			rootDirectory: root,
 			runtimePython: "/runtime/python",
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 		});
 		expect(restored.getState()).toMatchObject({ status: "idle", models });
 	});
@@ -846,7 +846,7 @@ console.log(JSON.stringify({ path }));
 		const provisioner = await ModelProvisioner.create({
 			rootDirectory: root,
 			runtimePython: "/runtime/python",
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			download: async (target, _token, staging) => {
 				if (fail) throw new Error("provider unavailable");
 				const path = join(staging, "download");
@@ -895,7 +895,7 @@ console.log(JSON.stringify({ path }));
 		const provisioner = await ModelProvisioner.create({
 			rootDirectory: root,
 			runtimePython: "/runtime/python",
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			download: async (target, _token, staging, _onProgress, signal) => {
 				const path = join(staging, "download");
 				await writeFile(path, Buffer.alloc(target.artifact.sizeBytes));
@@ -945,7 +945,7 @@ console.log(JSON.stringify({ path }));
 		const provisioner = await ModelProvisioner.create({
 			rootDirectory: root,
 			runtimePython: "/runtime/python",
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 		});
 		await writeFile(join(root, ".kastard", "model-sync.json"), "invalid");
 
@@ -981,7 +981,7 @@ console.log(JSON.stringify({ path }));
 			const provisioner = await ModelProvisioner.create({
 				rootDirectory: root,
 				runtimePython: "/runtime/python",
-				logs: new ServerLogStore(),
+				logs: new WorkerLogStore(),
 				download: async () => {
 					downloads += 1;
 					throw new Error("should not download");
@@ -1015,7 +1015,7 @@ console.log(JSON.stringify({ path }));
 		const provisioner = await ModelProvisioner.create({
 			rootDirectory: root,
 			runtimePython: "/runtime/python",
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			download: async () => {
 				downloads += 1;
 				throw new Error("should not download");
@@ -1056,7 +1056,7 @@ console.log(JSON.stringify({ path }));
 		const provisioner = await ModelProvisioner.create({
 			rootDirectory: root,
 			runtimePython: "/runtime/python",
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			download: async () => {
 				downloads += 1;
 				throw new Error("should not download");
@@ -1082,7 +1082,7 @@ console.log(JSON.stringify({ path }));
 		const provisioner = await ModelProvisioner.create({
 			rootDirectory: root,
 			runtimePython: "/runtime/python",
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 		});
 
 		provisioner.sync({ models: [existing], credentials: {} });
@@ -1124,7 +1124,7 @@ async function runCivitaiFailure(
 	const originalFetch = globalThis.fetch;
 	globalThis.fetch = fetchImplementation as unknown as typeof fetch;
 	try {
-		const logs = new ServerLogStore({ instanceId: "worker" });
+		const logs = new WorkerLogStore({ instanceId: "worker" });
 		const cursor = logs.getCursor();
 		const provisioner = await ModelProvisioner.create({
 			rootDirectory: root,

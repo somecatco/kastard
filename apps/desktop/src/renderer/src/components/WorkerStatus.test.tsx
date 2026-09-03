@@ -9,12 +9,12 @@ import {
 } from "@testing-library/react";
 import { afterEach, expect, test } from "vitest";
 import type { GpuSystemStatus, WorkerSystemStatus } from "../../../shared/api";
-import { ServerStatus } from "./ServerStatus";
+import { WorkerStatus } from "./WorkerStatus";
 
 afterEach(cleanup);
 
 test("shows unavailable placeholders before Worker metrics arrive", () => {
-	render(<ServerStatus />);
+	render(<WorkerStatus />);
 
 	const status = screen.getByRole("list", { name: "Worker status" });
 	expect(
@@ -31,7 +31,7 @@ test("shows unavailable placeholders before Worker metrics arrive", () => {
 });
 
 test("shows only CPU, RAM, and disk when no GPU is present", () => {
-	render(<ServerStatus status={statusWithGpus([])} />);
+	render(<WorkerStatus status={statusWithGpus([])} />);
 
 	const status = screen.getByRole("list", { name: "Worker status" });
 	expect(within(status).getAllByRole("listitem")).toHaveLength(3);
@@ -40,7 +40,7 @@ test("shows only CPU, RAM, and disk when no GPU is present", () => {
 });
 
 test("shows the GPU index when exactly one GPU is present", () => {
-	render(<ServerStatus status={statusWithGpus([gpu(3)])} />);
+	render(<WorkerStatus status={statusWithGpus([gpu(3)])} />);
 
 	const status = screen.getByRole("list", { name: "Worker status" });
 	expect(within(status).getAllByRole("img")).toHaveLength(6);
@@ -58,7 +58,7 @@ test("renders indexed groups for four GPUs and keeps disk last", () => {
 		temperatureC: 54,
 	};
 	render(
-		<ServerStatus status={statusWithGpus([gpu(0), unavailableGpu, gpu(2), gpu(3)])} />,
+		<WorkerStatus status={statusWithGpus([gpu(0), unavailableGpu, gpu(2), gpu(3)])} />,
 	);
 
 	const status = screen.getByRole("list", { name: "Worker status" });
@@ -87,7 +87,7 @@ test("renders indexed groups for four GPUs and keeps disk last", () => {
 });
 
 test("keeps disk outside the clipped GPU region", () => {
-	render(<ServerStatus status={statusWithGpus([gpu(0), gpu(1)])} />);
+	render(<WorkerStatus status={statusWithGpus([gpu(0), gpu(1)])} />);
 
 	const status = screen.getByRole("list", { name: "Worker status" });
 	const gpuStatus = within(status).getByRole("list", { name: "GPU status" });
@@ -98,7 +98,7 @@ test("keeps disk outside the clipped GPU region", () => {
 });
 
 test("closes a metric tooltip when the window loses focus", async () => {
-	render(<ServerStatus status={statusWithGpus([])} />);
+	render(<WorkerStatus status={statusWithGpus([])} />);
 
 	const cpu = screen.getByRole("img", { name: "CPU usage: 12%" });
 	expect(cpu).toHaveClass("cursor-default");
@@ -113,7 +113,7 @@ test("closes a metric tooltip when the window loses focus", async () => {
 });
 
 test("selects the exact Worker disk path on triple-click", async () => {
-	render(<ServerStatus status={statusWithGpus([])} />);
+	render(<WorkerStatus status={statusWithGpus([])} />);
 
 	const disk = screen.getByRole("img", { name: /^Disk usage/ });
 	fireEvent.pointerMove(disk, { pointerType: "mouse" });
@@ -125,7 +125,7 @@ test("selects the exact Worker disk path on triple-click", async () => {
 });
 
 test("closes a metric tooltip after leaving its hover area", async () => {
-	render(<ServerStatus status={statusWithGpus([])} />);
+	render(<WorkerStatus status={statusWithGpus([])} />);
 
 	const cpu = screen.getByRole("img", { name: "CPU usage: 12%" });
 	fireEvent.pointerMove(cpu, { pointerType: "mouse" });
@@ -136,7 +136,7 @@ test("closes a metric tooltip after leaving its hover area", async () => {
 });
 
 test("keeps a metric tooltip open while moving from its trigger to its content", async () => {
-	render(<ServerStatus status={statusWithGpus([])} />);
+	render(<WorkerStatus status={statusWithGpus([])} />);
 
 	const cpu = screen.getByRole("img", { name: "CPU usage: 12%" });
 	fireEvent.pointerMove(cpu, { pointerType: "mouse" });

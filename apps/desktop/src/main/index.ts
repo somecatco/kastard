@@ -989,6 +989,7 @@ app.whenReady().then(async () => {
 	workerSession = new WorkerSession(
 		{
 			store: new ConnectionPreferencesStore(
+				join(app.getPath("userData"), "worker-connection.json"),
 				join(app.getPath("userData"), "server-connection.json"),
 			),
 			getBackendTarget,

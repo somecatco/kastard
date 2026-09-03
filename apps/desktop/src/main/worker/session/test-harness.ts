@@ -10,9 +10,9 @@ import type { WorkerModelSyncOptions } from "./model-sync";
 import type { WorkerRuntimeStateOptions } from "./runtime-state";
 import { WorkerSession } from "./worker-session";
 
-export const SERVER_URL = "worker.example.com:22001";
-export const SECOND_SERVER_URL = "worker-two.example.com:22002";
-export const WORKER_ENDPOINT = "http://127.0.0.1:49152";
+export const WORKER_ADDRESS = "worker.example.com:22001";
+export const SECOND_WORKER_ADDRESS = "worker-two.example.com:22002";
+export const WORKER_API_URL = "http://127.0.0.1:49152";
 export const AUTHENTICATION_CODE = "ABCD-EFGH-JKLM-NPQR";
 export const SESSION_CAPABILITY = "test-session-capability";
 export const inputlessPrompt = {
@@ -71,7 +71,7 @@ export function workerTunnel(
 	let closeListener: (() => void) | null = null;
 	let closed = false;
 	return {
-		endpointUrl: WORKER_ENDPOINT,
+		endpointUrl: WORKER_API_URL,
 		workerAddress,
 		sessionCapability: SESSION_CAPABILITY,
 		close: vi.fn(async () => undefined),
@@ -213,17 +213,17 @@ export function createHarness(
 	const store = {
 		load: vi.fn().mockResolvedValue({
 			recentProvider: null,
-			recentServerUrl: null,
+			recentWorkerAddress: null,
 			syncAfterConnect: true,
 			systemMetricsEnabled: true,
 		}),
 		save: vi.fn().mockResolvedValue(undefined),
 	};
 	const options: SessionOptions = {
-		connect: vi.fn().mockImplementation(async (serverUrl: string) => ({
+		connect: vi.fn().mockImplementation(async (workerAddress: string) => ({
 			ok: true,
 			logCursor: "cursor-1",
-			tunnel: workerTunnel(serverUrl),
+			tunnel: workerTunnel(workerAddress),
 		})),
 		probe: vi.fn().mockResolvedValue({ status: "connected" }),
 		readLogs: vi.fn().mockResolvedValue({
@@ -383,7 +383,7 @@ export async function initializeAndConnect(session: WorkerSession): Promise<void
 	expect(
 		await session.connect({
 			provider: "other",
-			serverUrl: SERVER_URL,
+			workerAddress: WORKER_ADDRESS,
 			authenticationCode: AUTHENTICATION_CODE,
 			syncAfterConnect: false,
 		}),

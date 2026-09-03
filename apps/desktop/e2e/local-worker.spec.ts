@@ -206,7 +206,6 @@ async function expectWorkerReady(page: Page): Promise<void> {
 	await expect(
 		connection.getByText("Backend, models, and custom nodes are synchronized."),
 	).toBeVisible();
-	await expect(connection.getByText("Running", { exact: true })).toBeVisible();
 	await page.getByRole("button", { name: /^Connected/ }).click();
 
 	await page.getByRole("button", { name: "Open Backend status" }).click();

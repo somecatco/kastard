@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 import { expect, test, vi } from "vitest";
-import type { ModelSyncRequest, ModelSyncServerState } from "../../../shared/api";
+import type { ModelSyncRequest, ModelSyncState } from "../../../shared/api";
 import type { CustomNodeSyncPlan } from "../sync-plan";
 import {
 	CUSTOM_NODE_TARGET,
@@ -13,14 +13,14 @@ import {
 	deferred,
 	initializeAndConnect,
 	runtime,
-	SERVER_URL,
 	type SessionOptions,
 	syncingCustomNodeState,
 	syncingModelState,
 	syncingSetupOptions,
 	systemMetrics,
 	verification,
-	WORKER_ENDPOINT,
+	WORKER_ADDRESS,
+	WORKER_API_URL,
 } from "./test-harness";
 
 const authenticatedModelRequest: ModelSyncRequest = {
@@ -48,7 +48,7 @@ const setupUnavailableResult = {
 } as const;
 
 test("uses model credentials through the encrypted Worker session", async () => {
-	const serverUrl = SERVER_URL;
+	const workerAddress = WORKER_ADDRESS;
 	const startModels = vi.fn().mockResolvedValue({
 		ok: true,
 		state: currentModelState({
@@ -64,7 +64,7 @@ test("uses model credentials through the encrypted Worker session", async () => 
 	expect(
 		await session.connect({
 			provider: "other",
-			serverUrl,
+			workerAddress,
 			authenticationCode: "ABCD-EFGH-JKLM-NPQR",
 			syncAfterConnect: false,
 		}),
@@ -75,7 +75,10 @@ test("uses model credentials through the encrypted Worker session", async () => 
 
 	await expect(session.syncModels()).resolves.toMatchObject({ ok: true });
 	expect(startModels).toHaveBeenCalledWith(
-		expect.objectContaining({ serverUrl: WORKER_ENDPOINT, workerUrl: serverUrl }),
+		expect.objectContaining({
+			workerApiUrl: WORKER_API_URL,
+			workerAddress: workerAddress,
+		}),
 		authenticatedModelRequest,
 		expect.any(Function),
 	);
@@ -215,7 +218,7 @@ test("waits for an active model redownload before starting Worker ComfyUI", asyn
 				},
 			],
 		},
-	} satisfies ModelSyncServerState;
+	} satisfies ModelSyncState;
 	const completedRedownload = {
 		...activeRedownload,
 		status: "synced",
@@ -229,7 +232,7 @@ test("waits for an active model redownload before starting Worker ComfyUI", asyn
 				},
 			],
 		},
-	} satisfies ModelSyncServerState;
+	} satisfies ModelSyncState;
 	const readModels = vi
 		.fn<NonNullable<SessionOptions["readModels"]>>()
 		.mockResolvedValueOnce({ ok: true, state: activeRedownload })
@@ -516,7 +519,7 @@ test("starts models with backend preparation and waits for backend before custom
 	await session.initialize();
 	await session.connect({
 		provider: "other",
-		serverUrl: SERVER_URL,
+		workerAddress: WORKER_ADDRESS,
 		authenticationCode: "ABCD-EFGH-JKLM-NPQR",
 		syncAfterConnect: false,
 	});
@@ -582,7 +585,7 @@ test("rejoins backend preparation after a retryable start response failure", asy
 	expect(
 		await session.connect({
 			provider: "other",
-			serverUrl: SERVER_URL,
+			workerAddress: WORKER_ADDRESS,
 			authenticationCode: "ABCD-EFGH-JKLM-NPQR",
 			syncAfterConnect: true,
 		}),
@@ -617,7 +620,7 @@ test("does not restart a rejoined backend preparation that failed", async () => 
 	expect(
 		await session.connect({
 			provider: "other",
-			serverUrl: SERVER_URL,
+			workerAddress: WORKER_ADDRESS,
 			authenticationCode: "ABCD-EFGH-JKLM-NPQR",
 			syncAfterConnect: false,
 		}),
@@ -672,7 +675,7 @@ test("discards a backend rejoin after disconnect", async () => {
 	expect(
 		await session.connect({
 			provider: "other",
-			serverUrl: SERVER_URL,
+			workerAddress: WORKER_ADDRESS,
 			authenticationCode: "ABCD-EFGH-JKLM-NPQR",
 			syncAfterConnect: true,
 		}),
@@ -800,7 +803,7 @@ test("does not wait for system metrics before running Worker setup", async () =>
 	expect(
 		await session.connect({
 			provider: "other",
-			serverUrl: SERVER_URL,
+			workerAddress: WORKER_ADDRESS,
 			authenticationCode: "ABCD-EFGH-JKLM-NPQR",
 			syncAfterConnect: true,
 		}),
@@ -1106,7 +1109,7 @@ test("does not resume setup when backend preparation finishes after cancellation
 	await session.initialize();
 	await session.connect({
 		provider: "other",
-		serverUrl: SERVER_URL,
+		workerAddress: WORKER_ADDRESS,
 		authenticationCode: "ABCD-EFGH-JKLM-NPQR",
 		syncAfterConnect: false,
 	});
@@ -1217,7 +1220,7 @@ test("does not retry a backend rejected by the fixed Worker runtime", async () =
 	await session.initialize();
 	await session.connect({
 		provider: "other",
-		serverUrl: SERVER_URL,
+		workerAddress: WORKER_ADDRESS,
 		authenticationCode: "ABCD-EFGH-JKLM-NPQR",
 		syncAfterConnect: false,
 	});
@@ -1357,7 +1360,7 @@ test("discards setup work completed after disconnect", async () => {
 	await Promise.all([customNodes.promise, models.promise]);
 
 	expect(session.getState()).toMatchObject({
-		connection: { status: "disconnected", recentServerUrl: SERVER_URL },
+		connection: { status: "disconnected", recentWorkerAddress: WORKER_ADDRESS },
 		setup: { status: "idle" },
 		verification: null,
 	});
@@ -1402,7 +1405,7 @@ test("discards setup work completed after the Worker goes offline", async () => 
 	await new Promise((resolve) => setTimeout(resolve, 0));
 
 	expect(session.getState()).toMatchObject({
-		connection: { status: "offline", serverUrl: SERVER_URL },
+		connection: { status: "offline", workerAddress: WORKER_ADDRESS },
 		customNodes: { status: "disconnected" },
 		models: { status: "disconnected" },
 		setup: { status: "idle" },

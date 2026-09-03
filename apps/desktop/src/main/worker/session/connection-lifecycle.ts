@@ -5,19 +5,19 @@ import type {
 	ConnectionSettings,
 	ConnectionSettingsResult,
 	ReleaseIdentity,
-	ServerLogEntry,
-	ServerLogsResult,
+	WorkerLogEntry,
+	WorkerLogsResult,
 	WorkerProvider,
 	WorkerSessionState,
 } from "../../../shared/api";
 import {
 	type ConnectionAttemptResult,
 	type ConnectionProbeResult,
-	connectToServer,
-	fetchServerLogs,
-	probeServerConnection,
-	type ServerCredential,
-	type ServerLogsFetchResult,
+	connectToWorker,
+	fetchWorkerLogs,
+	probeWorkerConnection,
+	type WorkerLogsFetchResult,
+	type WorkerSessionCredential,
 } from "../client";
 import type { ConnectionPreferences } from "../connection-store";
 import type { WorkerTunnel } from "../tunnel";
@@ -36,19 +36,19 @@ export interface WorkerSessionPreferencesStore {
 
 export type WorkerConnectionLifecycleOptions = {
 	connect?: (
-		serverUrl: string,
+		workerAddress: string,
 		authenticationCode: string,
 		signal?: AbortSignal,
 	) => Promise<ConnectionAttemptResult>;
 	probe?: (
-		credential: ServerCredential,
+		credential: WorkerSessionCredential,
 		requestFetch?: WorkerSessionRequestFetch,
 	) => Promise<ConnectionProbeResult>;
 	readLogs?: (
-		credential: ServerCredential,
+		credential: WorkerSessionCredential,
 		cursor: string,
 		requestFetch?: WorkerSessionRequestFetch,
-	) => Promise<ServerLogsFetchResult>;
+	) => Promise<WorkerLogsFetchResult>;
 	recheckMs?: number;
 };
 
@@ -65,7 +65,7 @@ type WorkerConnectionLifecycleDependencies = {
 	resetSyncState: () => void;
 	invalidateSessionWork: () => void;
 	onRecovered: (
-		serverUrl: string,
+		workerAddress: string,
 		connectedAt: number,
 		worker?: ReleaseIdentity,
 	) => void;
@@ -74,7 +74,7 @@ type WorkerConnectionLifecycleDependencies = {
 
 export const CONNECTION_RECHECK_MS = 10_000;
 export const CONNECTION_OFFLINE_FAILURE_LIMIT = 5;
-const SERVER_LOG_LIMIT = 1_000;
+const WORKER_LOG_LIMIT = 1_000;
 const SESSION_ENDED_ERROR =
 	"The encrypted Worker session ended. Reconnect with the same authentication code while this Worker is running.";
 
@@ -84,10 +84,10 @@ export class WorkerConnectionLifecycle {
 	private readonly readLogs;
 	private readonly recheckMs;
 	private recentProvider: WorkerProvider | null = null;
-	private recentServerUrl: string | null = null;
+	private recentWorkerAddress: string | null = null;
 	private syncAfterConnect = true;
-	private activeServerUrl: string | null = null;
-	private activeWorkerUrl: string | null = null;
+	private activeWorkerApiUrl: string | null = null;
+	private activeWorkerAddress: string | null = null;
 	private activeSessionCapability: string | null = null;
 	private activeTunnel: WorkerTunnel | null = null;
 	private activeTunnelUnsubscribe: (() => void) | null = null;
@@ -95,28 +95,30 @@ export class WorkerConnectionLifecycle {
 	private consecutiveRecheckFailures = 0;
 	private recheckTimer: ReturnType<typeof setInterval> | null = null;
 	private logCursor: string | null = null;
-	private serverLogs: ServerLogEntry[] = [];
+	private workerLogs: WorkerLogEntry[] = [];
 	private logsTruncated = false;
-	private logRequest: Promise<ServerLogsResult> | null = null;
+	private logRequest: Promise<WorkerLogsResult> | null = null;
 
 	constructor(
 		private readonly dependencies: WorkerConnectionLifecycleDependencies,
 		options?: WorkerConnectionLifecycleOptions,
 	) {
-		this.connectWorker = options?.connect ?? connectToServer;
-		this.probeWorker = options?.probe ?? probeServerConnection;
-		this.readLogs = options?.readLogs ?? fetchServerLogs;
+		this.connectWorker = options?.connect ?? connectToWorker;
+		this.probeWorker = options?.probe ?? probeWorkerConnection;
+		this.readLogs = options?.readLogs ?? fetchWorkerLogs;
 		this.recheckMs = options?.recheckMs ?? CONNECTION_RECHECK_MS;
 	}
 
-	get credential(): ServerCredential | null {
-		if (this.activeServerUrl === null || this.activeSessionCapability === null) {
+	get credential(): WorkerSessionCredential | null {
+		if (this.activeWorkerApiUrl === null || this.activeSessionCapability === null) {
 			return null;
 		}
 		return {
-			serverUrl: this.activeServerUrl,
+			workerApiUrl: this.activeWorkerApiUrl,
 			sessionCapability: this.activeSessionCapability,
-			...(this.activeWorkerUrl === null ? {} : { workerUrl: this.activeWorkerUrl }),
+			...(this.activeWorkerAddress === null
+				? {}
+				: { workerAddress: this.activeWorkerAddress }),
 		};
 	}
 
@@ -136,7 +138,7 @@ export class WorkerConnectionLifecycle {
 		try {
 			await this.dependencies.store.save({
 				recentProvider: this.recentProvider,
-				recentServerUrl: this.recentServerUrl,
+				recentWorkerAddress: this.recentWorkerAddress,
 				syncAfterConnect: settings.syncAfterConnect,
 				systemMetricsEnabled: settings.systemMetricsEnabled,
 			});
@@ -170,7 +172,7 @@ export class WorkerConnectionLifecycle {
 			initialWorkerSessionState(
 				this.editorComfyVersion(),
 				this.recentProvider,
-				this.recentServerUrl,
+				this.recentWorkerAddress,
 			),
 		);
 	}
@@ -181,7 +183,7 @@ export class WorkerConnectionLifecycle {
 			if (preferences === null) {
 				preferences = {
 					recentProvider: null,
-					recentServerUrl: null,
+					recentWorkerAddress: null,
 					syncAfterConnect: true,
 					systemMetricsEnabled: true,
 				};
@@ -189,7 +191,7 @@ export class WorkerConnectionLifecycle {
 			}
 			if (signal.aborted) return this.replacedOutcome();
 			this.recentProvider = preferences.recentProvider;
-			this.recentServerUrl = preferences.recentServerUrl;
+			this.recentWorkerAddress = preferences.recentWorkerAddress;
 			this.syncAfterConnect = preferences.syncAfterConnect;
 			this.dependencies.setSystemMetricsEnabled(
 				preferences.systemMetricsEnabled,
@@ -202,7 +204,7 @@ export class WorkerConnectionLifecycle {
 					state: initialWorkerSessionState(
 						this.editorComfyVersion(),
 						this.recentProvider,
-						this.recentServerUrl,
+						this.recentWorkerAddress,
 					),
 				},
 			};
@@ -217,7 +219,7 @@ export class WorkerConnectionLifecycle {
 						...initialWorkerSessionState(
 							this.editorComfyVersion(),
 							this.recentProvider,
-							this.recentServerUrl,
+							this.recentWorkerAddress,
 						),
 						connection: { status: "error", message },
 					},
@@ -232,7 +234,7 @@ export class WorkerConnectionLifecycle {
 			connection: {
 				status: "connecting",
 				provider: request.provider,
-				serverUrl: request.serverUrl.trim(),
+				workerAddress: request.workerAddress.trim(),
 			},
 			...disconnectedWorkerState(this.editorComfyVersion()),
 		});
@@ -244,7 +246,7 @@ export class WorkerConnectionLifecycle {
 	): Promise<ConnectionMachineOutcome> {
 		try {
 			const result = await this.connectWorker(
-				request.serverUrl,
+				request.workerAddress,
 				request.authenticationCode,
 				signal,
 			);
@@ -260,7 +262,7 @@ export class WorkerConnectionLifecycle {
 						state: initialWorkerSessionState(
 							this.editorComfyVersion(),
 							this.recentProvider,
-							this.recentServerUrl,
+							this.recentWorkerAddress,
 						),
 					},
 				};
@@ -269,7 +271,7 @@ export class WorkerConnectionLifecycle {
 			try {
 				await this.dependencies.store.save({
 					recentProvider: request.provider,
-					recentServerUrl: result.tunnel.workerAddress,
+					recentWorkerAddress: result.tunnel.workerAddress,
 					syncAfterConnect: request.syncAfterConnect,
 					systemMetricsEnabled: this.dependencies.getSystemMetricsEnabled(),
 				});
@@ -285,7 +287,7 @@ export class WorkerConnectionLifecycle {
 							...initialWorkerSessionState(
 								this.editorComfyVersion(),
 								this.recentProvider,
-								this.recentServerUrl,
+								this.recentWorkerAddress,
 							),
 							connection: { status: "error", message },
 						},
@@ -298,7 +300,7 @@ export class WorkerConnectionLifecycle {
 				return this.replacedOutcome();
 			}
 			this.recentProvider = request.provider;
-			this.recentServerUrl = result.tunnel.workerAddress;
+			this.recentWorkerAddress = result.tunnel.workerAddress;
 			this.syncAfterConnect = request.syncAfterConnect;
 			let tunnelClosed = false;
 			const unsubscribe = result.tunnel.onClose(() => {
@@ -309,8 +311,8 @@ export class WorkerConnectionLifecycle {
 				unsubscribe();
 				throw new Error(SESSION_ENDED_ERROR);
 			}
-			this.activeServerUrl = result.tunnel.endpointUrl;
-			this.activeWorkerUrl = result.tunnel.workerAddress;
+			this.activeWorkerApiUrl = result.tunnel.endpointUrl;
+			this.activeWorkerAddress = result.tunnel.workerAddress;
 			this.activeSessionCapability = result.tunnel.sessionCapability;
 			this.activeTunnel = result.tunnel;
 			this.activeTunnelUnsubscribe = unsubscribe;
@@ -324,7 +326,7 @@ export class WorkerConnectionLifecycle {
 					connection: {
 						status: "connected",
 						provider: request.provider,
-						serverUrl: result.tunnel.workerAddress,
+						workerAddress: result.tunnel.workerAddress,
 						connectedAt: Date.now(),
 						...(result.worker === undefined ? {} : { worker: result.worker }),
 					},
@@ -350,7 +352,7 @@ export class WorkerConnectionLifecycle {
 					state: initialWorkerSessionState(
 						this.editorComfyVersion(),
 						this.recentProvider,
-						this.recentServerUrl,
+						this.recentWorkerAddress,
 					),
 				},
 			};
@@ -367,7 +369,7 @@ export class WorkerConnectionLifecycle {
 					state: initialWorkerSessionState(
 						this.editorComfyVersion(),
 						this.recentProvider,
-						this.recentServerUrl,
+						this.recentWorkerAddress,
 					),
 				},
 			};
@@ -392,7 +394,8 @@ export class WorkerConnectionLifecycle {
 							connection: {
 								status: "offline",
 								provider: this.recentProvider ?? "other",
-								serverUrl: credential.workerUrl ?? this.recentServerUrl ?? "",
+								workerAddress:
+									credential.workerAddress ?? this.recentWorkerAddress ?? "",
 								message: result.error,
 							},
 						},
@@ -408,7 +411,7 @@ export class WorkerConnectionLifecycle {
 					connection: {
 						status: "connected",
 						provider: this.recentProvider ?? "other",
-						serverUrl: credential.workerUrl ?? this.recentServerUrl ?? "",
+						workerAddress: credential.workerAddress ?? this.recentWorkerAddress ?? "",
 						connectedAt: Date.now(),
 						...(result.worker === undefined ? {} : { worker: result.worker }),
 					},
@@ -434,7 +437,7 @@ export class WorkerConnectionLifecycle {
 						connection: {
 							status: "offline",
 							provider: this.recentProvider ?? "other",
-							serverUrl: credential.workerUrl ?? this.recentServerUrl ?? "",
+							workerAddress: credential.workerAddress ?? this.recentWorkerAddress ?? "",
 							message,
 						},
 					},
@@ -465,13 +468,13 @@ export class WorkerConnectionLifecycle {
 		}
 	}
 
-	recover(serverUrl: string, connectedAt: number, worker?: ReleaseIdentity): void {
+	recover(workerAddress: string, connectedAt: number, worker?: ReleaseIdentity): void {
 		const connection = this.dependencies.state.getState().connection;
 		if (connection.status !== "offline") return;
 		this.dependencies.state.setConnection({
 			status: "connected",
 			provider: connection.provider,
-			serverUrl,
+			workerAddress,
 			connectedAt,
 			...(worker === undefined ? {} : { worker }),
 		});
@@ -483,27 +486,27 @@ export class WorkerConnectionLifecycle {
 			initialWorkerSessionState(
 				this.editorComfyVersion(),
 				this.recentProvider,
-				this.recentServerUrl,
+				this.recentWorkerAddress,
 			),
 		);
 	}
 
 	goOffline(message: string, reconnectRequired = false): void {
-		const serverUrl = this.activeWorkerUrl ?? this.recentServerUrl ?? "";
+		const workerAddress = this.activeWorkerAddress ?? this.recentWorkerAddress ?? "";
 		this.invalidateWorkerWork();
 		this.dependencies.state.reset({
 			...disconnectedWorkerState(this.editorComfyVersion()),
 			connection: {
 				status: "offline",
 				provider: this.recentProvider ?? "other",
-				serverUrl,
+				workerAddress,
 				message,
 				...(reconnectRequired ? { reconnectRequired: true } : {}),
 			},
 		});
 	}
 
-	async getLogs(): Promise<ServerLogsResult> {
+	async getLogs(): Promise<WorkerLogsResult> {
 		if (this.logRequest !== null) return this.logRequest;
 		const credential = this.credential;
 		const cursor = this.logCursor;
@@ -511,7 +514,7 @@ export class WorkerConnectionLifecycle {
 			return { ok: false, error: "No active Worker connection is available." };
 		}
 		const generation = this.dependencies.requests.currentGeneration;
-		const request = this.loadServerLogs(credential, cursor, generation);
+		const request = this.loadWorkerLogs(credential, cursor, generation);
 		this.logRequest = request;
 		try {
 			return await request;
@@ -522,7 +525,8 @@ export class WorkerConnectionLifecycle {
 
 	isCurrent(generation: number): boolean {
 		return (
-			this.dependencies.requests.isCurrent(generation) && this.activeServerUrl !== null
+			this.dependencies.requests.isCurrent(generation) &&
+			this.activeWorkerApiUrl !== null
 		);
 	}
 
@@ -543,7 +547,7 @@ export class WorkerConnectionLifecycle {
 	}
 
 	private async probeOnce(
-		credential: ServerCredential,
+		credential: WorkerSessionCredential,
 		generation: number,
 		offlineFailureLimit = 1,
 	): Promise<ConnectionResult | null> {
@@ -556,22 +560,22 @@ export class WorkerConnectionLifecycle {
 		if (result === null) return null;
 		if (result.status === "connected") {
 			this.consecutiveRecheckFailures = 0;
-			const workerUrl = credential.workerUrl ?? this.recentServerUrl ?? "";
+			const workerAddress = credential.workerAddress ?? this.recentWorkerAddress ?? "";
 			const worker = result.worker;
 			const connectionChanged =
 				previousConnection.status !== "connected" ||
-				previousConnection.serverUrl !== workerUrl;
+				previousConnection.workerAddress !== workerAddress;
 			const connectedAt =
 				previousConnection.status === "connected"
 					? previousConnection.connectedAt
 					: Date.now();
 			if (connectionChanged) {
-				this.dependencies.onRecovered(workerUrl, connectedAt, worker);
+				this.dependencies.onRecovered(workerAddress, connectedAt, worker);
 			} else {
 				this.dependencies.state.setConnection({
 					status: "connected",
 					provider: this.recentProvider ?? "other",
-					serverUrl: workerUrl,
+					workerAddress: workerAddress,
 					connectedAt,
 					...(worker === undefined ? {} : { worker }),
 				});
@@ -609,18 +613,18 @@ export class WorkerConnectionLifecycle {
 	}
 
 	private startRecheck(): void {
-		if (this.recheckTimer !== null || this.activeServerUrl === null) return;
+		if (this.recheckTimer !== null || this.activeWorkerApiUrl === null) return;
 		this.recheckTimer = setInterval(
 			() => void this.checkActiveConnection(),
 			this.recheckMs,
 		);
 	}
 
-	private async loadServerLogs(
-		credential: ServerCredential,
+	private async loadWorkerLogs(
+		credential: WorkerSessionCredential,
 		cursor: string,
 		generation: number,
-	): Promise<ServerLogsResult> {
+	): Promise<WorkerLogsResult> {
 		const result = await this.dependencies.requests.run(
 			"logs",
 			generation,
@@ -631,15 +635,15 @@ export class WorkerConnectionLifecycle {
 		}
 		if (!result.ok) return result;
 		this.logCursor = result.cursor;
-		this.serverLogs.push(...result.logs);
+		this.workerLogs.push(...result.logs);
 		this.logsTruncated ||= result.truncated;
-		if (this.serverLogs.length > SERVER_LOG_LIMIT) {
-			this.serverLogs = this.serverLogs.slice(-SERVER_LOG_LIMIT);
+		if (this.workerLogs.length > WORKER_LOG_LIMIT) {
+			this.workerLogs = this.workerLogs.slice(-WORKER_LOG_LIMIT);
 			this.logsTruncated = true;
 		}
 		return {
 			ok: true,
-			logs: [...this.serverLogs],
+			logs: [...this.workerLogs],
 			truncated: this.logsTruncated,
 		};
 	}
@@ -651,10 +655,10 @@ export class WorkerConnectionLifecycle {
 		this.activeTunnel = null;
 		this.invalidateWorkerWork();
 		this.stopRecheck();
-		this.activeServerUrl = null;
-		this.activeWorkerUrl = null;
+		this.activeWorkerApiUrl = null;
+		this.activeWorkerAddress = null;
 		this.activeSessionCapability = null;
-		this.clearServerLogs();
+		this.clearWorkerLogs();
 		if (tunnel !== null) void tunnel.close();
 	}
 
@@ -663,10 +667,10 @@ export class WorkerConnectionLifecycle {
 		this.activeTunnelUnsubscribe?.();
 		this.activeTunnelUnsubscribe = null;
 		this.activeTunnel = null;
-		this.activeServerUrl = null;
+		this.activeWorkerApiUrl = null;
 		this.activeSessionCapability = null;
 		this.stopRecheck();
-		this.clearServerLogs();
+		this.clearWorkerLogs();
 		this.dependencies.onOffline(SESSION_ENDED_ERROR, true);
 	}
 
@@ -676,9 +680,9 @@ export class WorkerConnectionLifecycle {
 		this.dependencies.invalidateSessionWork();
 	}
 
-	private clearServerLogs(): void {
+	private clearWorkerLogs(): void {
 		this.logCursor = null;
-		this.serverLogs = [];
+		this.workerLogs = [];
 		this.logsTruncated = false;
 		this.logRequest = null;
 	}
@@ -691,10 +695,10 @@ export class WorkerConnectionLifecycle {
 export function initialWorkerSessionState(
 	editorComfyVersion: string,
 	recentProvider: WorkerProvider | null,
-	recentServerUrl: string | null,
+	recentWorkerAddress: string | null,
 ): WorkerSessionState {
 	return {
-		connection: { status: "disconnected", recentProvider, recentServerUrl },
+		connection: { status: "disconnected", recentProvider, recentWorkerAddress },
 		...disconnectedWorkerState(editorComfyVersion),
 	};
 }

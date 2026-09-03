@@ -75,7 +75,7 @@ test("verifies and atomically publishes Worker results in the ComfyUI output tre
 
 	await store.collect(
 		{
-			serverUrl: "https://worker.example.com",
+			workerApiUrl: "https://worker.example.com",
 			sessionCapability: "test-session-capability",
 		},
 		context,
@@ -319,7 +319,7 @@ test("retries result collection after a transient download failure", async () =>
 
 	await store.collect(
 		{
-			serverUrl: "https://worker.example.com",
+			workerApiUrl: "https://worker.example.com",
 			sessionCapability: "test-session-capability",
 		},
 		context,
@@ -365,7 +365,7 @@ test("aborts result collection without publishing a completed History job", asyn
 
 	const collection = store.collect(
 		{
-			serverUrl: "https://worker.example.com",
+			workerApiUrl: "https://worker.example.com",
 			sessionCapability: "test-session-capability",
 		},
 		context,
