@@ -7,6 +7,7 @@ import {
 	within,
 } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
+import { workerTemplateLinks } from "@/lib/resources";
 import type { WorkerSessionStateChange } from "../../shared/api";
 import { App } from "./App";
 import {
@@ -31,10 +32,16 @@ test("connects a selected RunPod Worker and shows its connected state", async ()
 	const connect = within(dialog).getByRole("button", { name: "Connect" });
 	const address = within(dialog).getByLabelText("Worker address");
 	expect(address).toHaveValue("");
+	const runpodTemplates =
+		import.meta.env.MODE === "preview"
+			? workerTemplateLinks.runpod.preview
+			: workerTemplateLinks.runpod.production;
 	expect(
-		within(dialog).getByText("RunPod templates are not available yet."),
-	).toBeVisible();
-	expect(within(dialog).queryByRole("link", { name: /template/ })).toBeNull();
+		within(dialog).getByRole("link", { name: "CUDA 12.8 template" }),
+	).toHaveAttribute("href", runpodTemplates.cu128);
+	expect(
+		within(dialog).getByRole("link", { name: "CUDA 13.0 template" }),
+	).toHaveAttribute("href", runpodTemplates.cu130);
 	expect(screen.getByRole("switch", { name: /^Sync after connecting/ })).toBeChecked();
 	fireEvent.change(address, {
 		target: { value: "203.0.113.10:22001" },

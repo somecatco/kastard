@@ -17,7 +17,7 @@ import {
 	emitComfyRuntime,
 	openSettingsSection,
 } from "./App.test-harness";
-import { externalLinks } from "./lib/external-links";
+import { resources } from "./lib/resources";
 
 test("shows external Help resources above About", () => {
 	render(<App />);
@@ -26,15 +26,17 @@ test("shows external Help resources above About", () => {
 	openSettingsSection("Help");
 
 	expect(screen.getByRole("heading", { name: "Help", level: 2 })).toBeVisible();
-	const resources = screen.getByRole("region", { name: "Help resources" });
+	const resourcesRegion = screen.getByRole("region", { name: "Help resources" });
 	const expectedLinks = [
-		["Docs", externalLinks.docs.home],
-		["GitHub", externalLinks.github],
-		["Discord", externalLinks.discord],
+		["Docs", resources.docs.home],
+		["GitHub", resources.github],
+		["Discord", resources.discord],
 	] as const;
 
 	for (const [name, href] of expectedLinks) {
-		const link = within(resources).getByRole("link", { name: new RegExp(`^${name}`) });
+		const link = within(resourcesRegion).getByRole("link", {
+			name: new RegExp(`^${name}`),
+		});
 		expect(link).toHaveAttribute("href", href);
 		expect(link).toHaveAttribute("target", "_blank");
 		expect(link).toHaveAttribute("rel", "noreferrer");

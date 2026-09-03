@@ -17,10 +17,11 @@
 - Add, modify, or remove glossary terms only when the user explicitly requests it.
 - If code or documentation conflicts with the glossary, tell the user instead of changing the glossary unilaterally.
 
-## External Links
+## External Resources
 
-- Use [`LINKS.jsonc`](LINKS.jsonc) as the canonical source for Kastard external destinations.
-- Keep the entries listed in `LINKS.jsonc` consistent across code and documentation.
+- Use [`resources.jsonc`](resources.jsonc) as the canonical source for Kastard external destinations and provider resource identifiers.
+- Keep the entries listed in `resources.jsonc` consistent across code and documentation.
+- Store only public values in `resources.jsonc`; keep credentials in environment variables or secrets.
 - Add, modify, or remove entries only when the user explicitly requests it.
 
 ## Implementation Principles

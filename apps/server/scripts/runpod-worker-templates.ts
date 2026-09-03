@@ -12,7 +12,6 @@ import {
 	type WorkerRuntime,
 	type WorkerTemplateChannel,
 	workerRuntimes,
-	workerTemplateIdEnvironmentName,
 	workerTemplateName,
 } from "./worker-template-images";
 
@@ -560,19 +559,7 @@ async function main(): Promise<void> {
 	for (const runtime of workerRuntimes) {
 		files.runpod.templates[runtime].name = workerTemplateName(runtime, channel);
 	}
-	const templateIds: Record<WorkerRuntime, string> = {
-		cu128: requireEnvironment(
-			workerTemplateIdEnvironmentName("RUNPOD", "cu128", channel),
-		),
-		cu130: requireEnvironment(
-			workerTemplateIdEnvironmentName("RUNPOD", "cu130", channel),
-		),
-	};
-	if (templateIds.cu128 === templateIds.cu130) {
-		throw new Error(
-			"The cu128 and cu130 RunPod Worker template IDs must be different.",
-		);
-	}
+	const templateIds = files.resources.workerTemplates.runpod[channel];
 
 	await requirePushedWorkerImages(images);
 	await syncTemplates(

@@ -23,6 +23,6 @@
 	],
 	"dockerEntrypoint": [],
 	"dockerStartCmd": [],
-	"isPublic": false,
+	"isPublic": true,
 	"env": {}
 }

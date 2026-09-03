@@ -19,7 +19,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
-import { externalLinks } from "@/lib/external-links";
+import { resources, workerTemplateLinks } from "@/lib/resources";
 import { cn } from "@/lib/utils";
 import {
 	buildWorkerServerUrl,
@@ -50,18 +50,19 @@ export type ConnectWorkerDialogProps = {
 	onOpenChange: (open: boolean) => void;
 };
 
-const VASTAI_TEMPLATE_LINKS =
-	import.meta.env.MODE === "preview"
-		? externalLinks.vastAi.preview
-		: externalLinks.vastAi.production;
+const TEMPLATE_CHANNEL = import.meta.env.MODE === "preview" ? "preview" : "production";
+const ACTIVE_TEMPLATE_LINKS = {
+	runpod: workerTemplateLinks.runpod[TEMPLATE_CHANNEL],
+	vastai: workerTemplateLinks.vastAi[TEMPLATE_CHANNEL],
+};
 const TEMPLATE_LINKS = [
 	{
+		runtime: "cu128",
 		label: "CUDA 12.8 template",
-		vastaiUrl: VASTAI_TEMPLATE_LINKS.cu128,
 	},
 	{
+		runtime: "cu130",
 		label: "CUDA 13.0 template",
-		vastaiUrl: VASTAI_TEMPLATE_LINKS.cu130,
 	},
 ] as const;
 
@@ -319,29 +320,15 @@ function SetupStep({
 }
 
 function TemplateLinks({ provider }: { provider: "runpod" | "vastai" }) {
-	let links: Array<{ label: string; url: string }>;
-	if (provider === "runpod") {
-		const runpodTemplate = externalLinks.runpod.template;
-		if (runpodTemplate === null) {
-			return (
-				<p className="cursor-text select-text text-xs text-muted-foreground">
-					RunPod templates are not available yet.
-				</p>
-			);
-		}
-		links = TEMPLATE_LINKS.map(({ label }) => ({ label, url: runpodTemplate }));
-	} else {
-		links = TEMPLATE_LINKS.map(({ label, vastaiUrl }) => ({
-			label,
-			url: vastaiUrl,
-		}));
-	}
-
 	return (
 		<div className="flex flex-wrap gap-2">
-			{links.map(({ label, url }) => (
+			{TEMPLATE_LINKS.map(({ runtime, label }) => (
 				<Button key={label} asChild type="button" variant="outline" size="default">
-					<a href={url} target="_blank" rel="noreferrer">
+					<a
+						href={ACTIVE_TEMPLATE_LINKS[provider][runtime]}
+						target="_blank"
+						rel="noreferrer"
+					>
 						{label}
 						<ExternalLinkIcon />
 					</a>
@@ -384,7 +371,7 @@ function ProviderSetup({
 				{provider === "other" ? (
 					<Button asChild type="button" variant="outline" size="default">
 						<a
-							href={externalLinks.docs.runWorkerWithDocker}
+							href={resources.docs.runWorkerWithDocker}
 							target="_blank"
 							rel="noreferrer"
 						>
