@@ -23,12 +23,7 @@ import { Switch } from "@/components/common/switch";
 import { EditorDirectoryLocation } from "@/components/EditorDirectoryLocation";
 import { Button } from "@/components/ui/button";
 import { useOptimisticUpdateQueue } from "@/hooks/useOptimisticUpdateQueue";
-import {
-	collectDebugInfo,
-	desktopPlatformLabel,
-	desktopRuntimeLabel,
-	releaseChannelLabel,
-} from "@/lib/debug-info";
+import { collectDebugInfo } from "@/lib/debug-info";
 import { resources } from "@/lib/resources";
 import { cn } from "@/lib/utils";
 import {
@@ -521,26 +516,6 @@ function ApplicationInfoSettings(): React.JSX.Element {
 			label: "Build Number",
 			description: "Independent build number of this Kastard installation.",
 			value: info?.buildNumber ?? pendingValue,
-		},
-		{
-			label: "Source Revision",
-			description: "Source revision used to build this Kastard installation.",
-			value: info ? (info.sourceRevision ?? "Unavailable") : pendingValue,
-		},
-		{
-			label: "Channel",
-			description: "Release channel of this Kastard installation.",
-			value: info ? releaseChannelLabel(info.channel) : pendingValue,
-		},
-		{
-			label: "Platform",
-			description: "Operating system and architecture running Kastard.",
-			value: info ? desktopPlatformLabel(info.environment) : pendingValue,
-		},
-		{
-			label: "Runtime",
-			description: "Electron, Chrome, and Node.js versions used by Kastard.",
-			value: info ? desktopRuntimeLabel(info.environment) : pendingValue,
 		},
 	];
 
