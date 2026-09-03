@@ -54,8 +54,8 @@
         "vitest": "^4.1.10",
       },
     },
-    "apps/server": {
-      "name": "@kastard/server",
+    "apps/worker": {
+      "name": "@kastard/worker",
       "version": "0.0.0",
       "dependencies": {
         "@kastard/common": "workspace:*",
@@ -252,7 +252,7 @@
 
     "@kastard/desktop": ["@kastard/desktop@workspace:apps/desktop"],
 
-    "@kastard/server": ["@kastard/server@workspace:apps/server"],
+    "@kastard/worker": ["@kastard/worker@workspace:apps/worker"],
 
     "@malept/cross-spawn-promise": ["@malept/cross-spawn-promise@2.0.0", "", { "dependencies": { "cross-spawn": "^7.0.1" } }, "sha512-1DpKU0Z5ThltBwjNySMC14g0CkbyhCaz9FkhxqNsZI6uAPJXFS8cMXlBKo26FJ8ZuW6S9GCMcR9IO5k2X5/9Fg=="],
 

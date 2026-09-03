@@ -1,6 +1,6 @@
 import type { WorkerProvider } from "../../../shared/api";
 
-export function buildWorkerServerUrl(
+export function buildWorkerAddress(
 	_provider: WorkerProvider,
 	value: string,
 ): string | null {
@@ -10,7 +10,7 @@ export function buildWorkerServerUrl(
 
 export function connectionInputValue(
 	provider: WorkerProvider | null,
-	serverUrl: string | null,
+	workerAddress: string | null,
 ): string {
-	return provider === null || serverUrl === null ? "" : serverUrl;
+	return provider === null || workerAddress === null ? "" : workerAddress;
 }

@@ -11,7 +11,7 @@ const BUILD_NUMBER_FIELDS = {
 		read: (value) => value?.build?.buildVersion,
 	},
 	worker: {
-		path: "apps/server/package.json",
+		path: "apps/worker/package.json",
 		property: "buildNumber",
 		read: (value) => value?.buildNumber,
 	},

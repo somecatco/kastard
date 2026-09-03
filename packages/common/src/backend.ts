@@ -47,8 +47,6 @@ export type BackendState =
 			runtime: WorkerRuntime;
 	  };
 
-export type BackendServerState = BackendState;
-
 export type BackendTargetIssue = "target" | "version" | "archive-url" | "checksum";
 
 export function backendTargetIssue(value: unknown): BackendTargetIssue | null {
@@ -70,7 +68,7 @@ export function parseBackendTarget(value: unknown): BackendTarget | null {
 	};
 }
 
-export function parseBackendServerState(value: unknown): BackendServerState | null {
+export function parseBackendState(value: unknown): BackendState | null {
 	if (!isRecord(value) || !isWorkerRuntime(value.runtime)) return null;
 	if (value.status === "not-installed") {
 		return { status: "not-installed", runtime: value.runtime };
@@ -120,8 +118,8 @@ export function parseBackendServerState(value: unknown): BackendServerState | nu
 	};
 }
 
-export function isBackendServerState(value: unknown): value is BackendServerState {
-	return parseBackendServerState(value) !== null;
+export function isBackendState(value: unknown): value is BackendState {
+	return parseBackendState(value) !== null;
 }
 
 export function isWorkerRuntime(value: unknown): value is WorkerRuntime {

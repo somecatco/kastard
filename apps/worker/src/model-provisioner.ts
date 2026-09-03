@@ -27,8 +27,8 @@ import {
 	sameModelSyncTarget,
 } from "@kastard/common";
 import { ProcessOutputLineBuffer } from "./process-output";
-import type { ServerLogStore } from "./server-log";
 import type { CollectionVerification, VerificationProblem } from "./sync-verification";
+import type { WorkerLogStore } from "./worker-log";
 
 const MAX_MODEL_IDENTITIES = 10_000;
 const MAX_PROVIDER_CONCURRENCY = 2;
@@ -92,7 +92,7 @@ type DownloadModel = (
 type ModelProvisionerOptions = {
 	rootDirectory: string;
 	runtimePython: string;
-	logs: ServerLogStore;
+	logs: WorkerLogStore;
 	download?: DownloadModel;
 };
 
@@ -168,7 +168,7 @@ export class ModelProvisioner implements ModelProvisionerApi {
 	};
 	private readonly rootDirectory: string;
 	private readonly runtimePython: string;
-	private readonly logs: ServerLogStore;
+	private readonly logs: WorkerLogStore;
 	private readonly download: DownloadModel;
 	private activeOperation: ActiveModelOperation | null = null;
 

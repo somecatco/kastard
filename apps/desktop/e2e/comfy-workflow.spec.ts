@@ -98,7 +98,7 @@ test("restores ComfyUI workflow widget values by name", async ({
 		});
 
 		expect(restored).toEqual({
-			frontendVersion: "1.52.1",
+			frontendVersion: "1.49.6",
 			inputs: { width: 512, height: 768, batch_size: 2 },
 			namedValues: { width: 512, height: 768, batch_size: 2 },
 		});

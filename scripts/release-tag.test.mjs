@@ -12,7 +12,7 @@ function createFixture() {
 	roots.push(root);
 	for (const [path, contents] of [
 		["apps/desktop/package.json", { build: { buildVersion: "11" }, version: "0.0.0" }],
-		["apps/server/package.json", { buildNumber: "12", version: "0.0.0" }],
+		["apps/worker/package.json", { buildNumber: "12", version: "0.0.0" }],
 	]) {
 		const fullPath = join(root, path);
 		mkdirSync(dirname(fullPath), { recursive: true });

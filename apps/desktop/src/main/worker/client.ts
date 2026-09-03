@@ -1,34 +1,34 @@
 import { createReadStream } from "node:fs";
 import { Readable } from "node:stream";
 import {
-	type BackendServerState,
+	type BackendState,
 	type BackendTarget,
 	type CustomNodeInventoryEntry,
 	type CustomNodeSyncRequest,
-	type CustomNodeSyncServerState,
+	type CustomNodeSyncState,
 	type CustomNodeSyncTarget,
 	isUnsupportedModelSyncContract,
 	type ModelSyncRequest,
-	type ModelSyncServerState,
+	type ModelSyncState,
 	type ParsedWorkflowJobState,
-	parseBackendServerState,
-	parseCustomNodeSyncServerState,
+	parseBackendState,
+	parseCustomNodeSyncState,
 	parseModelSyncState,
-	parseServerLogSnapshot,
 	parseSyncVerification,
-	parseWorkerComfyServerState,
+	parseWorkerComfyRuntimeState,
 	parseWorkerConnectionResponse,
 	parseWorkerConnectionStartResponse,
 	parseWorkerErrorResponse,
+	parseWorkerLogSnapshot,
 	parseWorkerSystemStatus,
 	parseWorkflowJobRejection,
 	parseWorkflowJobState,
 	type ReleaseIdentity,
-	type ServerLogEntry,
 	type SyncVerification,
 	type SyncVerificationRequest,
 	type WorkerComfyMemoryCleanupRequest,
-	type WorkerComfyServerState,
+	type WorkerComfyRuntimeState,
+	type WorkerLogEntry,
 	type WorkerSystemStatus,
 } from "@kastard/common";
 import { connectWorkerTunnel, type WorkerTunnel } from "./tunnel";
@@ -48,10 +48,10 @@ const UNREACHABLE_ERROR =
 const UNSUPPORTED_MODEL_SYNC_CONTRACT_ERROR =
 	"This Worker uses an unsupported model sync contract. Start a Worker version compatible with this version of Kastard, reconnect, and try again.";
 
-export type ServerCredential = {
-	serverUrl: string;
+export type WorkerSessionCredential = {
+	workerApiUrl: string;
 	sessionCapability: string;
-	workerUrl?: string;
+	workerAddress?: string;
 };
 
 export type ConnectionAttemptResult =
@@ -62,10 +62,10 @@ export type ConnectionProbeResult =
 	| { status: "connected"; worker?: ReleaseIdentity }
 	| { status: "offline"; error: string };
 
-export type ServerLogsFetchResult =
+export type WorkerLogsFetchResult =
 	| {
 			ok: true;
-			logs: ServerLogEntry[];
+			logs: WorkerLogEntry[];
 			cursor: string;
 			truncated: boolean;
 	  }
@@ -75,10 +75,10 @@ type WorkerRequestResult<State> =
 	| { ok: true; state: State }
 	| { ok: false; error: string; retryable?: boolean };
 
-export type BackendRequestResult = WorkerRequestResult<BackendServerState>;
-export type SyncRequestResult = WorkerRequestResult<CustomNodeSyncServerState>;
-export type ModelSyncRequestResult = WorkerRequestResult<ModelSyncServerState>;
-export type WorkerComfyRequestResult = WorkerRequestResult<WorkerComfyServerState>;
+export type BackendRequestResult = WorkerRequestResult<BackendState>;
+export type SyncRequestResult = WorkerRequestResult<CustomNodeSyncState>;
+export type ModelSyncRequestResult = WorkerRequestResult<ModelSyncState>;
+export type WorkerComfyRequestResult = WorkerRequestResult<WorkerComfyRuntimeState>;
 type SystemStatusRequestResult = WorkerRequestResult<WorkerSystemStatus>;
 export type SyncVerificationRequestResult = WorkerRequestResult<SyncVerification>;
 
@@ -94,8 +94,8 @@ type WorkflowJobReadResult = WorkerRequestResult<WorkflowJobState>;
 
 type RequestFetch = typeof fetch;
 
-export async function connectToServer(
-	serverUrlInput: string,
+export async function connectToWorker(
+	workerAddressInput: string,
 	authenticationCode: string,
 	signal?: AbortSignal,
 	requestFetch: RequestFetch = fetch,
@@ -103,7 +103,7 @@ export async function connectToServer(
 ): Promise<ConnectionAttemptResult> {
 	let tunnel: WorkerTunnel;
 	try {
-		tunnel = await openTunnel(serverUrlInput, authenticationCode, signal);
+		tunnel = await openTunnel(workerAddressInput, authenticationCode, signal);
 	} catch (error) {
 		return { ok: false, error: errorMessage(error) };
 	}
@@ -140,13 +140,13 @@ export async function connectToServer(
 	};
 }
 
-export async function probeServerConnection(
-	credential: ServerCredential,
+export async function probeWorkerConnection(
+	credential: WorkerSessionCredential,
 	requestFetch: RequestFetch = fetch,
 ): Promise<ConnectionProbeResult> {
 	let response: Response;
 	try {
-		response = await requestFetch(`${credential.serverUrl}/connection`, {
+		response = await requestFetch(`${credential.workerApiUrl}/connection`, {
 			headers: connectionHeaders(credential),
 			cache: "no-store",
 			signal: AbortSignal.timeout(CONNECTION_REQUEST_TIMEOUT_MS),
@@ -170,15 +170,15 @@ export async function probeServerConnection(
 			};
 }
 
-export async function fetchServerLogs(
-	credential: ServerCredential,
+export async function fetchWorkerLogs(
+	credential: WorkerSessionCredential,
 	cursor: string,
 	requestFetch: RequestFetch = fetch,
-): Promise<ServerLogsFetchResult> {
+): Promise<WorkerLogsFetchResult> {
 	let response: Response;
 	try {
 		response = await requestFetch(
-			`${credential.serverUrl}/logs?after=${encodeURIComponent(cursor)}`,
+			`${credential.workerApiUrl}/logs?after=${encodeURIComponent(cursor)}`,
 			{
 				headers: connectionHeaders(credential),
 				cache: "no-store",
@@ -199,28 +199,28 @@ export async function fetchServerLogs(
 		};
 	}
 	const payload: unknown = await response.json().catch(() => null);
-	const snapshot = parseServerLogSnapshot(payload);
+	const snapshot = parseWorkerLogSnapshot(payload);
 	return snapshot !== null
 		? { ok: true, ...snapshot }
 		: { ok: false, error: "The Worker returned invalid log data." };
 }
 
 export async function fetchWorkerBackend(
-	credential: ServerCredential,
+	credential: WorkerSessionCredential,
 	requestFetch: RequestFetch = fetch,
 ): Promise<BackendRequestResult> {
 	return requestWorkerState({
 		credential,
 		path: "/comfyui",
 		requestFetch,
-		parseState: parseBackendServerState,
+		parseState: parseBackendState,
 		unreachableError: "Could not load the Worker ComfyUI backend status.",
 		invalidError: "The Worker returned an invalid ComfyUI backend status.",
 	});
 }
 
 export async function prepareWorkerBackend(
-	credential: ServerCredential,
+	credential: WorkerSessionCredential,
 	target: BackendTarget,
 	requestFetch: RequestFetch = fetch,
 ): Promise<BackendRequestResult> {
@@ -229,28 +229,28 @@ export async function prepareWorkerBackend(
 		path: "/comfyui/prepare",
 		body: target,
 		requestFetch,
-		parseState: parseBackendServerState,
+		parseState: parseBackendState,
 		unreachableError: "Could not load the Worker ComfyUI backend status.",
 		invalidError: "The Worker returned an invalid ComfyUI backend status.",
 	});
 }
 
 export async function fetchWorkerComfy(
-	credential: ServerCredential,
+	credential: WorkerSessionCredential,
 	requestFetch: RequestFetch = fetch,
 ): Promise<WorkerComfyRequestResult> {
 	return requestWorkerState({
 		credential,
 		path: "/comfyui/runtime",
 		requestFetch,
-		parseState: parseWorkerComfyServerState,
+		parseState: parseWorkerComfyRuntimeState,
 		unreachableError: "Could not load the Worker ComfyUI execution status.",
 		invalidError: "The Worker returned an invalid ComfyUI execution status.",
 	});
 }
 
 export async function fetchWorkerSystemMetrics(
-	credential: ServerCredential,
+	credential: WorkerSessionCredential,
 	requestFetch: RequestFetch = fetch,
 ): Promise<SystemStatusRequestResult> {
 	return requestWorkerState({
@@ -264,7 +264,7 @@ export async function fetchWorkerSystemMetrics(
 }
 
 export async function startWorkerComfy(
-	credential: ServerCredential,
+	credential: WorkerSessionCredential,
 	requestFetch: RequestFetch = fetch,
 ): Promise<WorkerComfyRequestResult> {
 	return requestWorkerState({
@@ -272,14 +272,14 @@ export async function startWorkerComfy(
 		path: "/comfyui/runtime",
 		method: "POST",
 		requestFetch,
-		parseState: parseWorkerComfyServerState,
+		parseState: parseWorkerComfyRuntimeState,
 		unreachableError: "Could not start Worker ComfyUI.",
 		invalidError: "The Worker returned an invalid ComfyUI execution status.",
 	});
 }
 
 export async function restartWorkerComfy(
-	credential: ServerCredential,
+	credential: WorkerSessionCredential,
 	requestFetch: RequestFetch = fetch,
 ): Promise<WorkerComfyRequestResult> {
 	return requestWorkerState({
@@ -287,7 +287,7 @@ export async function restartWorkerComfy(
 		path: "/comfyui/runtime/restart",
 		method: "POST",
 		requestFetch,
-		parseState: parseWorkerComfyServerState,
+		parseState: parseWorkerComfyRuntimeState,
 		unreachableError: "Could not restart Worker ComfyUI.",
 		invalidError: "The Worker returned an invalid ComfyUI execution status.",
 		timeoutMs: WORKER_COMFY_RESTART_REQUEST_TIMEOUT_MS,
@@ -295,7 +295,7 @@ export async function restartWorkerComfy(
 }
 
 export async function freeWorkerComfyMemory(
-	credential: ServerCredential,
+	credential: WorkerSessionCredential,
 	request: WorkerComfyMemoryCleanupRequest,
 	requestFetch: RequestFetch = fetch,
 ): Promise<WorkerRequestResult<true>> {
@@ -312,7 +312,7 @@ export async function freeWorkerComfyMemory(
 }
 
 export async function startWorkerWorkflowJob(
-	credential: ServerCredential,
+	credential: WorkerSessionCredential,
 	jobId: string,
 	snapshot: WorkflowInputSnapshot,
 	extraData: Record<string, unknown>,
@@ -353,7 +353,7 @@ export async function startWorkerWorkflowJob(
 	let response: Response;
 	try {
 		response = await requestFetch(
-			`${credential.serverUrl}/workflow-jobs/${encodeURIComponent(jobId)}`,
+			`${credential.workerApiUrl}/workflow-jobs/${encodeURIComponent(jobId)}`,
 			{
 				method: "PUT",
 				body: JSON.stringify({
@@ -406,12 +406,12 @@ export async function startWorkerWorkflowJob(
 }
 
 export async function discardWorkerWorkflowInputs(
-	credential: ServerCredential,
+	credential: WorkerSessionCredential,
 	jobId: string,
 	requestFetch: RequestFetch = fetch,
 ): Promise<void> {
 	const response = await requestFetch(
-		`${credential.serverUrl}/workflow-jobs/${encodeURIComponent(jobId)}/inputs`,
+		`${credential.workerApiUrl}/workflow-jobs/${encodeURIComponent(jobId)}/inputs`,
 		{
 			method: "DELETE",
 			headers: connectionHeaders(credential),
@@ -425,7 +425,7 @@ export async function discardWorkerWorkflowInputs(
 }
 
 export async function fetchWorkerWorkflowJob(
-	credential: ServerCredential,
+	credential: WorkerSessionCredential,
 	jobId: string,
 	requestFetch: RequestFetch = fetch,
 	signal?: AbortSignal,
@@ -442,7 +442,7 @@ export async function fetchWorkerWorkflowJob(
 }
 
 export async function cancelWorkerWorkflowJob(
-	credential: ServerCredential,
+	credential: WorkerSessionCredential,
 	jobId: string,
 	requestFetch: RequestFetch = fetch,
 ): Promise<WorkflowJobReadResult> {
@@ -458,21 +458,21 @@ export async function cancelWorkerWorkflowJob(
 }
 
 export async function fetchWorkerCustomNodeSync(
-	credential: ServerCredential,
+	credential: WorkerSessionCredential,
 	requestFetch: RequestFetch = fetch,
 ): Promise<SyncRequestResult> {
 	return requestWorkerState({
 		credential,
 		path: "/sync",
 		requestFetch,
-		parseState: parseCustomNodeSyncServerState,
+		parseState: parseCustomNodeSyncState,
 		unreachableError: "Could not load the Worker custom node sync status.",
 		invalidError: "The Worker returned an invalid custom node sync status.",
 	});
 }
 
 export async function startWorkerCustomNodeSync(
-	credential: ServerCredential,
+	credential: WorkerSessionCredential,
 	managerVersion: string,
 	nodes: CustomNodeSyncTarget[],
 	requestFetch: RequestFetch = fetch,
@@ -482,14 +482,14 @@ export async function startWorkerCustomNodeSync(
 		path: "/sync",
 		body: { managerVersion, nodes },
 		requestFetch,
-		parseState: parseCustomNodeSyncServerState,
+		parseState: parseCustomNodeSyncState,
 		unreachableError: "Could not load the Worker custom node sync status.",
 		invalidError: "The Worker returned an invalid custom node sync status.",
 	});
 }
 
 export async function startWorkerCustomNodeReinstall(
-	credential: ServerCredential,
+	credential: WorkerSessionCredential,
 	managerVersion: string,
 	node: CustomNodeSyncTarget,
 	requestFetch: RequestFetch = fetch,
@@ -499,14 +499,14 @@ export async function startWorkerCustomNodeReinstall(
 		path: "/sync/reinstall",
 		body: { managerVersion, nodes: [node] },
 		requestFetch,
-		parseState: parseCustomNodeSyncServerState,
+		parseState: parseCustomNodeSyncState,
 		unreachableError: "Could not reinstall the Worker custom node.",
 		invalidError: "The Worker returned an invalid custom node reinstall status.",
 	});
 }
 
 export async function startWorkerCustomNodeRemoval(
-	credential: ServerCredential,
+	credential: WorkerSessionCredential,
 	target: CustomNodeSyncRequest,
 	node: CustomNodeInventoryEntry,
 	requestFetch: RequestFetch = fetch,
@@ -516,14 +516,14 @@ export async function startWorkerCustomNodeRemoval(
 		path: "/sync/remove",
 		body: { ...target, node },
 		requestFetch,
-		parseState: parseCustomNodeSyncServerState,
+		parseState: parseCustomNodeSyncState,
 		unreachableError: "Could not remove the Worker custom node.",
 		invalidError: "The Worker returned an invalid custom node removal status.",
 	});
 }
 
 export async function cancelWorkerCustomNodeSync(
-	credential: ServerCredential,
+	credential: WorkerSessionCredential,
 	operationId: string | null,
 	requestFetch: RequestFetch = fetch,
 ): Promise<SyncRequestResult> {
@@ -532,14 +532,14 @@ export async function cancelWorkerCustomNodeSync(
 		path: operationId === null ? "/sync" : `/sync/${encodeURIComponent(operationId)}`,
 		method: "DELETE",
 		requestFetch,
-		parseState: parseCustomNodeSyncServerState,
+		parseState: parseCustomNodeSyncState,
 		unreachableError: "Could not cancel Worker custom node synchronization.",
 		invalidError: "The Worker returned an invalid custom node sync status.",
 	});
 }
 
 export async function fetchWorkerModelSync(
-	credential: ServerCredential,
+	credential: WorkerSessionCredential,
 	requestFetch: RequestFetch = fetch,
 ): Promise<ModelSyncRequestResult> {
 	return requestWorkerState({
@@ -553,7 +553,7 @@ export async function fetchWorkerModelSync(
 }
 
 export async function startWorkerModelSync(
-	credential: ServerCredential,
+	credential: WorkerSessionCredential,
 	request: ModelSyncRequest,
 	requestFetch: RequestFetch = fetch,
 ): Promise<ModelSyncRequestResult> {
@@ -569,7 +569,7 @@ export async function startWorkerModelSync(
 }
 
 export async function startWorkerModelRedownload(
-	credential: ServerCredential,
+	credential: WorkerSessionCredential,
 	request: ModelSyncRequest,
 	requestFetch: RequestFetch = fetch,
 ): Promise<ModelSyncRequestResult> {
@@ -589,7 +589,7 @@ export async function startWorkerModelRedownload(
 }
 
 export async function cancelWorkerModelSync(
-	credential: ServerCredential,
+	credential: WorkerSessionCredential,
 	operationId: string | null,
 	requestFetch: RequestFetch = fetch,
 ): Promise<ModelSyncRequestResult> {
@@ -608,7 +608,7 @@ export async function cancelWorkerModelSync(
 }
 
 export async function verifyWorkerSynchronization(
-	credential: ServerCredential,
+	credential: WorkerSessionCredential,
 	request: SyncVerificationRequest,
 	requestFetch: RequestFetch = fetch,
 ): Promise<SyncVerificationRequestResult> {
@@ -624,7 +624,7 @@ export async function verifyWorkerSynchronization(
 }
 
 async function uploadWorkerWorkflowInput(
-	credential: ServerCredential,
+	credential: WorkerSessionCredential,
 	jobId: string,
 	input: WorkflowInputSnapshot["inputs"][number],
 	requestFetch: RequestFetch,
@@ -634,7 +634,7 @@ async function uploadWorkerWorkflowInput(
 	try {
 		const body = Readable.toWeb(createReadStream(input.path));
 		response = await requestFetch(
-			`${credential.serverUrl}/workflow-jobs/${encodeURIComponent(jobId)}/inputs/${input.id}`,
+			`${credential.workerApiUrl}/workflow-jobs/${encodeURIComponent(jobId)}/inputs/${input.id}`,
 			{
 				method: "PUT",
 				body,
@@ -727,7 +727,7 @@ async function requestWorkerState<State>({
 	signal,
 	timeoutMs = CONNECTION_REQUEST_TIMEOUT_MS,
 }: {
-	credential: ServerCredential;
+	credential: WorkerSessionCredential;
 	path: string;
 	method?: "GET" | "POST" | "DELETE";
 	body?: unknown;
@@ -740,7 +740,7 @@ async function requestWorkerState<State>({
 }): Promise<WorkerRequestResult<State>> {
 	let response: Response;
 	try {
-		response = await requestFetch(`${credential.serverUrl}${path}`, {
+		response = await requestFetch(`${credential.workerApiUrl}${path}`, {
 			method: method ?? (body === undefined ? "GET" : "POST"),
 			...(body === undefined ? {} : { body: JSON.stringify(body) }),
 			headers: {
@@ -755,11 +755,11 @@ async function requestWorkerState<State>({
 	}
 	const payload: unknown = await response.json().catch(() => null);
 	if (!response.ok) {
-		const serverError = parseWorkerErrorResponse(payload);
+		const workerError = parseWorkerErrorResponse(payload);
 		return {
 			ok: false,
-			error: serverError?.error ?? `The Worker returned HTTP ${response.status}.`,
-			retryable: serverError?.retryable === true,
+			error: workerError?.error ?? `The Worker returned HTTP ${response.status}.`,
+			retryable: workerError?.retryable === true,
 		};
 	}
 	const state = parseState(payload);

@@ -2,16 +2,15 @@ import { describe, expect, test } from "bun:test";
 import {
 	backendTargetIssue,
 	isWorkerRuntime,
-	parseBackendServerState,
+	parseBackendState,
 	parseBackendTarget,
 } from "./backend";
 import {
 	isUnsupportedModelSyncContract,
-	type ModelSyncServerState,
+	type ModelSyncState,
 	parseModelSyncRequest,
 	parseModelSyncState,
 } from "./model-sync";
-import { parseServerLogSnapshot } from "./server-log";
 import {
 	parseSyncVerification,
 	parseSyncVerificationRequest,
@@ -19,10 +18,11 @@ import {
 import { parseWorkerSystemStatus } from "./system-status";
 import {
 	parseWorkerComfyMemoryCleanupRequest,
-	parseWorkerComfyServerState,
+	parseWorkerComfyRuntimeState,
 	parseWorkerConnectionStartResponse,
 	parseWorkerErrorResponse,
 } from "./worker-http";
+import { parseWorkerLogSnapshot } from "./worker-log";
 import {
 	parseWorkflowJobRequest,
 	parseWorkflowJobState,
@@ -65,7 +65,7 @@ describe("Worker HTTP contracts", () => {
 			backendTargetIssue({ ...backendTarget, archiveUrl: "https://example.com" }),
 		).toBe("archive-url");
 		expect(
-			parseBackendServerState({
+			parseBackendState({
 				status: "failed",
 				targetVersion: "0.33.1",
 				error: "Incompatible runtime.",
@@ -80,7 +80,7 @@ describe("Worker HTTP contracts", () => {
 			runtime,
 		});
 		expect(
-			parseBackendServerState({
+			parseBackendState({
 				status: "failed",
 				targetVersion: "0.33.1",
 				error: "Unsupported Worker failure.",
@@ -88,7 +88,7 @@ describe("Worker HTTP contracts", () => {
 			}),
 		).toBeNull();
 		expect(
-			parseBackendServerState({
+			parseBackendState({
 				status: "preparing",
 				targetVersion: "0.33.1",
 				phase: "download",
@@ -99,7 +99,7 @@ describe("Worker HTTP contracts", () => {
 			}),
 		).toMatchObject({ phase: "download", progress: 50 });
 		expect(
-			parseBackendServerState({
+			parseBackendState({
 				status: "preparing",
 				targetVersion: "0.33.1",
 				phase: "download",
@@ -186,11 +186,11 @@ describe("Worker HTTP contracts", () => {
 			error: "Unavailable.",
 			retryable: true,
 		});
-		expect(parseWorkerComfyServerState({ status: "ready" })).toEqual({
+		expect(parseWorkerComfyRuntimeState({ status: "ready" })).toEqual({
 			status: "ready",
 		});
 		expect(
-			parseWorkerComfyServerState({
+			parseWorkerComfyRuntimeState({
 				status: "ready",
 				warnings: ["ComfyUI could not initialize comfyui-impact-pack."],
 			}),
@@ -198,9 +198,11 @@ describe("Worker HTTP contracts", () => {
 			status: "ready",
 			warnings: ["ComfyUI could not initialize comfyui-impact-pack."],
 		});
-		expect(parseWorkerComfyServerState({ status: "ready", warnings: [""] })).toBeNull();
 		expect(
-			parseServerLogSnapshot({
+			parseWorkerComfyRuntimeState({ status: "ready", warnings: [""] }),
+		).toBeNull();
+		expect(
+			parseWorkerLogSnapshot({
 				logs: [
 					{
 						id: "worker:1",
@@ -265,7 +267,7 @@ describe("Worker HTTP contracts", () => {
 		expect(isUnsupportedModelSyncContract({ contractVersion: 3, status: "idle" })).toBe(
 			true,
 		);
-		const current: ModelSyncServerState = {
+		const current: ModelSyncState = {
 			contractVersion: 2,
 			capabilities: { forceRedownload: true },
 			target: { models: [model] },

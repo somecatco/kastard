@@ -86,7 +86,7 @@ if [[ $worker_channel != development ]]; then
 			process.exit(1);
 		}
 		process.stdout.write(manifest.buildNumber);
-	' "$repo_root/apps/server/package.json")"
+	' "$repo_root/apps/worker/package.json")"
 	build_number="$metadata"
 	source_revision="${KASTARD_SOURCE_REVISION:-}"
 	if [[ ! $source_revision =~ ^[0-9a-f]{40}$ ]]; then
@@ -221,7 +221,7 @@ for index in "${!runtimes[@]}"; do
 				)
 			fi
 			runtime_build+=(
-				-f apps/server/Dockerfile.runtime
+				-f apps/worker/Dockerfile.runtime
 				-t "$runtime_image"
 				--push
 				.
@@ -250,7 +250,7 @@ for index in "${!runtimes[@]}"; do
 			)
 		fi
 		worker_build+=(
-			-f apps/server/Dockerfile
+			-f apps/worker/Dockerfile
 			"${worker_tags[@]}"
 			--push
 			.
@@ -263,7 +263,7 @@ for index in "${!runtimes[@]}"; do
 				--build-arg "CUDA_IMAGE=${cuda_image}" \
 				--build-arg "PYTHON_VERSION=${python_version}" \
 				--build-arg "WORKER_RUNTIME=${runtime}" \
-				-f apps/server/Dockerfile.runtime \
+				-f apps/worker/Dockerfile.runtime \
 				-t "$runtime_image" \
 				.
 		fi
@@ -273,7 +273,7 @@ for index in "${!runtimes[@]}"; do
 			--build-arg "KASTARD_CHANNEL=${worker_channel}" \
 			--build-arg "KASTARD_PRODUCT_VERSION=${product_version}" \
 			--build-arg "KASTARD_SOURCE_REVISION=${source_revision}" \
-			-f apps/server/Dockerfile \
+			-f apps/worker/Dockerfile \
 			-t "${images[$index]}" \
 			.
 	fi

@@ -1,21 +1,21 @@
 import { isRecord } from "./validation";
 
-export type ServerLogLevel = "info" | "warning" | "error";
+export type WorkerLogLevel = "info" | "warning" | "error";
 
-export type ServerLogEntry = {
+export type WorkerLogEntry = {
 	id: string;
 	timestamp: string;
-	level: ServerLogLevel;
+	level: WorkerLogLevel;
 	message: string;
 };
 
-export type ServerLogSnapshot = {
-	logs: ServerLogEntry[];
+export type WorkerLogSnapshot = {
+	logs: WorkerLogEntry[];
 	cursor: string;
 	truncated: boolean;
 };
 
-export function isServerLogEntry(value: unknown): value is ServerLogEntry {
+export function isWorkerLogEntry(value: unknown): value is WorkerLogEntry {
 	return (
 		isRecord(value) &&
 		typeof value.id === "string" &&
@@ -25,10 +25,10 @@ export function isServerLogEntry(value: unknown): value is ServerLogEntry {
 	);
 }
 
-export function parseServerLogSnapshot(value: unknown): ServerLogSnapshot | null {
+export function parseWorkerLogSnapshot(value: unknown): WorkerLogSnapshot | null {
 	return isRecord(value) &&
 		Array.isArray(value.logs) &&
-		value.logs.every(isServerLogEntry) &&
+		value.logs.every(isWorkerLogEntry) &&
 		typeof value.cursor === "string" &&
 		typeof value.truncated === "boolean"
 		? {

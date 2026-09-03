@@ -9,7 +9,7 @@ import {
 	normalizeGitHubRepository,
 	parseCustomNodeRemovalRequest,
 	parseCustomNodeSyncRequest,
-	parseCustomNodeSyncServerState,
+	parseCustomNodeSyncState,
 	ROOT_GIT_STATUS_ARGS,
 	sameCustomNodeSyncRequest,
 } from "./custom-nodes";
@@ -138,7 +138,7 @@ describe("custom node common semantics", () => {
 			nodes: [{ id: "comfyui-kjnodes", version: "1.5.0" }],
 		};
 		expect(
-			parseCustomNodeSyncServerState({
+			parseCustomNodeSyncState({
 				contractVersion: 2,
 				capabilities: { forceReinstall: true },
 				target,
@@ -159,7 +159,7 @@ describe("custom node common semantics", () => {
 			target,
 		});
 		expect(
-			parseCustomNodeSyncServerState({
+			parseCustomNodeSyncState({
 				contractVersion: 2,
 				target,
 				operationId: "118a6ec2-62fa-4f5c-95e8-cdbe68602ec3",
@@ -173,7 +173,7 @@ describe("custom node common semantics", () => {
 			}),
 		).toBeNull();
 		expect(
-			parseCustomNodeSyncServerState({
+			parseCustomNodeSyncState({
 				contractVersion: 2,
 				target,
 				operationId: null,
@@ -181,7 +181,7 @@ describe("custom node common semantics", () => {
 			}),
 		).toBeNull();
 		expect(
-			parseCustomNodeSyncServerState({
+			parseCustomNodeSyncState({
 				contractVersion: 2,
 				capabilities: { forceReinstall: false },
 				target,
@@ -191,7 +191,7 @@ describe("custom node common semantics", () => {
 			}),
 		).toMatchObject({ capabilities: { forceReinstall: false } });
 		expect(
-			parseCustomNodeSyncServerState({
+			parseCustomNodeSyncState({
 				contractVersion: 2,
 				capabilities: { forceReinstall: "yes" },
 				target,
@@ -201,7 +201,7 @@ describe("custom node common semantics", () => {
 			}),
 		).toBeNull();
 		expect(
-			parseCustomNodeSyncServerState({
+			parseCustomNodeSyncState({
 				contractVersion: 2,
 				capabilities: { remove: true },
 				target,
@@ -221,7 +221,7 @@ describe("custom node common semantics", () => {
 			removalPhase: "remove",
 		});
 		expect(
-			parseCustomNodeSyncServerState({
+			parseCustomNodeSyncState({
 				contractVersion: 2,
 				target,
 				operationId: "118a6ec2-62fa-4f5c-95e8-cdbe68602ec3",
@@ -230,7 +230,7 @@ describe("custom node common semantics", () => {
 			}),
 		).toBeNull();
 		expect(
-			parseCustomNodeSyncServerState({
+			parseCustomNodeSyncState({
 				contractVersion: 2,
 				target: null,
 				operationId: null,
@@ -276,7 +276,7 @@ describe("custom node common semantics", () => {
 				],
 			},
 		};
-		const parsed = parseCustomNodeSyncServerState(state);
+		const parsed = parseCustomNodeSyncState(state);
 		expect(parsed).not.toBeNull();
 		if (parsed === null || parsed.contractVersion !== 2) {
 			throw new Error("Expected a current custom node sync state.");
@@ -349,7 +349,7 @@ describe("custom node common semantics", () => {
 			currentNode: null,
 		};
 		expect(
-			parseCustomNodeSyncServerState({
+			parseCustomNodeSyncState({
 				...base,
 				nodeSnapshot: {
 					targetNodes: [
@@ -365,7 +365,7 @@ describe("custom node common semantics", () => {
 			}),
 		).not.toBeNull();
 		expect(
-			parseCustomNodeSyncServerState({
+			parseCustomNodeSyncState({
 				...base,
 				nodeSnapshot: {
 					targetNodes: [
@@ -381,7 +381,7 @@ describe("custom node common semantics", () => {
 			}),
 		).toBeNull();
 		expect(
-			parseCustomNodeSyncServerState({
+			parseCustomNodeSyncState({
 				...base,
 				nodeSnapshot: {
 					targetNodes: [
@@ -392,7 +392,7 @@ describe("custom node common semantics", () => {
 			}),
 		).toBeNull();
 		expect(
-			parseCustomNodeSyncServerState({
+			parseCustomNodeSyncState({
 				...base,
 				nodeSnapshot: {
 					targetNodes: [
@@ -409,16 +409,16 @@ describe("custom node common semantics", () => {
 	});
 
 	test("rejects states outside the current contract", () => {
-		expect(parseCustomNodeSyncServerState({ status: "ready", nodes: [] })).toBeNull();
+		expect(parseCustomNodeSyncState({ status: "ready", nodes: [] })).toBeNull();
 		expect(
-			parseCustomNodeSyncServerState({
+			parseCustomNodeSyncState({
 				contractVersion: 3,
 				status: "ready",
 				nodes: [],
 			}),
 		).toBeNull();
 		expect(
-			parseCustomNodeSyncServerState({
+			parseCustomNodeSyncState({
 				contractVersion: 1,
 				target: null,
 				operationId: null,

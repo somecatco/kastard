@@ -8,12 +8,12 @@ import { Button } from "@/components/ui/button";
 
 type ConnectionDialogStoryProps = Pick<
 	ConnectWorkerDialogProps,
-	"initialProvider" | "initialServerUrl" | "initialSyncAfterConnect"
+	"initialProvider" | "initialWorkerAddress" | "initialSyncAfterConnect"
 >;
 
 function ConnectionDialogStory({
 	initialProvider,
-	initialServerUrl,
+	initialWorkerAddress,
 	initialSyncAfterConnect,
 }: ConnectionDialogStoryProps): React.JSX.Element {
 	const [open, setOpen] = useState(true);
@@ -25,7 +25,7 @@ function ConnectionDialogStory({
 			{open ? (
 				<ConnectWorkerDialog
 					initialProvider={initialProvider}
-					initialServerUrl={initialServerUrl}
+					initialWorkerAddress={initialWorkerAddress}
 					initialSyncAfterConnect={initialSyncAfterConnect}
 					onConnect={async () => ({ ok: true })}
 					onConnected={() => undefined}
@@ -44,7 +44,7 @@ const meta = {
 	},
 	args: {
 		initialProvider: null,
-		initialServerUrl: null,
+		initialWorkerAddress: null,
 		initialSyncAfterConnect: true,
 	},
 } satisfies Meta<typeof ConnectionDialogStory>;
@@ -58,28 +58,28 @@ export const ProviderSelection: Story = {};
 export const RunPodSelected: Story = {
 	args: {
 		initialProvider: "runpod",
-		initialServerUrl: "https://abc123xyz-5278.proxy.runpod.net",
+		initialWorkerAddress: "https://abc123xyz-5278.proxy.runpod.net",
 	},
 };
 
 export const VastAiSelected: Story = {
 	args: {
 		initialProvider: "vastai",
-		initialServerUrl: "http://203.0.113.10:34220",
+		initialWorkerAddress: "http://203.0.113.10:34220",
 	},
 };
 
 export const OtherServerSelected: Story = {
 	args: {
 		initialProvider: "other",
-		initialServerUrl: "84.1.117.74:41047",
+		initialWorkerAddress: "84.1.117.74:41047",
 	},
 };
 
 export const RecentConnection: Story = {
 	args: {
 		initialProvider: "runpod",
-		initialServerUrl: "https://last-used-pod-5278.proxy.runpod.net",
+		initialWorkerAddress: "https://last-used-pod-5278.proxy.runpod.net",
 		initialSyncAfterConnect: false,
 	},
 };

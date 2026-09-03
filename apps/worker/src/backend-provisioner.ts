@@ -20,7 +20,7 @@ import {
 	type WorkerRuntime,
 } from "@kastard/common";
 import { Unzip, UnzipInflate } from "fflate";
-import type { ServerLogStore } from "./server-log";
+import type { WorkerLogStore } from "./worker-log";
 
 const DOWNLOAD_TIMEOUT_MS = 10 * 60 * 1_000;
 
@@ -45,7 +45,7 @@ type DownloadArtifact = (
 type BackendProvisionerOptions = {
 	rootDirectory: string;
 	runtime: WorkerRuntime;
-	logs: ServerLogStore;
+	logs: WorkerLogStore;
 	onReady?: () => void | Promise<void>;
 	/** Stops Worker ComfyUI so an installed backend can be replaced by another version. */
 	onReplace?: () => void | Promise<void>;
@@ -115,7 +115,7 @@ export class BackendProvisioner implements BackendProvisionerApi {
 	private state: BackendState;
 	private readonly rootDirectory: string;
 	private readonly runtime: WorkerRuntime;
-	private readonly logs: ServerLogStore;
+	private readonly logs: WorkerLogStore;
 	private readonly downloadArtifact: DownloadArtifact;
 	private readonly onReady: () => void | Promise<void>;
 	private readonly onReplace: () => void | Promise<void>;
@@ -508,7 +508,7 @@ function safeArchivePath(root: string, entry: string): string {
 
 async function removeAbandonedBackendData(
 	rootDirectory: string,
-	logs: ServerLogStore,
+	logs: WorkerLogStore,
 ): Promise<void> {
 	const stagingPattern =
 		/^\.backend-staging-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
@@ -557,7 +557,7 @@ async function removeAbandonedBackendData(
  */
 async function resolveInterruptedSwap(
 	rootDirectory: string,
-	logs: ServerLogStore,
+	logs: WorkerLogStore,
 ): Promise<void> {
 	const previous = join(rootDirectory, "backend.previous");
 	const backendDirectory = join(rootDirectory, "backend");
@@ -711,7 +711,7 @@ async function writeRootReadyStamp(
 	rootDirectory: string,
 	target: BackendTarget,
 	runtime: WorkerRuntime,
-	logs: ServerLogStore,
+	logs: WorkerLogStore,
 ): Promise<void> {
 	try {
 		await writeReadyStamp(rootDirectory, target, runtime);

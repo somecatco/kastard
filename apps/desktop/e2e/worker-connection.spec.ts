@@ -4,9 +4,9 @@ import {
 	closeDesktop,
 	expect,
 	launchDesktop,
-	startServer,
-	stopServer,
-	type TestServer,
+	startWorker,
+	stopWorker,
+	type TestWorker,
 	test,
 } from "./test-harness";
 
@@ -34,11 +34,11 @@ async function connectWorker(
 
 async function cleanup(
 	desktops: ElectronApplication[],
-	servers: TestServer[],
+	workers: TestWorker[],
 ): Promise<void> {
 	const results = await Promise.allSettled([
 		...desktops.map(closeDesktop),
-		...servers.map(stopServer),
+		...workers.map(stopWorker),
 	]);
 	const errors = results.flatMap((result) =>
 		result.status === "rejected" ? [result.reason] : [],
@@ -49,25 +49,25 @@ async function cleanup(
 test.describe("reusable Worker session connection", () => {
 	let desktop: ElectronApplication | null = null;
 	let page: Page;
-	let server: TestServer | null = null;
+	let worker: TestWorker | null = null;
 
 	test.beforeEach(async ({ comfyDataRoot, testRoot }) => {
-		server = await startServer();
+		worker = await startWorker();
 		desktop = await launchDesktop(comfyDataRoot, join(testRoot, "desktop"));
 		page = await desktop.firstWindow();
 		await page.getByRole("button", { name: "Connect", exact: true }).click();
-		await connectWorker(page, server.address, server.authenticationCode);
+		await connectWorker(page, worker.address, worker.authenticationCode);
 	});
 
 	test.afterEach(async () => {
-		await cleanup(desktop ? [desktop] : [], server ? [server] : []);
+		await cleanup(desktop ? [desktop] : [], worker ? [worker] : []);
 		desktop = null;
-		server = null;
+		worker = null;
 	});
 
 	test("authenticates a protocol-free Worker address and exposes its system status", async () => {
-		if (!server) throw new Error("Worker server is not available.");
-		expect(server.authenticationCode).toMatch(/^(?:[A-Z2-9]{4}-){3}[A-Z2-9]{4}$/);
+		if (!worker) throw new Error("Worker is not available.");
+		expect(worker.authenticationCode).toMatch(/^(?:[A-Z2-9]{4}-){3}[A-Z2-9]{4}$/);
 		await expect(page.getByRole("dialog")).toHaveCount(0);
 		const systemStatus = page.getByRole("list", { name: "Worker status" });
 		await expect(systemStatus).toBeVisible();
@@ -83,8 +83,8 @@ test.describe("reusable Worker session connection", () => {
 			name: "Connection details",
 		});
 		await expect(connectionPopover).toBeVisible();
-		if (!server) throw new Error("Worker server is not available.");
-		await expect(connectionPopover.getByText(server.address)).toBeVisible();
+		if (!worker) throw new Error("Worker is not available.");
+		await expect(connectionPopover.getByText(worker.address)).toBeVisible();
 		await connectionPopover.getByRole("button", { name: "View Worker logs" }).click();
 		const logsDialog = page.getByRole("dialog", { name: "Worker logs" });
 		const connectionLog = logsDialog.getByText("Editor connected.");
@@ -186,14 +186,14 @@ test("replaces the connected Editor after authenticating the same code", async (
 }) => {
 	let firstDesktop: ElectronApplication | null = null;
 	let replacementDesktop: ElectronApplication | null = null;
-	let server: TestServer | null = null;
+	let worker: TestWorker | null = null;
 
 	try {
-		server = await startServer();
+		worker = await startWorker();
 		firstDesktop = await launchDesktop(comfyDataRoot, join(testRoot, "first-desktop"));
 		const firstPage = await firstDesktop.firstWindow();
 		await firstPage.getByRole("button", { name: "Connect", exact: true }).click();
-		await connectWorker(firstPage, server.address, server.authenticationCode);
+		await connectWorker(firstPage, worker.address, worker.authenticationCode);
 
 		replacementDesktop = await launchDesktop(
 			comfyDataRoot,
@@ -201,7 +201,7 @@ test("replaces the connected Editor after authenticating the same code", async (
 		);
 		const replacementPage = await replacementDesktop.firstWindow();
 		await replacementPage.getByRole("button", { name: "Connect", exact: true }).click();
-		await connectWorker(replacementPage, server.address, server.authenticationCode);
+		await connectWorker(replacementPage, worker.address, worker.authenticationCode);
 
 		await expect(
 			replacementPage.getByRole("button", { name: /^Connected/ }),
@@ -215,27 +215,27 @@ test("replaces the connected Editor after authenticating the same code", async (
 			[firstDesktop, replacementDesktop].filter(
 				(candidate): candidate is ElectronApplication => candidate !== null,
 			),
-			server ? [server] : [],
+			worker ? [worker] : [],
 		);
 	}
 });
 
-test("starts disconnected and prefills the recent server after restart", async ({
+test("starts disconnected and prefills the recent Worker after restart", async ({
 	comfyDataRoot,
 	testRoot,
 }) => {
 	const userDataDirectory = join(testRoot, "desktop");
 	let firstDesktop: ElectronApplication | null = null;
 	let restoredDesktop: ElectronApplication | null = null;
-	let server: TestServer | null = null;
+	let worker: TestWorker | null = null;
 
 	try {
 		firstDesktop = await launchDesktop(comfyDataRoot, userDataDirectory);
 		const firstPage = await firstDesktop.firstWindow();
 		await firstPage.getByRole("button", { name: "Connect", exact: true }).click();
-		server = await startServer();
-		await connectWorker(firstPage, server.address, server.authenticationCode);
-		const disconnected = server.waitForDisconnect();
+		worker = await startWorker();
+		await connectWorker(firstPage, worker.address, worker.authenticationCode);
+		const disconnected = worker.waitForDisconnect();
 		await closeDesktop(firstDesktop);
 		firstDesktop = null;
 		await disconnected;
@@ -247,12 +247,12 @@ test("starts disconnected and prefills the recent server after restart", async (
 		await expect(page.getByRole("button", { name: /^Connected/ })).toHaveCount(0);
 		await connectButton.click();
 		const dialog = page.getByRole("dialog");
-		await expect(dialog.getByLabel("Worker address")).toHaveValue(server.address);
+		await expect(dialog.getByLabel("Worker address")).toHaveValue(worker.address);
 		await expect(dialog.getByLabel("Authentication code")).toHaveValue("");
 		await expect(
 			dialog.getByRole("switch", { name: /^Sync after connecting/ }),
 		).not.toBeChecked();
-		await dialog.getByLabel("Authentication code").fill(server.authenticationCode);
+		await dialog.getByLabel("Authentication code").fill(worker.authenticationCode);
 		await dialog.getByRole("button", { name: "Connect", exact: true }).click();
 		const connectedButton = page.getByRole("button", { name: /^Connected/ });
 		await expect(connectedButton).toBeVisible();
@@ -267,7 +267,7 @@ test("starts disconnected and prefills the recent server after restart", async (
 			[firstDesktop, restoredDesktop].filter(
 				(candidate): candidate is ElectronApplication => candidate !== null,
 			),
-			server ? [server] : [],
+			worker ? [worker] : [],
 		);
 	}
 });

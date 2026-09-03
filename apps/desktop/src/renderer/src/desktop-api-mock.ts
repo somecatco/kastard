@@ -6,7 +6,7 @@ import {
 	type ConnectionState,
 	type DesktopTheme,
 	type KastardApi,
-	type ServerLogsResult,
+	type WorkerLogsResult,
 	type WorkerSessionState,
 	type WorkerSessionStateChange,
 	type WorkerSetupState,
@@ -37,7 +37,11 @@ const defaultComfyVersionCatalog: ComfyVersionCatalog = {
 };
 
 const defaultWorkerSessionState: WorkerSessionState = {
-	connection: { status: "disconnected", recentProvider: null, recentServerUrl: null },
+	connection: {
+		status: "disconnected",
+		recentProvider: null,
+		recentWorkerAddress: null,
+	},
 	systemMetrics: { status: "disconnected" },
 	backend: { status: "disconnected", editorComfyVersion: "0.34.0" },
 	comfy: { status: "disconnected" },
@@ -55,7 +59,7 @@ export function connectedState(
 	return {
 		status: "connected",
 		provider: "other",
-		serverUrl: "worker.example.com:22001",
+		workerAddress: "worker.example.com:22001",
 		connectedAt: Date.now(),
 		...overrides,
 	};
@@ -72,7 +76,7 @@ export function createDesktopApiMock() {
 	let systemMetricsEnabled = true;
 	let desktopTheme: DesktopTheme = "system";
 	let syncCompletionNotificationEnabled = true;
-	let serverLogsResult: ServerLogsResult = {
+	let workerLogsResult: WorkerLogsResult = {
 		ok: true,
 		logs: [],
 		truncated: false,
@@ -257,14 +261,14 @@ export function createDesktopApiMock() {
 					connection: {
 						status: "disconnected",
 						recentProvider: null,
-						recentServerUrl: null,
+						recentWorkerAddress: null,
 					},
 				});
 				return { ok: true as const };
 			},
-			connect: async ({ provider, serverUrl, syncAfterConnect: next }) => {
+			connect: async ({ provider, workerAddress, syncAfterConnect: next }) => {
 				syncAfterConnect = next;
-				emitWorkerSession({ connection: connectedState({ provider, serverUrl }) });
+				emitWorkerSession({ connection: connectedState({ provider, workerAddress }) });
 				return { ok: true as const };
 			},
 			retry: async () => unexpected("Unexpected retry."),
@@ -273,7 +277,7 @@ export function createDesktopApiMock() {
 					connection: {
 						status: "disconnected",
 						recentProvider: "other",
-						recentServerUrl: "worker.example.com:22001",
+						recentWorkerAddress: "worker.example.com:22001",
 					},
 				});
 				return { ok: true as const };
@@ -308,8 +312,8 @@ export function createDesktopApiMock() {
 					settings: { syncAfterConnect, systemMetricsEnabled },
 				};
 			},
-			copyServerLogs: async () => unexpected("Unexpected server-log copy."),
-			getLogs: async () => structuredClone(serverLogsResult),
+			copyWorkerLogs: async () => unexpected("Unexpected worker-log copy."),
+			getLogs: async () => structuredClone(workerLogsResult),
 		},
 		customNodes: {
 			list: async () => ({ ok: true as const, nodes: [] }),
@@ -365,8 +369,8 @@ export function createDesktopApiMock() {
 			workerSessionState = change.state;
 			for (const listener of workerSessionListeners) listener(change);
 		},
-		setServerLogsResult: (result: ServerLogsResult) => {
-			serverLogsResult = structuredClone(result);
+		setWorkerLogsResult: (result: WorkerLogsResult) => {
+			workerLogsResult = structuredClone(result);
 		},
 		setSyncAfterConnect: (value: boolean) => {
 			syncAfterConnect = value;

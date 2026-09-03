@@ -53,7 +53,7 @@ test("shares the sync-after-connect setting between Connect and Settings", async
 	await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
 	expect(window.kastard.workerSession.connect).toHaveBeenCalledWith({
 		provider: "other",
-		serverUrl: "worker.example.com:22001",
+		workerAddress: "worker.example.com:22001",
 		authenticationCode: "ABCD-EFGH-JKLM-NPQR",
 		syncAfterConnect: false,
 	});

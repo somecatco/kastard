@@ -9,18 +9,18 @@ import {
 	cancelWorkerCustomNodeSync,
 	cancelWorkerModelSync,
 	cancelWorkerWorkflowJob,
-	connectToServer,
+	connectToWorker,
 	discardWorkerWorkflowInputs,
-	fetchServerLogs,
 	fetchWorkerBackend,
 	fetchWorkerComfy,
 	fetchWorkerCustomNodeSync,
+	fetchWorkerLogs,
 	fetchWorkerModelSync,
 	fetchWorkerSystemMetrics,
 	fetchWorkerWorkflowJob,
 	freeWorkerComfyMemory,
 	prepareWorkerBackend,
-	probeServerConnection,
+	probeWorkerConnection,
 	restartWorkerComfy,
 	startWorkerComfy,
 	startWorkerCustomNodeReinstall,
@@ -53,12 +53,12 @@ function tunnelStub(workerAddress: string): WorkerTunnel {
 	};
 }
 
-describe("server connection client", () => {
+describe("Worker connection client", () => {
 	test("starts the Worker connection through an encrypted local tunnel", async () => {
 		const requestFetch = vi.fn(async () =>
 			Response.json({
 				status: "connected",
-				logCursor: "server-one:0",
+				logCursor: "worker-one:0",
 				worker: {
 					buildNumber: "15",
 					channel: "preview",
@@ -70,7 +70,7 @@ describe("server connection client", () => {
 		const tunnel = tunnelStub("203.0.113.10:22001");
 		const openTunnel = vi.fn(async () => tunnel);
 
-		const result = await connectToServer(
+		const result = await connectToWorker(
 			"203.0.113.10:22001",
 			"ABCD-EFGH-JKLM-NPQR",
 			undefined,
@@ -80,7 +80,7 @@ describe("server connection client", () => {
 
 		expect(result).toEqual({
 			ok: true,
-			logCursor: "server-one:0",
+			logCursor: "worker-one:0",
 			tunnel,
 			worker: {
 				buildNumber: "15",
@@ -106,25 +106,25 @@ describe("server connection client", () => {
 		);
 	});
 
-	test("loads structured server logs without exposing the cursor to callers", async () => {
+	test("loads structured Worker logs without exposing the cursor to callers", async () => {
 		const requestFetch = vi.fn(async () =>
 			Response.json({
 				logs: [
 					{
-						id: "server-one:1",
+						id: "worker-one:1",
 						timestamp: "2026-08-15T12:00:00.000Z",
 						level: "info",
 						message: "Editor connected.",
 					},
 				],
-				cursor: "server-one:1",
+				cursor: "worker-one:1",
 				truncated: false,
 			}),
 		);
 
-		const result = await fetchServerLogs(
-			{ serverUrl: "https://kastard.example.com", sessionCapability },
-			"server-one:0",
+		const result = await fetchWorkerLogs(
+			{ workerApiUrl: "https://kastard.example.com", sessionCapability },
+			"worker-one:0",
 			requestFetch as unknown as typeof fetch,
 		);
 
@@ -132,17 +132,17 @@ describe("server connection client", () => {
 			ok: true,
 			logs: [
 				{
-					id: "server-one:1",
+					id: "worker-one:1",
 					timestamp: "2026-08-15T12:00:00.000Z",
 					level: "info",
 					message: "Editor connected.",
 				},
 			],
-			cursor: "server-one:1",
+			cursor: "worker-one:1",
 			truncated: false,
 		});
 		expect(requestFetch).toHaveBeenCalledWith(
-			"https://kastard.example.com/logs?after=server-one%3A0",
+			"https://kastard.example.com/logs?after=worker-one%3A0",
 			expect.objectContaining({
 				headers: {
 					Accept: "application/json",
@@ -152,10 +152,10 @@ describe("server connection client", () => {
 		);
 	});
 
-	test("does not expose an invalid server log response body", async () => {
-		const result = await fetchServerLogs(
-			{ serverUrl: "https://kastard.example.com", sessionCapability },
-			"server-one:0",
+	test("does not expose an invalid Worker log response body", async () => {
+		const result = await fetchWorkerLogs(
+			{ workerApiUrl: "https://kastard.example.com", sessionCapability },
+			"worker-one:0",
 			vi.fn(
 				async () => new Response("provider-token=secret", { status: 500 }),
 			) as unknown as typeof fetch,
@@ -169,7 +169,7 @@ describe("server connection client", () => {
 
 	test("closes the tunnel when the Worker API rejects the connection", async () => {
 		const tunnel = tunnelStub("203.0.113.10:22001");
-		const result = await connectToServer(
+		const result = await connectToWorker(
 			"203.0.113.10:22001",
 			"ABCD-EFGH-JKLM-NPQR",
 			undefined,
@@ -182,8 +182,8 @@ describe("server connection client", () => {
 	});
 
 	test("reports an offline active connection", async () => {
-		const result = await probeServerConnection(
-			{ serverUrl: "https://kastard.example.com", sessionCapability },
+		const result = await probeWorkerConnection(
+			{ workerApiUrl: "https://kastard.example.com", sessionCapability },
 			vi.fn(async () => {
 				throw new Error("offline");
 			}) as unknown as typeof fetch,
@@ -197,8 +197,8 @@ describe("server connection client", () => {
 
 	test("reads Worker identity while probing an active connection", async () => {
 		expect(
-			await probeServerConnection(
-				{ serverUrl: "https://kastard.example.com", sessionCapability },
+			await probeWorkerConnection(
+				{ workerApiUrl: "https://kastard.example.com", sessionCapability },
 				vi.fn(async () =>
 					Response.json({
 						status: "connected",
@@ -227,7 +227,7 @@ describe("server connection client", () => {
 			Response.json({ status: "not-installed", runtime: workerRuntime }),
 		);
 		const credential = {
-			serverUrl: "https://kastard.example.com",
+			workerApiUrl: "https://kastard.example.com",
 			sessionCapability,
 		};
 
@@ -269,7 +269,7 @@ describe("server connection client", () => {
 
 		expect(
 			await fetchWorkerBackend(
-				{ serverUrl: "https://kastard.example.com", sessionCapability },
+				{ workerApiUrl: "https://kastard.example.com", sessionCapability },
 				requestFetch as unknown as typeof fetch,
 			),
 		).toEqual({
@@ -292,7 +292,7 @@ describe("server connection client", () => {
 
 		expect(
 			await fetchWorkerBackend(
-				{ serverUrl: "https://kastard.example.com", sessionCapability },
+				{ workerApiUrl: "https://kastard.example.com", sessionCapability },
 				requestFetch as unknown as typeof fetch,
 			),
 		).toEqual({
@@ -309,7 +309,7 @@ describe("server connection client", () => {
 			.mockResolvedValueOnce(Response.json({ status: "starting" }, { status: 202 }))
 			.mockResolvedValueOnce(Response.json({ status: "starting" }, { status: 202 }));
 		const credential = {
-			serverUrl: "https://kastard.example.com",
+			workerApiUrl: "https://kastard.example.com",
 			sessionCapability,
 		};
 
@@ -343,7 +343,7 @@ describe("server connection client", () => {
 			)
 			.mockRejectedValueOnce(new Error("connection lost"));
 		const credential = {
-			serverUrl: "https://kastard.example.com",
+			workerApiUrl: "https://kastard.example.com",
 			sessionCapability,
 		};
 
@@ -399,7 +399,7 @@ describe("server connection client", () => {
 			Response.json({ id: jobId, status: "running" }, { status: 202 }),
 		);
 		const credential = {
-			serverUrl: "https://kastard.example.com",
+			workerApiUrl: "https://kastard.example.com",
 			sessionCapability,
 		};
 
@@ -534,7 +534,7 @@ describe("server connection client", () => {
 	test("cancels a workflow through its Desktop job ID", async () => {
 		const jobId = "11111111-1111-4111-8111-111111111111";
 		const credential = {
-			serverUrl: "https://kastard.example.com",
+			workerApiUrl: "https://kastard.example.com",
 			sessionCapability,
 		};
 		const requestFetch = vi.fn(async () =>
@@ -563,7 +563,7 @@ describe("server connection client", () => {
 
 	test("reports failed Worker input cleanup", async () => {
 		const credential = {
-			serverUrl: "https://kastard.example.com",
+			workerApiUrl: "https://kastard.example.com",
 			sessionCapability,
 		};
 		const unavailable = vi.fn(async () => {
@@ -644,7 +644,7 @@ describe("server connection client", () => {
 				},
 			);
 			const credential = {
-				serverUrl: "https://kastard.example.com",
+				workerApiUrl: "https://kastard.example.com",
 				sessionCapability,
 			};
 
@@ -710,7 +710,7 @@ describe("server connection client", () => {
 		};
 		const requestFetch = vi.fn(async () => Response.json(metrics));
 		const credential = {
-			serverUrl: "https://kastard.example.com",
+			workerApiUrl: "https://kastard.example.com",
 			sessionCapability,
 		};
 
@@ -800,7 +800,7 @@ describe("server connection client", () => {
 				Response.json({ ...operation, status: "canceling" }, { status: 202 }),
 			);
 		const credential = {
-			serverUrl: "https://kastard.example.com",
+			workerApiUrl: "https://kastard.example.com",
 			sessionCapability,
 		};
 
@@ -891,7 +891,7 @@ describe("server connection client", () => {
 
 	test("reads and starts model synchronization", async () => {
 		const credential = {
-			serverUrl: "https://kastard.example.com",
+			workerApiUrl: "https://kastard.example.com",
 			sessionCapability,
 		};
 		const request = {
@@ -1017,7 +1017,7 @@ describe("server connection client", () => {
 
 	test("explains unsupported model synchronization contracts", async () => {
 		const credential = {
-			serverUrl: "https://kastard.example.com",
+			workerApiUrl: "https://kastard.example.com",
 			sessionCapability,
 		};
 		const requestFetch = vi
@@ -1084,7 +1084,7 @@ describe("server connection client", () => {
 		};
 		const requestFetch = vi.fn().mockResolvedValue(Response.json(verification));
 		const credential = {
-			serverUrl: "https://kastard.example.com",
+			workerApiUrl: "https://kastard.example.com",
 			sessionCapability,
 		};
 		const request = {

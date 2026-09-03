@@ -28,7 +28,7 @@ function createFixture({ editor = "4", worker = "7" } = {}) {
 	writeJson(root, "apps/desktop/package.json", {
 		build: { buildVersion: editor },
 	});
-	writeJson(root, "apps/server/package.json", {
+	writeJson(root, "apps/worker/package.json", {
 		buildNumber: worker,
 		version: "0.0.0",
 	});
@@ -148,7 +148,7 @@ describe("build number increment", () => {
 		expect(() => incrementBuildNumbers(root, "editor")).toThrow(
 			"cannot be incremented safely",
 		);
-		expect(() => incrementBuildNumbers(root, "server")).toThrow("Unknown target");
+		expect(() => incrementBuildNumbers(root, "invalid")).toThrow("Unknown target");
 		expect(readFileSync(editorPath, "utf8")).toBe(before);
 	});
 
@@ -318,7 +318,7 @@ describe("Worker image builds", () => {
 		expect(commands[0]).toContain(
 			"manifest inspect -- somecatco/kastard-worker-cu128:runtime-cu128-fixturecu128",
 		);
-		expect(commands[1]).toContain("-f apps/server/Dockerfile.runtime");
+		expect(commands[1]).toContain("-f apps/worker/Dockerfile.runtime");
 		expect(commands[1]).toContain("--build-arg CLEAN_UV_CACHE=true");
 		expect(commands[1]).toContain(
 			"--cache-from type=registry,ref=somecatco/kastard-worker-cu128:buildcache-runtime-cu128",
@@ -365,7 +365,7 @@ describe("Worker image builds", () => {
 		expect(result.exitCode).toBe(0);
 		const commands = readFileSync(env.DOCKER_LOG, "utf8").trim().split("\n");
 		expect(commands).toHaveLength(2);
-		expect(commands[1]).toMatch(/(?:^| )-f apps\/server\/Dockerfile(?: |$)/);
+		expect(commands[1]).toMatch(/(?:^| )-f apps\/worker\/Dockerfile(?: |$)/);
 		expect(commands[1]).toContain(
 			"-t somecatco/kastard-worker-cu130:0.2.0-build.7-aaaaaaa",
 		);

@@ -10,7 +10,7 @@ import {
 } from "@kastard/common/session-auth";
 import { type Connection, Server as SshServer, utils } from "ssh2";
 import { expect, test, vi } from "vitest";
-import { WorkerSessionGateway } from "../../../../server/src/worker-session-gateway";
+import { WorkerSessionGateway } from "../../../../worker/src/worker-session-gateway";
 import { connectWorkerTunnel, normalizeWorkerAddress } from "./tunnel";
 
 const AUTHENTICATION_CODE = "ABCD-EFGH-JKLM-NPQR";

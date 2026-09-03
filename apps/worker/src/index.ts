@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { createServerApp } from "./app";
+import { createWorkerApp } from "./app";
 import {
 	BackendProvisioner,
 	BackendProvisionerController,
@@ -11,8 +11,8 @@ import {
 	CustomNodeProvisionerController,
 } from "./custom-node-provisioner";
 import { ModelProvisioner, ModelProvisionerController } from "./model-provisioner";
-import { ServerLogStore } from "./server-log";
 import { SystemStatusMonitor } from "./system-status";
+import { WorkerLogStore } from "./worker-log";
 import {
 	isWorkerSessionAuthorized,
 	WorkerSessionGateway,
@@ -22,7 +22,7 @@ import { shutdownWorker } from "./worker-shutdown";
 import { WorkflowEventHub } from "./workflow-events";
 import { WorkflowJobExecutor } from "./workflow-job";
 
-const logs = new ServerLogStore();
+const logs = new WorkerLogStore();
 const backendProvisioner = new BackendProvisionerController();
 const customNodeProvisioner = new CustomNodeProvisionerController();
 const modelProvisioner = new ModelProvisionerController();
@@ -42,7 +42,7 @@ const workflowJobs = new WorkflowJobExecutor({
 	events: workflowEvents,
 });
 let sessionCapability: string | null = null;
-const app = createServerApp(
+const app = createWorkerApp(
 	logs,
 	backendProvisioner,
 	customNodeProvisioner,

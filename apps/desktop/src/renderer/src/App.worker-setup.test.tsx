@@ -2551,7 +2551,7 @@ test("keeps Worker ComfyUI restart separate from the complete resync action", as
 				id: "workflow-1",
 				phase: "running",
 				cancellation: "none",
-				workerUrl: "https://worker.example.com",
+				workerAddress: "https://worker.example.com",
 				lastConfirmedStatus: "running",
 				lastConfirmedAt: 1,
 			},

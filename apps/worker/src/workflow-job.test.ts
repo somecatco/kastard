@@ -3,7 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ServerLogStore } from "./server-log";
+import { WorkerLogStore } from "./worker-log";
 import { WorkflowJobExecutor } from "./workflow-job";
 
 const inputlessPrompt = {
@@ -19,7 +19,7 @@ test("keeps a canceled job from executing when cancellation arrives before submi
 	const executor = new WorkflowJobExecutor({
 		getRootDirectory: () => root,
 		getRuntimeUrl: () => "http://127.0.0.1:8188/",
-		logs: new ServerLogStore(),
+		logs: new WorkerLogStore(),
 		requestFetch: requestFetch as unknown as typeof fetch,
 	});
 
@@ -52,7 +52,7 @@ test("cancels the active internal ComfyUI workflow by its private prompt ID", as
 	const requested: Array<{ path: string; method: string; body: unknown }> = [];
 	const executor = new WorkflowJobExecutor({
 		getRuntimeUrl: () => "http://127.0.0.1:8188/",
-		logs: new ServerLogStore(),
+		logs: new WorkerLogStore(),
 		pollMs: 1,
 		requestFetch: (async (input, init) => {
 			const path = new URL(input.toString()).pathname;
@@ -97,7 +97,7 @@ test("reissues cancellation after an in-flight ComfyUI queue request settles", a
 	});
 	const executor = new WorkflowJobExecutor({
 		getRuntimeUrl: () => "http://127.0.0.1:8188/",
-		logs: new ServerLogStore(),
+		logs: new WorkerLogStore(),
 		pollMs: 1,
 		requestFetch: (async (input, init) => {
 			const path = new URL(input.toString()).pathname;
@@ -129,7 +129,7 @@ test("submits one inputless workflow without exposing the internal ComfyUI id", 
 	const requestedPaths: string[] = [];
 	const executor = new WorkflowJobExecutor({
 		getRuntimeUrl: () => "http://127.0.0.1:8188/",
-		logs: new ServerLogStore(),
+		logs: new WorkerLogStore(),
 		pollMs: 1,
 		requestFetch: (async (input, init) => {
 			const url = new URL(input.toString());
@@ -186,7 +186,7 @@ test("prepares a verified result manifest before completing a workflow", async (
 		const executor = new WorkflowJobExecutor({
 			getRootDirectory: () => root,
 			getRuntimeUrl: () => "http://127.0.0.1:8188/",
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			pollMs: 1,
 			requestFetch: (async (input, init) => {
 				const path = new URL(input.toString()).pathname;
@@ -279,7 +279,7 @@ test("reconciles an accepted workflow after its queue response is lost", async (
 	let reads = 0;
 	const executor = new WorkflowJobExecutor({
 		getRuntimeUrl: () => "http://127.0.0.1:8188/",
-		logs: new ServerLogStore(),
+		logs: new WorkerLogStore(),
 		pollMs: 1,
 		requestFetch: (async (input, init) => {
 			const path = new URL(input.toString()).pathname;
@@ -316,7 +316,7 @@ test("submits dynamic inputs to ComfyUI without interpreting their schema", asyn
 	let queuedPrompt: unknown = null;
 	const executor = new WorkflowJobExecutor({
 		getRuntimeUrl: () => "http://127.0.0.1:8188/",
-		logs: new ServerLogStore(),
+		logs: new WorkerLogStore(),
 		pollMs: 1,
 		requestFetch: (async (input, init) => {
 			const path = new URL(input.toString()).pathname;
@@ -348,7 +348,7 @@ test("reports a model missing from Worker ComfyUI validation", async () => {
 	};
 	const executor = new WorkflowJobExecutor({
 		getRuntimeUrl: () => "http://127.0.0.1:8188/",
-		logs: new ServerLogStore(),
+		logs: new WorkerLogStore(),
 		requestFetch: (async (_input) => {
 			promptRequests += 1;
 			return Response.json(
@@ -394,7 +394,7 @@ test("reports a ComfyUI server error as an execution failure", async () => {
 	const jobId = randomUUID();
 	const executor = new WorkflowJobExecutor({
 		getRuntimeUrl: () => "http://127.0.0.1:8188/",
-		logs: new ServerLogStore(),
+		logs: new WorkerLogStore(),
 		requestFetch: (async (_input) => {
 			return Response.json(
 				{ error: { message: "ComfyUI is reloading" } },
@@ -422,7 +422,7 @@ test("submits a node-linked input directly to ComfyUI", async () => {
 	let queued = false;
 	const executor = new WorkflowJobExecutor({
 		getRuntimeUrl: () => "http://127.0.0.1:8188/",
-		logs: new ServerLogStore(),
+		logs: new WorkerLogStore(),
 		pollMs: 1,
 		requestFetch: (async (input, init) => {
 			const path = new URL(input.toString()).pathname;
@@ -448,7 +448,7 @@ test("submits a Worker-local input without requiring a Kastard transfer", async 
 	};
 	const executor = new WorkflowJobExecutor({
 		getRuntimeUrl: () => "http://127.0.0.1:8188/",
-		logs: new ServerLogStore(),
+		logs: new WorkerLogStore(),
 		pollMs: 1,
 		requestFetch: (async (input, init) => {
 			const path = new URL(input.toString()).pathname;
@@ -481,7 +481,7 @@ test("publishes verified workflow inputs before submission and reports missing u
 		const executor = new WorkflowJobExecutor({
 			getRootDirectory: () => root,
 			getRuntimeUrl: () => "http://127.0.0.1:8188/",
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			pollMs: 1,
 			requestFetch: (async (input, init) => {
 				const path = new URL(input.toString()).pathname;
@@ -557,7 +557,7 @@ test("retains terminal job ids while accepting only one new workflow at a time",
 	});
 	const executor = new WorkflowJobExecutor({
 		getRuntimeUrl: () => "http://127.0.0.1:8188/",
-		logs: new ServerLogStore(),
+		logs: new WorkerLogStore(),
 		pollMs: 1,
 		requestFetch: (async (input, init) => {
 			const path = new URL(input.toString()).pathname;
@@ -615,7 +615,7 @@ test("keeps tracking a workflow across missing internal job responses", async ()
 	let reads = 0;
 	const executor = new WorkflowJobExecutor({
 		getRuntimeUrl: () => "http://127.0.0.1:8188/",
-		logs: new ServerLogStore(),
+		logs: new WorkerLogStore(),
 		pollMs: 1,
 		requestFetch: (async (input, init) => {
 			const path = new URL(input.toString()).pathname;
@@ -644,7 +644,7 @@ test("fails a workflow whose internal job remains missing", async () => {
 	let reads = 0;
 	const executor = new WorkflowJobExecutor({
 		getRuntimeUrl: () => "http://127.0.0.1:8188/",
-		logs: new ServerLogStore(),
+		logs: new WorkerLogStore(),
 		pollMs: 1,
 		requestFetch: (async (input, init) => {
 			const path = new URL(input.toString()).pathname;
@@ -678,7 +678,7 @@ test("fails a workflow after its ComfyUI runtime generation changes", async () =
 	const executor = new WorkflowJobExecutor({
 		getRuntimeUrl: () => "http://127.0.0.1:8188/",
 		getRuntimeGeneration: () => generation,
-		logs: new ServerLogStore(),
+		logs: new WorkerLogStore(),
 		pollMs: 1,
 		requestFetch: (async (input, init) => {
 			const path = new URL(input.toString()).pathname;
@@ -717,7 +717,7 @@ test("confirms cancellation when ComfyUI stops during an in-flight status reques
 	const executor = new WorkflowJobExecutor({
 		getRuntimeUrl: () => "http://127.0.0.1:8188/",
 		getRuntimeGeneration: () => generation,
-		logs: new ServerLogStore(),
+		logs: new WorkerLogStore(),
 		pollMs: 1,
 		requestFetch: (async (input, init) => {
 			const path = new URL(input.toString()).pathname;
@@ -745,7 +745,7 @@ test("confirms cancellation when ComfyUI stops during an in-flight status reques
 test("requires Worker ComfyUI to already be ready", async () => {
 	const executor = new WorkflowJobExecutor({
 		getRuntimeUrl: () => null,
-		logs: new ServerLogStore(),
+		logs: new WorkerLogStore(),
 	});
 
 	await expect(

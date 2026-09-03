@@ -18,7 +18,7 @@ import {
 	type BackendState,
 	type WorkerRuntime,
 } from "./backend-provisioner";
-import { ServerLogStore } from "./server-log";
+import { WorkerLogStore } from "./worker-log";
 
 const runtime: WorkerRuntime = {
 	cudaVersion: "12.8",
@@ -87,7 +87,7 @@ describe("BackendProvisioner", () => {
 		const provisioner = await BackendProvisioner.create({
 			rootDirectory,
 			runtime,
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			downloadArtifact: async (_url, destination, onProgress) => {
 				onProgress(42);
 				await Bun.write(destination, archive);
@@ -136,7 +136,7 @@ describe("BackendProvisioner", () => {
 		const provisioner = await BackendProvisioner.create({
 			rootDirectory,
 			runtime,
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			downloadArtifact: async (_url, destination) => {
 				await Bun.write(destination, archive);
 				return archiveSha256;
@@ -196,7 +196,7 @@ describe("BackendProvisioner", () => {
 		const restored = await BackendProvisioner.create({
 			rootDirectory,
 			runtime: updatedRuntime,
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			downloadArtifact: async (_url, destination) => {
 				await Bun.write(destination, archive);
 				return archiveSha256;
@@ -289,7 +289,7 @@ describe("BackendProvisioner", () => {
 		const provisioner = await BackendProvisioner.create({
 			rootDirectory,
 			runtime,
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			downloadArtifact: async (_url, destination) => {
 				await Bun.write(destination, incompleteArchive);
 				return checksum;
@@ -321,7 +321,7 @@ describe("BackendProvisioner", () => {
 		const provisioner = await BackendProvisioner.create({
 			rootDirectory,
 			runtime,
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			now: () => now,
 			downloadArtifact: async (_url, destination, onProgress) => {
 				onProgress(25);
@@ -359,7 +359,7 @@ describe("BackendProvisioner", () => {
 		const provisioner = await BackendProvisioner.create({
 			rootDirectory,
 			runtime,
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			downloadArtifact: downloadSelectedArchive,
 			onReplace: () => {
 				replaceCalls += 1;
@@ -400,7 +400,7 @@ describe("BackendProvisioner", () => {
 		const provisioner = await BackendProvisioner.create({
 			rootDirectory,
 			runtime,
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			downloadArtifact: downloadSelectedArchive,
 			onReplace: () => {
 				replaceCalls += 1;
@@ -431,7 +431,7 @@ describe("BackendProvisioner", () => {
 		const provisioner = await BackendProvisioner.create({
 			rootDirectory,
 			runtime,
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			downloadArtifact: async (url, destination, onProgress) => {
 				downloads += 1;
 				return downloadSelectedArchive(url, destination, onProgress);
@@ -459,7 +459,7 @@ describe("BackendProvisioner", () => {
 		const provisioner = await BackendProvisioner.create({
 			rootDirectory,
 			runtime,
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			downloadArtifact: async (url, destination, onProgress) => {
 				busy = true;
 				return downloadSelectedArchive(url, destination, onProgress);
@@ -496,7 +496,7 @@ describe("BackendProvisioner", () => {
 		const provisioner = await BackendProvisioner.create({
 			rootDirectory,
 			runtime,
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			downloadArtifact: downloadSelectedArchive,
 			onReplace: async () => {
 				// Drop the staged replacement so publishing it fails after the installed
@@ -575,7 +575,7 @@ describe("BackendProvisioner", () => {
 		const provisioner = await BackendProvisioner.create({
 			rootDirectory,
 			runtime,
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			downloadArtifact: async (url, destination, onProgress) => {
 				if (serveRebuilt && url === rebuiltTarget.archiveUrl) {
 					onProgress(100);
@@ -613,7 +613,7 @@ describe("BackendProvisioner", () => {
 		const provisioner = await BackendProvisioner.create({
 			rootDirectory,
 			runtime,
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			downloadArtifact: async (url, destination, onProgress) => {
 				if (url === nextTarget.archiveUrl) {
 					throw new Error("Download failed with HTTP 500.");
@@ -659,7 +659,7 @@ describe("BackendProvisioner", () => {
 		const provisioner = await BackendProvisioner.create({
 			rootDirectory,
 			runtime,
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			downloadArtifact: async (url, destination, onProgress) => {
 				if (failNext && url === nextTarget.archiveUrl) {
 					failNext = false;
@@ -712,7 +712,7 @@ describe("BackendProvisioner", () => {
 		return BackendProvisioner.create({
 			rootDirectory,
 			runtime,
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			downloadArtifact: async (_url, destination) => {
 				await Bun.write(destination, archive);
 				return archiveSha256;

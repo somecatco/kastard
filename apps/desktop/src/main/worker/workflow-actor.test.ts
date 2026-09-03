@@ -2,7 +2,7 @@
 
 import { expect, test, vi } from "vitest";
 import type { ConnectionState, WorkerComfyState } from "../../shared/api";
-import type { ServerCredential } from "./client";
+import type { WorkerSessionCredential } from "./client";
 import {
 	cancelCurrentWorkerWorkflow,
 	clearPendingWorkerWorkflows,
@@ -21,8 +21,8 @@ import {
 	WorkflowInputSnapshotError,
 } from "./workflow-input-snapshot";
 
-const credential: ServerCredential = {
-	serverUrl: "https://kastard.example.com",
+const credential: WorkerSessionCredential = {
+	workerApiUrl: "https://kastard.example.com",
 	sessionCapability: "test-session-capability",
 };
 const inputlessPrompt = {
@@ -313,11 +313,11 @@ test("aborts a current dispatch and cleans its inputs when stopping", async () =
 	let aborted = false;
 	const cleanupInputs = vi.fn(async (_jobId: string) => undefined);
 	const discardInputs = vi.fn(
-		async (_credential: ServerCredential, _jobId: string) => undefined,
+		async (_credential: WorkerSessionCredential, _jobId: string) => undefined,
 	);
 	const start = vi.fn(
 		(
-			_credential: ServerCredential,
+			_credential: WorkerSessionCredential,
 			_id: string,
 			_snapshot: WorkflowInputSnapshot,
 			_extraData: Record<string, unknown>,
@@ -983,7 +983,7 @@ test("keeps an unconfirmed cancellation current and blocks the FIFO", async () =
 	expect(harness.getQueue().running[0]?.id).toBe(first.id);
 	expect(harness.getQueue().pending[0]?.id).toBe(second.id);
 	connection.update({
-		serverUrl: "https://replacement.example.com",
+		workerApiUrl: "https://replacement.example.com",
 		sessionCapability: "replacement-session-capability",
 	});
 	await flushMicrotasks();
@@ -1199,8 +1199,8 @@ test("keeps an active workflow after repeated status failures until state change
 test("requeues a definitely rejected dispatch until connection state changes", async () => {
 	vi.useFakeTimers();
 	const connection = new ConnectionHarness(credential);
-	const replacementCredential: ServerCredential = {
-		serverUrl: "https://replacement.example.com",
+	const replacementCredential: WorkerSessionCredential = {
+		workerApiUrl: "https://replacement.example.com",
 		sessionCapability: "replacement-session-capability",
 	};
 	let starts = 0;
@@ -1260,7 +1260,7 @@ test("requeues a definitely rejected dispatch until connection state changes", a
 test("discards remote staging when delete and clear remove retrying workflows", async () => {
 	const cleanupInputs = vi.fn(async (_jobId: string) => undefined);
 	const discardInputs = vi.fn(
-		async (_credential: ServerCredential, _jobId: string) => undefined,
+		async (_credential: WorkerSessionCredential, _jobId: string) => undefined,
 	);
 	const start = vi.fn(async () => ({
 		outcome: "rejected" as const,
@@ -1333,7 +1333,7 @@ test("retries failed remote staging cleanup when the original Worker reconnects"
 	expect(discardInputs).toHaveBeenCalledOnce();
 
 	connection.update({
-		serverUrl: "https://replacement.example.com",
+		workerApiUrl: "https://replacement.example.com",
 		sessionCapability: "replacement-session-capability",
 	});
 	await flushMicrotasks();
@@ -1439,8 +1439,8 @@ test("retains failed remote cleanup after an input transfer failure", async () =
 test("reconciles an uncertain dispatch only by reading the same Worker job id", async () => {
 	vi.useFakeTimers();
 	const connection = new ConnectionHarness(credential);
-	const replacementCredential: ServerCredential = {
-		serverUrl: "https://replacement.example.com",
+	const replacementCredential: WorkerSessionCredential = {
+		workerApiUrl: "https://replacement.example.com",
 		sessionCapability: "replacement-session-capability",
 	};
 	let starts = 0;
@@ -1966,10 +1966,10 @@ class WorkerWorkflowHarness {
 
 class ConnectionHarness {
 	private readonly listeners = new Set<(state: ConnectionState) => void>();
-	private credential: ServerCredential | null;
+	private credential: WorkerSessionCredential | null;
 	private state: ConnectionState;
 
-	constructor(initialCredential: ServerCredential | null) {
+	constructor(initialCredential: WorkerSessionCredential | null) {
 		this.credential = initialCredential;
 		this.state = connectionState(initialCredential);
 	}
@@ -1978,7 +1978,7 @@ class ConnectionHarness {
 		return this.state;
 	}
 
-	getActiveCredential(): ServerCredential | null {
+	getActiveCredential(): WorkerSessionCredential | null {
 		return this.credential;
 	}
 
@@ -1987,7 +1987,7 @@ class ConnectionHarness {
 		return () => this.listeners.delete(listener);
 	}
 
-	update(nextCredential: ServerCredential | null): void {
+	update(nextCredential: WorkerSessionCredential | null): void {
 		this.credential = nextCredential;
 		this.state = connectionState(nextCredential);
 		for (const listener of this.listeners) listener(this.state);
@@ -2014,13 +2014,13 @@ class StateHarness<State> {
 	}
 }
 
-function connectionState(value: ServerCredential | null): ConnectionState {
+function connectionState(value: WorkerSessionCredential | null): ConnectionState {
 	return value === null
-		? { status: "disconnected", recentProvider: null, recentServerUrl: null }
+		? { status: "disconnected", recentProvider: null, recentWorkerAddress: null }
 		: {
 				status: "connected",
 				provider: "other",
-				serverUrl: value.serverUrl,
+				workerAddress: value.workerAddress ?? value.workerApiUrl,
 				connectedAt: Date.now(),
 			};
 }

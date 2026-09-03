@@ -59,7 +59,7 @@ test("receives live data and reconnects the same Worker job", async () => {
 	const previews: Uint8Array[] = [];
 	connection = await openWorkerWorkflowEvents(
 		{
-			serverUrl: `http://127.0.0.1:${address.port}`,
+			workerApiUrl: `http://127.0.0.1:${address.port}`,
 			sessionCapability: "test-session-capability",
 		},
 		JOB_ID,
@@ -100,7 +100,7 @@ test("does not reconnect after the initial event stream handshake fails", async 
 	await expect(
 		openWorkerWorkflowEvents(
 			{
-				serverUrl: `http://127.0.0.1:${address.port}`,
+				workerApiUrl: `http://127.0.0.1:${address.port}`,
 				sessionCapability: "test-session-capability",
 			},
 			JOB_ID,

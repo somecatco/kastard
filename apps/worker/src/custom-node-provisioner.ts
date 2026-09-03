@@ -35,9 +35,9 @@ import {
 } from "@kastard/common";
 import type { BackendProvisionerApi } from "./backend-provisioner";
 import { ProcessOutputLineBuffer, type ProcessOutputStream } from "./process-output";
-import type { ServerLogStore } from "./server-log";
 import type { CollectionVerification, VerificationProblem } from "./sync-verification";
 import { workerChildEnvironment } from "./worker-child-environment";
+import type { WorkerLogStore } from "./worker-log";
 
 const INSTALL_TIMEOUT_MS = 15 * 60 * 1_000;
 const INSTALLATION_RECORD_NAME = "custom-node-installations.json";
@@ -101,7 +101,7 @@ type CustomNodeProvisionerOptions = {
 	rootDirectory: string;
 	runtimePython: string;
 	backend: BackendProvisionerApi;
-	logs: ServerLogStore;
+	logs: WorkerLogStore;
 	runCommand?: RunCommand;
 	prepareManagerDirectory?: PrepareManagerDirectory;
 	sourceEnvironment?: NodeJS.ProcessEnv;
@@ -226,7 +226,7 @@ export class CustomNodeProvisioner implements CustomNodeProvisionerApi {
 	private readonly rootDirectory: string;
 	private readonly runtimePython: string;
 	private readonly backend: BackendProvisionerApi;
-	private readonly logs: ServerLogStore;
+	private readonly logs: WorkerLogStore;
 	private readonly runCommand: RunCommand;
 	private readonly prepareManagerDirectory: PrepareManagerDirectory;
 	private readonly sourceEnvironment: NodeJS.ProcessEnv;

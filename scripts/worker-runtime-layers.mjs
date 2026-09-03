@@ -82,7 +82,7 @@ export function runtimeImageFingerprint(root, profile) {
 	if (!PROFILES.includes(profile))
 		throw new Error(`Unsupported Worker runtime profile: ${profile}.`);
 	const paths = [
-		"apps/server/Dockerfile.runtime",
+		"apps/worker/Dockerfile.runtime",
 		"scripts/verify-worker-runtime.py",
 		PREBUNDLE_LOCK,
 		`vendor/comfyui-worker-runtime-${profile}.json`,

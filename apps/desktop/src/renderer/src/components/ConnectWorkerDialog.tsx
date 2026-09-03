@@ -22,7 +22,7 @@ import {
 import { resources, workerTemplateLinks } from "@/lib/resources";
 import { cn } from "@/lib/utils";
 import {
-	buildWorkerServerUrl,
+	buildWorkerAddress,
 	connectionInputValue,
 } from "@/lib/worker-connection-target";
 import type {
@@ -41,9 +41,9 @@ type ProviderOption = {
 
 export type ConnectWorkerDialogProps = {
 	initialProvider: WorkerProvider | null;
-	initialServerUrl: string | null;
+	initialWorkerAddress: string | null;
 	initialSyncAfterConnect: boolean;
-	defaultServerUrl?: string;
+	defaultWorkerAddress?: string;
 	settingsLoading?: boolean;
 	onConnect: (request: ConnectionRequest) => Promise<ConnectionResult>;
 	onConnected: (syncAfterConnect: boolean) => void;
@@ -92,9 +92,9 @@ const PROVIDERS: ProviderOption[] = [
 
 export function ConnectWorkerDialog({
 	initialProvider,
-	initialServerUrl,
+	initialWorkerAddress,
 	initialSyncAfterConnect,
-	defaultServerUrl = "",
+	defaultWorkerAddress = "",
 	settingsLoading = false,
 	onConnect,
 	onConnected,
@@ -102,20 +102,20 @@ export function ConnectWorkerDialog({
 }: ConnectWorkerDialogProps): React.JSX.Element {
 	const [provider, setProvider] = useState<WorkerProvider | null>(initialProvider);
 	const [value, setValue] = useState(() =>
-		connectionInputValue(initialProvider, initialServerUrl),
+		connectionInputValue(initialProvider, initialWorkerAddress),
 	);
 	const [authenticationCode, setAuthenticationCode] = useState("");
 	const [syncAfterConnect, setSyncAfterConnect] = useState(initialSyncAfterConnect);
 	const [submitting, setSubmitting] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const targetEdited = useRef(false);
-	const serverUrl = provider === null ? null : buildWorkerServerUrl(provider, value);
+	const workerAddress = provider === null ? null : buildWorkerAddress(provider, value);
 
 	useEffect(() => {
 		if (targetEdited.current) return;
 		setProvider(initialProvider);
-		setValue(connectionInputValue(initialProvider, initialServerUrl));
-	}, [initialProvider, initialServerUrl]);
+		setValue(connectionInputValue(initialProvider, initialWorkerAddress));
+	}, [initialProvider, initialWorkerAddress]);
 
 	useEffect(() => {
 		if (!settingsLoading) setSyncAfterConnect(initialSyncAfterConnect);
@@ -125,14 +125,18 @@ export function ConnectWorkerDialog({
 		if (nextProvider === provider) return;
 		targetEdited.current = true;
 		setProvider(nextProvider);
-		setValue(nextProvider === "other" ? defaultServerUrl : "");
+		setValue(nextProvider === "other" ? defaultWorkerAddress : "");
 		setAuthenticationCode("");
 		setError(null);
 	};
 
 	const submit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
 		event.preventDefault();
-		if (provider === null || serverUrl === null || authenticationCode.trim() === "") {
+		if (
+			provider === null ||
+			workerAddress === null ||
+			authenticationCode.trim() === ""
+		) {
 			return;
 		}
 		setSubmitting(true);
@@ -140,7 +144,7 @@ export function ConnectWorkerDialog({
 		try {
 			const result = await onConnect({
 				provider,
-				serverUrl,
+				workerAddress,
 				authenticationCode,
 				syncAfterConnect,
 			});
@@ -276,7 +280,7 @@ export function ConnectWorkerDialog({
 						<Button
 							type="submit"
 							disabled={
-								submitting || serverUrl === null || authenticationCode.trim() === ""
+								submitting || workerAddress === null || authenticationCode.trim() === ""
 							}
 						>
 							{submitting ? <LoaderCircleIcon className="animate-spin" /> : null}

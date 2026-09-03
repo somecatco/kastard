@@ -98,7 +98,7 @@ const saveTemplateMutation = `
 export function parseArguments(args: string[]): WorkerTemplateChannel {
 	return parseWorkerImageArguments(
 		args,
-		"apps/server/scripts/runpod-worker-templates.ts",
+		"apps/worker/scripts/runpod-worker-templates.ts",
 	);
 }
 

@@ -19,7 +19,7 @@ import {
 	type CustomNodeSyncState,
 	runCommand,
 } from "./custom-node-provisioner";
-import { ServerLogStore } from "./server-log";
+import { WorkerLogStore } from "./worker-log";
 
 const ROOT = join(tmpdir(), "kastard-custom-node-provisioner-test");
 const RUNTIME_PYTHON = "/opt/kastard/runtime/bin/python";
@@ -119,7 +119,7 @@ describe("CustomNodeProvisioner", () => {
 	});
 
 	test("records each custom node command stage and its output", async () => {
-		const logs = new ServerLogStore({ instanceId: "server-one" });
+		const logs = new WorkerLogStore({ instanceId: "worker-one" });
 		const cursor = logs.getCursor();
 		const provisioner = new CustomNodeProvisioner({
 			rootDirectory: ROOT,
@@ -160,7 +160,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: async (command, options) => {
 				commands.push({
 					command,
@@ -277,7 +277,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: async (command, options) => {
 				if (command[4] === `${secondNode.id}@${secondNode.version}`) {
 					await secondInstall;
@@ -322,7 +322,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: async (command) => {
 				commands.push(command);
 				if (command[4] === "failed-node@1.0.0") {
@@ -392,7 +392,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: async (command) => {
 				const output = await fakeManagerCommand(command);
 				return command[3] === "install"
@@ -446,7 +446,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: async (command, options) => {
 				commands.push(command);
 				if (command[0] === "git") return runCommand(command, options);
@@ -546,7 +546,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: async (command, options) => {
 				if (command[0] !== "git") return "";
 				commands.push({ command, environment: options.env });
@@ -590,7 +590,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: async (command, options) => {
 				if (command[0] !== "git") return "";
 				if (command[4] === "fetch") throw new Error("sensitive command output");
@@ -625,7 +625,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: async (command, options) =>
 				command[0] === "git" ? runCommand(command, options) : "",
 		});
@@ -670,7 +670,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: async (command, options) =>
 				command[0] === "git" ? runCommand(command, options) : "",
 		});
@@ -706,7 +706,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: async (command, options) => {
 				commands.push(command);
 				return command[0] === "git" ? runCommand(command, options) : "";
@@ -748,7 +748,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: async (command, options) =>
 				command[0] === "git" ? runCommand(command, options) : "",
 		});
@@ -772,7 +772,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: async (command, options) =>
 				command[0] === "git" ? runCommand(command, options) : "",
 		});
@@ -798,7 +798,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: async (command) => {
 				commands.push(command);
 				return "";
@@ -838,7 +838,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: async (command, options) => {
 				commands.push(command);
 				if (command[0] === "git") return runCommand(command, options);
@@ -887,7 +887,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: async (command, options) => {
 				commands.push(command);
 				return command[0] === "git" ? runCommand(command, options) : "";
@@ -942,7 +942,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: async (command, options) => {
 				commands.push(command);
 				return command[0] === "git"
@@ -965,7 +965,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: async (command) => {
 				commands.push(command);
 				if (command[3] === "install" && command[4] === "registry-node@1.0.0") {
@@ -1016,7 +1016,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: fakeManagerCommand,
 		});
 		provisioner.sync({ managerVersion: MANAGER_VERSION, nodes });
@@ -1063,7 +1063,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: fakeManagerCommand,
 		});
 
@@ -1104,7 +1104,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: async (command, options) => {
 				commands.push(command);
 				return command[0] === "git" ? runCommand(command, options) : "";
@@ -1131,7 +1131,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: async (command, options) =>
 				command[0] === "git" ? runCommand(command, options) : "",
 		});
@@ -1146,7 +1146,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: backend({ status: "not-installed", runtime: workerRuntime }),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 		});
 		expect(() => notReady.sync({ managerVersion: MANAGER_VERSION, nodes: [] })).toThrow(
 			"Prepare the Worker ComfyUI backend",
@@ -1156,7 +1156,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 		});
 		for (const request of [
 			{ managerVersion: "latest", nodes: [] },
@@ -1237,7 +1237,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: async (command) => {
 				await installGate;
 				return fakeManagerCommand(command);
@@ -1272,7 +1272,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: async (command, options) => {
 				if (command[3] === "install" && blockInstall) {
 					markInstallStarted?.();
@@ -1329,7 +1329,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: async (command) => {
 				restartCommands.push(command);
 				return fakeManagerCommand(command);
@@ -1354,7 +1354,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: async (command) => {
 				commands.push(command);
 				return fakeManagerCommand(command);
@@ -1387,7 +1387,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: async (command) => {
 				commands.push(command);
 				if (holdReinstallCommands && managerAction(command) === "uninstall") {
@@ -1501,7 +1501,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: async (command) => {
 				commands.push(command);
 				if (failUninstall && managerAction(command) === "uninstall") {
@@ -1537,7 +1537,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: async (command, options) => {
 				commands.push(command);
 				return fakeManagerCommand(command, options);
@@ -1611,7 +1611,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: fakeManagerCommand,
 		});
 
@@ -1641,7 +1641,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: async (command) => {
 				commands.push(command);
 				if (managerAction(command) === "uninstall") {
@@ -1679,7 +1679,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: fakeManagerCommand,
 		});
 		provisioner.sync({ managerVersion: MANAGER_VERSION, nodes: [node] });
@@ -1712,7 +1712,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: fakeManagerCommand,
 		});
 		provisioner.sync({ managerVersion: MANAGER_VERSION, nodes: [selected] });
@@ -1744,7 +1744,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: fakeManagerCommand,
 		});
 		provisioner.sync({ managerVersion: MANAGER_VERSION, nodes: [node] });
@@ -1777,7 +1777,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: async (command) => {
 				if (failInstall && command[3] === "install") {
 					return "ERROR: dependency installation failed";
@@ -1820,7 +1820,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: async (command, options) => {
 				if (blockInstall && command[3] === "install") {
 					markInstallStarted?.();
@@ -1864,7 +1864,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: fakeManagerCommand,
 		});
 		first.sync({ managerVersion: MANAGER_VERSION, nodes: [omittedNode, reusableNode] });
@@ -1875,7 +1875,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: async (command) => {
 				commands.push(command);
 				return fakeManagerCommand(command);
@@ -1899,7 +1899,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: fakeManagerCommand,
 		});
 
@@ -1928,7 +1928,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: fakeManagerCommand,
 		});
 
@@ -1958,7 +1958,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: fakeManagerCommand,
 		});
 
@@ -1976,7 +1976,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: backend({ status: "not-installed", runtime: workerRuntime }),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: async () => "",
 		});
 
@@ -1992,7 +1992,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: fakeManagerCommand,
 		});
 		first.sync({ managerVersion: MANAGER_VERSION, nodes });
@@ -2003,7 +2003,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: async (command) => {
 				commands.push(command);
 				return fakeManagerCommand(command);
@@ -2033,7 +2033,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: fakeManagerCommand,
 		});
 		first.sync({
@@ -2047,7 +2047,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: async (command) => {
 				commands.push(command);
 				return fakeManagerCommand(command);
@@ -2079,7 +2079,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: fakeManagerCommand,
 		});
 		first.sync({
@@ -2092,7 +2092,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: async (command) => {
 				if (command[3] === "install") throw new Error("New node install failed.");
 				return fakeManagerCommand(command);
@@ -2134,7 +2134,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: async () => "",
 		});
 
@@ -2155,7 +2155,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: async (command) => {
 				if (command[3] === "install") {
 					await rm(join(ROOT, "custom_nodes"), { recursive: true, force: true });
@@ -2198,7 +2198,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: async (command) => {
 				commands.push(command);
 				if (command[3] === "install") {
@@ -2242,7 +2242,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: async (command) => {
 				if (command[3] === "install") {
 					await writeTrackedNode(ROOT, partialNode.id, partialNode.version);
@@ -2271,7 +2271,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: async (command) => {
 				commands.push(command);
 				return fakeManagerCommand(command);
@@ -2306,7 +2306,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: async (command) => {
 				const output = await fakeManagerCommand(command);
 				if (command[3] === "install") await mkdir(`${installationPath}.tmp`);
@@ -2327,7 +2327,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: async (command) => {
 				commands.push(command);
 				return fakeManagerCommand(command);
@@ -2360,7 +2360,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: async () => "",
 		});
 
@@ -2385,7 +2385,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: async (command) => {
 				commands.push(command);
 				return fakeManagerCommand(command);
@@ -2416,7 +2416,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: async () => "",
 		});
 
@@ -2439,7 +2439,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: async (command) => {
 				commands.push(command);
 				return fakeManagerCommand(command);
@@ -2470,7 +2470,7 @@ describe("CustomNodeProvisioner", () => {
 			rootDirectory: ROOT,
 			runtimePython: RUNTIME_PYTHON,
 			backend: readyBackend(),
-			logs: new ServerLogStore(),
+			logs: new WorkerLogStore(),
 			runCommand: async (command) => {
 				commands.push(command);
 				return "";
@@ -2515,7 +2515,7 @@ describe("CustomNodeProvisioner", () => {
 				rootDirectory: root,
 				runtimePython: RUNTIME_PYTHON,
 				backend: readyBackend(),
-				logs: new ServerLogStore(),
+				logs: new WorkerLogStore(),
 				runCommand: fakeManagerCommand,
 			});
 

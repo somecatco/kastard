@@ -118,8 +118,6 @@ export type ModelSyncState =
 			error: string;
 	  });
 
-export type ModelSyncServerState = ModelSyncState;
-
 export type ModelSyncParseIssue =
 	| "request"
 	| "credential"
@@ -369,7 +367,7 @@ export function parseModelSyncState(value: unknown): ModelSyncState | null {
 		? ({ ...value, target } as ModelSyncState)
 		: null;
 }
-export function isModelSyncState(value: unknown): value is ModelSyncServerState {
+export function isModelSyncState(value: unknown): value is ModelSyncState {
 	return parseModelSyncState(value) !== null;
 }
 
