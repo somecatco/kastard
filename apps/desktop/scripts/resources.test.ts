@@ -102,6 +102,11 @@ test("keeps the Editor download channel aligned with its release workflow", () =
 	);
 	expect(workflow).toMatch(/^\s*types:\s*\[published\]$/m);
 	expect(workflow).toContain("startsWith(github.event.release.tag_name, 'editor-v')");
+	expect(workflow).toMatch(
+		/^\s*SOURCE_RELEASE_ID:\s*\$\{\{ github\.event\.release\.id \}\}$/m,
+	);
+	expect(workflow).toContain(".draft and .tag_name == $tag");
+	expect(workflow).toContain('gh release upload "$SOURCE_TAG"');
 });
 
 test("keeps release Worker image repositories aligned with resources.jsonc", () => {

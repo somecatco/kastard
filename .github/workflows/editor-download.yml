@@ -23,25 +23,72 @@ jobs:
       DOWNLOAD_ARTIFACT_NAME: Kastard-arm64.dmg
       DOWNLOAD_TAG: editor-download
       GH_TOKEN: ${{ github.token }}
+      SOURCE_RELEASE_ID: ${{ github.event.release.id }}
       SOURCE_TAG: ${{ github.event.release.tag_name }}
       TARGET_COMMITISH: ${{ github.event.release.target_commitish }}
     steps:
       - name: Download published Editor DMG
         run: |
           mkdir -p source-assets download-assets
-          gh release download "$SOURCE_TAG" \
-            --repo "$GITHUB_REPOSITORY" \
-            --pattern 'Kastard-*-arm64.dmg' \
-            --dir source-assets
 
-          shopt -s nullglob
-          source_artifacts=(source-assets/Kastard-*-arm64.dmg)
-          if [[ "${#source_artifacts[@]}" -ne 1 ]]; then
+          source_release_id="$SOURCE_RELEASE_ID"
+          mapfile -t source_assets < <(
+            gh api \
+              "repos/${GITHUB_REPOSITORY}/releases/${source_release_id}/assets" \
+              --jq '.[] | select(.name | test("^Kastard-.*-arm64\\.dmg$")) | [.id, .name] | @tsv'
+          )
+
+          if [[ "${#source_assets[@]}" -eq 0 ]]; then
+            mapfile -t draft_release_ids < <(
+              gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+                --paginate \
+                --slurp |
+                jq -r \
+                  --arg tag "$SOURCE_TAG" \
+                  '.[][] | select(.draft and .tag_name == $tag) | select(any(.assets[]?; .name | test("^Kastard-.*-arm64\\.dmg$"))) | .id'
+            )
+            if [[ "${#draft_release_ids[@]}" -ne 1 ]]; then
+              echo "::error::Published release ${SOURCE_TAG} has no Editor DMG, and expected exactly one matching draft with assets."
+              exit 1
+            fi
+
+            source_release_id="${draft_release_ids[0]}"
+            mapfile -t source_assets < <(
+              gh api \
+                "repos/${GITHUB_REPOSITORY}/releases/${source_release_id}/assets" \
+                --jq '.[] | select(.name | test("^Kastard-.*-arm64\\.dmg$")) | [.id, .name] | @tsv'
+            )
+          fi
+
+          if [[ "${#source_assets[@]}" -ne 1 ]]; then
             echo "::error::Expected exactly one versioned Apple Silicon DMG in ${SOURCE_TAG}."
             exit 1
           fi
 
-          cp "${source_artifacts[0]}" "download-assets/${DOWNLOAD_ARTIFACT_NAME}"
+          IFS=$'\t' read -r source_asset_id source_asset_name <<< "${source_assets[0]}"
+          if [[ ! "$source_asset_name" =~ ^Kastard-[A-Za-z0-9.+-]+-arm64\.dmg$ ]]; then
+            echo "::error::Unexpected Editor DMG asset name: ${source_asset_name}"
+            exit 1
+          fi
+
+          gh api \
+            -H 'Accept: application/octet-stream' \
+            "repos/${GITHUB_REPOSITORY}/releases/assets/${source_asset_id}" \
+            > "source-assets/${source_asset_name}"
+
+          if [[ "$source_release_id" != "$SOURCE_RELEASE_ID" ]]; then
+            (
+              cd source-assets
+              sha256sum "$source_asset_name" > "${source_asset_name}.sha256"
+              gh release upload "$SOURCE_TAG" \
+                "$source_asset_name" \
+                "${source_asset_name}.sha256" \
+                --repo "$GITHUB_REPOSITORY" \
+                --clobber
+            )
+          fi
+
+          cp "source-assets/${source_asset_name}" "download-assets/${DOWNLOAD_ARTIFACT_NAME}"
           cd download-assets
           sha256sum "$DOWNLOAD_ARTIFACT_NAME" > "${DOWNLOAD_ARTIFACT_NAME}.sha256"
 
