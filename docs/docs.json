@@ -51,7 +51,11 @@
           },
           {
             "group": "Using Kastard",
-            "pages": ["en/edit-and-run-workflows", "en/add-models-and-custom-nodes"]
+            "pages": [
+              "en/edit-and-run-workflows",
+              "en/add-models-and-custom-nodes",
+              "en/restart-comfyui"
+            ]
           }
         ]
       },
@@ -68,7 +72,11 @@
           },
           {
             "group": "사용하기",
-            "pages": ["ko/edit-and-run-workflows", "ko/add-models-and-custom-nodes"]
+            "pages": [
+              "ko/edit-and-run-workflows",
+              "ko/add-models-and-custom-nodes",
+              "ko/restart-comfyui"
+            ]
           }
         ]
       }
