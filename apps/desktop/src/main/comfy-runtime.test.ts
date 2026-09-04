@@ -1143,6 +1143,55 @@ test("times out an unresponsive Manager inventory during installation", async ()
 	await runtime.stop();
 });
 
+test("maps a stalled Manager inventory body to the timeout error", async () => {
+	const paths = await fixture();
+	const child = new FakeProcess();
+	const request = vi.fn(
+		async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+			const url = new URL(input instanceof Request ? input.url : String(input));
+			if (
+				url.pathname === "/system_stats" ||
+				url.pathname === "/api/settings/Comfy.Workflow.NamedValuesRestore"
+			) {
+				return new Response(null, { status: 200 });
+			}
+			if (url.pathname === "/v2/customnode/installed") {
+				return {
+					ok: true,
+					json: () =>
+						new Promise((_resolve, reject) => {
+							init?.signal?.addEventListener(
+								"abort",
+								() => reject(new Error("aborted")),
+								{ once: true },
+							);
+						}),
+				} as Response;
+			}
+			return new Response(null, { status: 404 });
+		},
+	);
+	const runtime = new ComfyRuntime({
+		...paths,
+		platform: "darwin",
+		arch: "arm64",
+		allocatePort: async () => 18_204,
+		customNodeInventoryTimeoutMs: 5,
+		fetch: request as typeof fetch,
+		runCommand: async (_command, args) => createManagedPython(args),
+		startProcess: () => child as unknown as ChildProcess,
+		retryMs: 1,
+	});
+	await runtime.start();
+
+	await expect(
+		runtime.installCustomNode("https://github.com/owner/stalled-body-node.git"),
+	).rejects.toThrow(
+		"ComfyUI Manager did not return the custom-node inventory in time.",
+	);
+	await runtime.stop();
+});
+
 test("cancels an unresponsive Manager inventory when ComfyUI stops", async () => {
 	const paths = await fixture();
 	const child = new FakeProcess();

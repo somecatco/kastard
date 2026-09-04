@@ -209,11 +209,17 @@ export class ComfyRuntime {
 		const timeout = AbortSignal.timeout(this.customNodeInventoryTimeoutMs);
 		const requestSignal =
 			signal === undefined ? timeout : AbortSignal.any([signal, timeout]);
-		let response: Response;
 		try {
-			response = await this.requestFetch(
+			const response = await this.requestFetch(
 				new URL("v2/customnode/installed?mode=default", url),
 				{ signal: requestSignal },
+			);
+			if (!response.ok) {
+				throw new Error(`ComfyUI Manager returned HTTP ${response.status}.`);
+			}
+			return addRepositoryMetadata(
+				directory,
+				installedCustomNodes(await response.json()),
 			);
 		} catch (error) {
 			if (timeout.aborted && !signal?.aborted) {
@@ -223,13 +229,6 @@ export class ComfyRuntime {
 			}
 			throw error;
 		}
-		if (!response.ok) {
-			throw new Error(`ComfyUI Manager returned HTTP ${response.status}.`);
-		}
-		return addRepositoryMetadata(
-			directory,
-			installedCustomNodes(await response.json()),
-		);
 	}
 
 	async installCustomNode(
