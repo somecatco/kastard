@@ -29,6 +29,7 @@ import {
 import {
 	type ComfyRuntimeState,
 	type CustomNodeEntry,
+	type CustomNodeInstallOptions,
 	isComfyUiManagerNode,
 	isCustomNodeRepositoryUrl,
 	type ModelLibraryEntry,
@@ -47,11 +48,18 @@ type RuntimeManifest = {
 
 type InstalledCustomNode = Omit<CustomNodeEntry, "sync">;
 
+type CustomNodeInstallOutcome = {
+	node: InstalledCustomNode;
+	nodes: InstalledCustomNode[];
+	restartRequired: boolean;
+};
+
 type CommandOptions = {
 	cwd: string;
 	env: NodeJS.ProcessEnv;
 	onOutput: (text: string) => void;
 	signal?: AbortSignal;
+	terminationTimeoutMs?: number;
 };
 
 type RunCommand = (
@@ -88,6 +96,7 @@ type RuntimeOptions = {
 	startupTimeoutMs?: number;
 	retryMs?: number;
 	terminationTimeoutMs?: number;
+	customNodeInventoryTimeoutMs?: number;
 	getModels?: () => readonly ModelLibraryEntry[];
 	/** Resolves the selected ComfyUI release, installing it when needed, or `null` for the bundled one. */
 	resolveBackend?: () => Promise<Omit<BackendSource, "dependencyLock"> | null>;
@@ -97,6 +106,7 @@ type RuntimeOptions = {
 	/** Resolves a user-selected Manager override for the active backend. */
 	resolveManagerVersion?: (backendDirectory: string) => Promise<string> | string;
 	trashItem?: (path: string) => Promise<void>;
+	registryApiUrl?: string;
 };
 
 const STAMP_NAME = ".kastard-runtime.json";
@@ -104,6 +114,9 @@ const LOG_TAIL_LENGTH = 12_000;
 const FRONTEND_SETTINGS_TIMEOUT_MS = 5_000;
 const MANAGER_OPERATION_TIMEOUT_MS = 120_000;
 const MANAGER_OPERATION_POLL_MS = 250;
+const CUSTOM_NODE_INVENTORY_TIMEOUT_MS = 10_000;
+const REGISTRY_REQUEST_TIMEOUT_MS = 10_000;
+const CUSTOM_NODE_INSTALL_TIMEOUT_MS = 15 * 60 * 1_000;
 const NAMED_VALUES_SETTING = "Comfy.Workflow.NamedValuesRestore";
 const RESERVED_MODEL_PATH_KEYS = new Set(["base_path", "is_default"]);
 const NO_SUPPORTED_CUSTOM_NODE_SOURCE =
@@ -134,13 +147,16 @@ export class ComfyRuntime {
 	private readonly startupTimeoutMs: number;
 	private readonly retryMs: number;
 	private readonly terminationTimeoutMs: number;
+	private readonly customNodeInventoryTimeoutMs: number;
 	private startPromise: Promise<string> | null = null;
 	private prepareController: AbortController | null = null;
 	private process: ChildProcess | null = null;
 	private stopping = false;
 	private logTail = "";
 	private customNodeStartupFailureDetected = false;
-	private customNodeRemovalActive = false;
+	private customNodeMutationActive = false;
+	private customNodeInstallController: AbortController | null = null;
+	private customNodeInstallPromise: Promise<CustomNodeInstallOutcome> | null = null;
 	private modelSync: Promise<void> = Promise.resolve();
 
 	constructor(private readonly options: RuntimeOptions) {
@@ -153,6 +169,8 @@ export class ComfyRuntime {
 		this.startupTimeoutMs = options.startupTimeoutMs ?? 180_000;
 		this.retryMs = options.retryMs ?? 250;
 		this.terminationTimeoutMs = options.terminationTimeoutMs ?? 10_000;
+		this.customNodeInventoryTimeoutMs =
+			options.customNodeInventoryTimeoutMs ?? CUSTOM_NODE_INVENTORY_TIMEOUT_MS;
 	}
 
 	getState(): ComfyRuntimeState {
@@ -182,22 +200,328 @@ export class ComfyRuntime {
 		return pending;
 	}
 
-	async listCustomNodes(): Promise<InstalledCustomNode[]> {
+	async listCustomNodes(signal?: AbortSignal): Promise<InstalledCustomNode[]> {
 		const directory = join(this.options.dataDirectory, "data", "custom_nodes");
 		const url = this.getUrl();
 		if (url === null) {
 			return localInstalledCustomNodes(directory);
 		}
-		const response = await this.requestFetch(
-			new URL("v2/customnode/installed?mode=default", url),
-		);
-		if (!response.ok) {
-			throw new Error(`ComfyUI Manager returned HTTP ${response.status}.`);
+		const timeout = AbortSignal.timeout(this.customNodeInventoryTimeoutMs);
+		const requestSignal =
+			signal === undefined ? timeout : AbortSignal.any([signal, timeout]);
+		try {
+			const response = await this.requestFetch(
+				new URL("v2/customnode/installed?mode=default", url),
+				{ signal: requestSignal },
+			);
+			if (!response.ok) {
+				throw new Error(`ComfyUI Manager returned HTTP ${response.status}.`);
+			}
+			return addRepositoryMetadata(
+				directory,
+				installedCustomNodes(await response.json()),
+			);
+		} catch (error) {
+			if (timeout.aborted && !signal?.aborted) {
+				throw new Error(
+					"ComfyUI Manager did not return the custom-node inventory in time.",
+				);
+			}
+			throw error;
 		}
-		return addRepositoryMetadata(
-			directory,
-			installedCustomNodes(await response.json()),
+	}
+
+	async installCustomNode(
+		repository: string,
+		version?: string,
+	): Promise<CustomNodeInstallOutcome> {
+		const normalized = normalizeGitHubRepository(repository);
+		if (normalized === null || normalized.url !== repository) {
+			throw new Error("Enter a public GitHub repository URL.");
+		}
+		if (
+			version !== undefined &&
+			version !== "nightly" &&
+			!isCustomNodeManagerVersion(version)
+		) {
+			throw new Error("Select a valid custom-node version.");
+		}
+		if (this.state.status !== "ready") {
+			throw new Error("Custom nodes can only be installed while ComfyUI is ready.");
+		}
+		if (this.customNodeMutationActive) {
+			throw new Error("Another custom-node change is in progress.");
+		}
+		if (this.startPromise !== null) {
+			throw new Error(
+				"Custom nodes cannot be installed while ComfyUI is starting or restarting.",
+			);
+		}
+
+		this.customNodeMutationActive = true;
+		const controller = new AbortController();
+		this.customNodeInstallController = controller;
+		const installation = this.installCustomNodeOnce(normalized, version, controller);
+		this.customNodeInstallPromise = installation;
+		try {
+			return await installation;
+		} finally {
+			if (this.customNodeInstallController === controller) {
+				this.customNodeInstallController = null;
+			}
+			if (this.customNodeInstallPromise === installation) {
+				this.customNodeInstallPromise = null;
+			}
+			this.customNodeMutationActive = false;
+		}
+	}
+
+	private async installCustomNodeOnce(
+		repository: { id: string; url: string },
+		version: string | undefined,
+		controller: AbortController,
+	): Promise<CustomNodeInstallOutcome> {
+		let before: InstalledCustomNode[];
+		try {
+			before = await this.listCustomNodes(controller.signal);
+		} catch (error) {
+			if (controller.signal.aborted) {
+				throw new Error("Custom-node installation was canceled.");
+			}
+			throw error;
+		}
+		const existing = before.find(
+			(node) =>
+				node.repository !== undefined &&
+				normalizeGitHubRepository(node.repository)?.id === repository.id,
 		);
+		if (existing !== undefined) {
+			throw new Error(`${existing.name} already uses this GitHub repository.`);
+		}
+		let packageSpec = repository.url;
+		let managerId: string | null = null;
+		if (version !== undefined) {
+			let options: CustomNodeInstallOptions | null;
+			try {
+				options = await this.resolveCustomNodeInstallOptions(
+					repository.url,
+					controller.signal,
+				);
+				controller.signal.throwIfAborted();
+			} catch (error) {
+				if (controller.signal.aborted) {
+					throw new Error("Custom-node installation was canceled.");
+				}
+				throw error;
+			}
+			if (options === null) {
+				throw new Error("This GitHub repository is not registered with ComfyUI.");
+			}
+			if (version !== "nightly" && !options.versions.includes(version)) {
+				throw new Error("The selected custom-node version is no longer available.");
+			}
+			managerId = options.managerId;
+			packageSpec = `${options.managerId}@${version}`;
+		}
+
+		const root = this.options.dataDirectory;
+		const dataDirectory = join(root, "data");
+		const customNodesDirectory = join(dataDirectory, "custom_nodes");
+		const managerDirectory = join(dataDirectory, "user", "__manager");
+		const environmentDirectory = join(root, "environment");
+		const python = environmentPython(environmentDirectory, this.platform);
+		const backendDirectory =
+			(await this.options.selectedBackendDirectory?.()) ??
+			this.bundledBackendDirectory();
+		await Promise.all([
+			access(python),
+			prepareManagerDirectory(dataDirectory, managerDirectory),
+			mkdir(customNodesDirectory, { recursive: true }),
+		]);
+		const initialEntries = await customNodeEntryNames(customNodesDirectory);
+		let output = "";
+		const failures: string[] = [];
+		let timedOut = false;
+		let preserveNewEntries = false;
+		const timeout = setTimeout(() => {
+			timedOut = true;
+			controller.abort();
+		}, CUSTOM_NODE_INSTALL_TIMEOUT_MS);
+		timeout.unref();
+		try {
+			let commandError: unknown;
+			try {
+				await this.runCommand(
+					python,
+					[
+						"-m",
+						"cm_cli",
+						"install",
+						packageSpec,
+						"--mode",
+						"cache",
+						"--user-directory",
+						managerDirectory,
+						"--exit-on-fail",
+					],
+					{
+						cwd: backendDirectory,
+						env: customNodeInstallEnvironment(
+							process.env,
+							backendDirectory,
+							dataDirectory,
+							managerDirectory,
+							join(root, "python"),
+							join(root, "cache"),
+							this.platform,
+						),
+						onOutput: (text) => {
+							const nextOutput = `${output}${text}`;
+							for (const failure of managerCommandFailureLines(nextOutput)) {
+								if (failures.length >= 3) break;
+								if (!failures.includes(failure)) failures.push(failure);
+							}
+							output = nextOutput.slice(-LOG_TAIL_LENGTH);
+						},
+						signal: controller.signal,
+						terminationTimeoutMs: this.terminationTimeoutMs,
+					},
+				);
+			} catch (error) {
+				commandError = error;
+			}
+			controller.signal.throwIfAborted();
+			if (commandError === undefined && failures.length === 0) {
+				preserveNewEntries = true;
+			}
+			const installed = await this.listCustomNodes(controller.signal);
+			controller.signal.throwIfAborted();
+			const matches = installed.filter(
+				(node) =>
+					!before.some((previous) => previous.name === node.name) &&
+					((node.repository !== undefined &&
+						normalizeGitHubRepository(node.repository)?.id === repository.id &&
+						(version === undefined ||
+							version === "nightly" ||
+							node.version === version)) ||
+						(managerId !== null &&
+							version !== undefined &&
+							version !== "nightly" &&
+							node.managerId === managerId &&
+							node.version === version)),
+			);
+			const node = matches.length === 1 ? matches[0] : undefined;
+			if (node !== undefined) preserveNewEntries = true;
+			if (failures.length > 0) {
+				throw new Error(
+					`ComfyUI Manager reported installation errors. ${failures.slice(0, 3).join(" ")}`,
+				);
+			}
+			if (commandError !== undefined) {
+				throw new Error(managerInstallCommandError(commandError));
+			}
+			if (node !== undefined) {
+				return { node, nodes: installed, restartRequired: true };
+			}
+			throw new Error(
+				"ComfyUI Manager completed, but the installed custom node could not be identified.",
+			);
+		} catch (error) {
+			const cleanupError = preserveNewEntries
+				? undefined
+				: await trashNewCustomNode(
+						customNodesDirectory,
+						initialEntries,
+						repository.id,
+						managerId,
+						this.options.trashItem,
+					).catch((cause: unknown) => errorMessage(cause));
+			if (controller.signal.aborted) {
+				throw new Error(
+					timedOut
+						? "Custom-node installation timed out."
+						: "Custom-node installation was canceled.",
+				);
+			}
+			const message = errorMessage(error);
+			throw new Error(
+				typeof cleanupError === "string"
+					? `${message} The incomplete installation could not be moved to Trash: ${cleanupError}`
+					: message,
+			);
+		} finally {
+			clearTimeout(timeout);
+		}
+	}
+
+	async resolveCustomNodeInstallOptions(
+		repository: string,
+		signal?: AbortSignal,
+	): Promise<CustomNodeInstallOptions | null> {
+		const normalized = normalizeGitHubRepository(repository);
+		if (normalized === null || normalized.url !== repository) {
+			throw new Error("Enter a public GitHub repository URL.");
+		}
+		if (this.options.registryApiUrl === undefined) {
+			throw new Error("The ComfyUI Registry is unavailable.");
+		}
+
+		const apiUrl = new URL(this.options.registryApiUrl);
+		if (apiUrl.protocol !== "https:") {
+			throw new Error("The ComfyUI Registry is unavailable.");
+		}
+		const searchUrl = new URL(
+			"nodes/search",
+			`${apiUrl.toString().replace(/\/$/u, "")}/`,
+		);
+		searchUrl.searchParams.set("repository_url_search", normalized.url);
+		searchUrl.searchParams.set("limit", "64");
+		searchUrl.searchParams.set("page", "1");
+		const searchResponse = await this.fetchRegistry(searchUrl, signal);
+		if (!searchResponse.ok) {
+			throw new Error(`ComfyUI Registry returned HTTP ${searchResponse.status}.`);
+		}
+		const matches = registryRepositoryMatches(
+			await searchResponse.json(),
+			normalized.id,
+		);
+		if (matches.length === 0) return null;
+		if (matches.length > 1) {
+			throw new Error("The ComfyUI Registry returned duplicate repository matches.");
+		}
+
+		const match = matches[0];
+		if (match === undefined) return null;
+		const versionsUrl = new URL(
+			`nodes/${encodeURIComponent(match.managerId)}/versions`,
+			`${apiUrl.toString().replace(/\/$/u, "")}/`,
+		);
+		versionsUrl.searchParams.append("statuses", "NodeVersionStatusActive");
+		versionsUrl.searchParams.append("statuses", "NodeVersionStatusPending");
+		const versionsResponse = await this.fetchRegistry(versionsUrl, signal);
+		if (!versionsResponse.ok) {
+			throw new Error(`ComfyUI Registry returned HTTP ${versionsResponse.status}.`);
+		}
+		const versions = registryVersions(await versionsResponse.json());
+		if (!versions.includes(match.latestVersion)) versions.unshift(match.latestVersion);
+		return {
+			managerId: match.managerId,
+			latestVersion: match.latestVersion,
+			versions,
+		};
+	}
+
+	private async fetchRegistry(url: URL, signal?: AbortSignal): Promise<Response> {
+		const requestSignal =
+			signal === undefined
+				? AbortSignal.timeout(REGISTRY_REQUEST_TIMEOUT_MS)
+				: AbortSignal.any([signal, AbortSignal.timeout(REGISTRY_REQUEST_TIMEOUT_MS)]);
+		try {
+			return await this.requestFetch(url, { signal: requestSignal });
+		} catch (error) {
+			if (signal?.aborted) throw error;
+			throw new Error("ComfyUI Registry could not be reached.");
+		}
 	}
 
 	async removeCustomNode(name: string): Promise<{ restartRequired: boolean }> {
@@ -207,8 +531,8 @@ export class ComfyRuntime {
 		if (state.status !== "ready" && !recovery) {
 			throw new Error("Custom nodes can only be removed while ComfyUI is ready.");
 		}
-		if (this.customNodeRemovalActive) {
-			throw new Error("Another custom-node deletion is in progress.");
+		if (this.customNodeMutationActive) {
+			throw new Error("Another custom-node change is in progress.");
 		}
 		if (this.startPromise !== null) {
 			throw new Error(
@@ -216,7 +540,7 @@ export class ComfyRuntime {
 			);
 		}
 
-		this.customNodeRemovalActive = true;
+		this.customNodeMutationActive = true;
 		try {
 			const matches = (await this.listCustomNodes()).filter(
 				(node) => node.name === name,
@@ -244,7 +568,7 @@ export class ComfyRuntime {
 			}
 			return { restartRequired: state.status === "ready" };
 		} finally {
-			this.customNodeRemovalActive = false;
+			this.customNodeMutationActive = false;
 		}
 	}
 
@@ -306,9 +630,9 @@ export class ComfyRuntime {
 	}
 
 	async start(): Promise<string> {
-		if (this.customNodeRemovalActive) {
+		if (this.customNodeMutationActive) {
 			throw new Error(
-				"ComfyUI cannot start while a custom-node deletion is in progress.",
+				"ComfyUI cannot start while a custom-node change is in progress.",
 			);
 		}
 		const currentUrl = this.getUrl();
@@ -326,8 +650,10 @@ export class ComfyRuntime {
 
 	async stop(): Promise<void> {
 		const starting = this.startPromise;
+		const installing = this.customNodeInstallPromise;
 		this.stopping = true;
 		this.prepareController?.abort();
+		this.customNodeInstallController?.abort();
 		const activeProcess = this.process;
 		this.process = null;
 		if (
@@ -342,13 +668,14 @@ export class ComfyRuntime {
 			await processExit(activeProcess, this.terminationTimeoutMs);
 		}
 		await starting?.catch(() => undefined);
+		await installing?.catch(() => undefined);
 	}
 
 	/** Restarts on the currently selected ComfyUI frontend and backend. */
 	async restart(): Promise<string> {
-		if (this.customNodeRemovalActive) {
+		if (this.customNodeMutationActive) {
 			throw new Error(
-				"ComfyUI cannot restart while a custom-node deletion is in progress.",
+				"ComfyUI cannot restart while a custom-node change is in progress.",
 			);
 		}
 		await this.stop();
@@ -500,6 +827,7 @@ export class ComfyRuntime {
 					env: commandEnvironment,
 					onOutput: (text) => this.recordOutput(text),
 					signal,
+					terminationTimeoutMs: this.terminationTimeoutMs,
 				},
 			);
 		}
@@ -560,6 +888,7 @@ export class ComfyRuntime {
 					reportDependencyProgress(text);
 				},
 				signal,
+				terminationTimeoutMs: this.terminationTimeoutMs,
 			},
 		);
 		if (managerVersion !== pinnedManagerVersion) {
@@ -582,6 +911,7 @@ export class ComfyRuntime {
 						reportDependencyProgress(text);
 					},
 					signal,
+					terminationTimeoutMs: this.terminationTimeoutMs,
 				},
 			);
 		}
@@ -605,6 +935,7 @@ export class ComfyRuntime {
 						env: commandEnvironment,
 						onOutput: (text) => this.recordOutput(text),
 						signal,
+						terminationTimeoutMs: this.terminationTimeoutMs,
 					},
 				);
 			}
@@ -896,6 +1227,68 @@ export class ComfyRuntime {
 	}
 }
 
+async function customNodeEntryNames(directory: string): Promise<Set<string>> {
+	try {
+		return new Set((await readdir(directory)).filter((name) => name !== "__pycache__"));
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return new Set();
+		throw error;
+	}
+}
+
+async function trashNewCustomNode(
+	directory: string,
+	initialEntries: ReadonlySet<string>,
+	repositoryId: string,
+	managerId: string | null,
+	trashItem: RuntimeOptions["trashItem"],
+): Promise<void> {
+	if (trashItem === undefined) return;
+	const entries = await readdir(directory, { withFileTypes: true });
+	const candidates = entries.filter(
+		(entry) =>
+			!initialEntries.has(entry.name) &&
+			entry.name !== "__pycache__" &&
+			entry.name !== ".disabled" &&
+			!entry.name.startsWith(".") &&
+			isCustomNodeName(entry.name) &&
+			(entry.isDirectory() ||
+				entry.isSymbolicLink() ||
+				(entry.isFile() && entry.name.endsWith(".py"))),
+	);
+	const matches = (
+		await Promise.all(
+			candidates.map(async (candidate) => {
+				const path = join(directory, candidate.name);
+				return (await customNodePathMatchesInstall(path, repositoryId, managerId))
+					? path
+					: null;
+			}),
+		)
+	).filter((path): path is string => path !== null);
+	if (matches.length === 1) await trashItem(matches[0] as string);
+}
+
+async function customNodePathMatchesInstall(
+	path: string,
+	repositoryId: string,
+	managerId: string | null,
+): Promise<boolean> {
+	const metadata = await inspectCnrPackage(path);
+	if (metadata !== null) {
+		if (managerId !== null && metadata.name === managerId) return true;
+		return (
+			metadata.repository !== undefined &&
+			normalizeGitHubRepository(metadata.repository)?.id === repositoryId
+		);
+	}
+	const github = await inspectGitHubRepository(path);
+	return (
+		github?.repository !== undefined &&
+		normalizeGitHubRepository(github.repository)?.id === repositoryId
+	);
+}
+
 async function customNodePath(directory: string, name: string): Promise<string> {
 	const candidates = [
 		join(directory, name),
@@ -977,6 +1370,55 @@ function customNodeStartupFailed(output: string): boolean {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function registryRepositoryMatches(
+	value: unknown,
+	repositoryId: string,
+): Array<{ managerId: string; latestVersion: string }> {
+	if (!isRecord(value) || !Array.isArray(value.nodes)) {
+		throw new Error("ComfyUI Registry returned an invalid package search result.");
+	}
+	const matches: Array<{ managerId: string; latestVersion: string }> = [];
+	for (const valueNode of value.nodes) {
+		if (!isRecord(valueNode) || typeof valueNode.repository !== "string") continue;
+		if (normalizeGitHubRepository(valueNode.repository)?.id !== repositoryId) continue;
+		if (
+			!isCustomNodeManagerId(valueNode.id) ||
+			!isRecord(valueNode.latest_version) ||
+			!isCustomNodeManagerVersion(valueNode.latest_version.version)
+		) {
+			throw new Error("ComfyUI Registry returned invalid package metadata.");
+		}
+		matches.push({
+			managerId: valueNode.id,
+			latestVersion: valueNode.latest_version.version,
+		});
+	}
+	return matches;
+}
+
+function registryVersions(value: unknown): string[] {
+	if (!Array.isArray(value)) {
+		throw new Error("ComfyUI Registry returned an invalid version list.");
+	}
+	const versions: string[] = [];
+	for (const entry of value) {
+		if (!isRecord(entry) || !isCustomNodeManagerVersion(entry.version)) continue;
+		if (
+			entry.status !== undefined &&
+			![
+				"active",
+				"pending",
+				"NodeVersionStatusActive",
+				"NodeVersionStatusPending",
+			].includes(String(entry.status))
+		) {
+			continue;
+		}
+		if (!versions.includes(entry.version)) versions.push(entry.version);
+	}
+	return versions;
 }
 
 async function preserveUserModelFiles(
@@ -1408,6 +1850,105 @@ function runtimeEnvironment(
 	return environment;
 }
 
+const CUSTOM_NODE_ENVIRONMENT_KEYS = [
+	"PATH",
+	"LANG",
+	"LC_ALL",
+	"LC_CTYPE",
+	"TMPDIR",
+	"TMP",
+	"TEMP",
+	"SSL_CERT_FILE",
+	"SSL_CERT_DIR",
+	"REQUESTS_CA_BUNDLE",
+	"CURL_CA_BUNDLE",
+	"UV_CONSTRAINT",
+	"UV_LINK_MODE",
+	"CC",
+	"CXX",
+	"CFLAGS",
+	"CXXFLAGS",
+	"LDFLAGS",
+	"CMAKE_PREFIX_PATH",
+	"CPATH",
+	"LIBRARY_PATH",
+	"LD_LIBRARY_PATH",
+	"SystemRoot",
+	"WINDIR",
+	"PATHEXT",
+	"COMSPEC",
+] as const;
+
+function customNodeInstallEnvironment(
+	source: NodeJS.ProcessEnv,
+	backendDirectory: string,
+	dataDirectory: string,
+	managerDirectory: string,
+	pythonDirectory: string,
+	cacheDirectory: string,
+	platform: NodeJS.Platform,
+): NodeJS.ProcessEnv {
+	const environment: NodeJS.ProcessEnv = {};
+	for (const key of CUSTOM_NODE_ENVIRONMENT_KEYS) {
+		const value = source[key];
+		if (value !== undefined) environment[key] = value;
+	}
+	return {
+		...environment,
+		HOME: managerDirectory,
+		XDG_CACHE_HOME: join(managerDirectory, "cache"),
+		PYTHONPYCACHEPREFIX: join(managerDirectory, "cache", "python-bytecode"),
+		COMFYUI_PATH: backendDirectory,
+		COMFYUI_FOLDERS_BASE_PATH: dataDirectory,
+		GIT_TERMINAL_PROMPT: "0",
+		PIP_NO_INPUT: "1",
+		UV_CACHE_DIR: cacheDirectory,
+		UV_MANAGED_PYTHON: "1",
+		UV_NO_PROGRESS: "1",
+		UV_PYTHON_INSTALL_DIR: pythonDirectory,
+		...(platform === "darwin" ? {} : { UV_TORCH_BACKEND: "cpu" }),
+	};
+}
+
+async function prepareManagerDirectory(
+	dataDirectory: string,
+	managerDirectory: string,
+): Promise<void> {
+	await mkdir(managerDirectory, { recursive: true });
+	await writeFile(
+		join(managerDirectory, "extra_model_paths.yaml"),
+		[
+			"kastard:",
+			`  base_path: ${JSON.stringify(dataDirectory)}`,
+			"  is_default: true",
+			"  custom_nodes: custom_nodes",
+			"",
+		].join("\n"),
+		"utf8",
+	);
+}
+
+function managerCommandFailureLines(output: string): string[] {
+	return output
+		.split(/[\r\n]+/u)
+		.map((line) => line.trim())
+		.filter((line) => line.includes("ERROR:") || /\[\s*FAIL\s*\]/u.test(line))
+		.map((line) => {
+			const errorOffset = line.indexOf("ERROR:");
+			const detail = errorOffset < 0 ? line : line.slice(errorOffset);
+			return detail.length > 400 ? `${detail.slice(0, 397)}...` : detail;
+		});
+}
+
+function managerInstallCommandError(error: unknown): string {
+	const reason = /exited with (code \d+|signal [^.]+)\./u.exec(
+		errorMessage(error),
+	)?.[1];
+	return reason === undefined
+		? "ComfyUI Manager could not install the custom node."
+		: `ComfyUI Manager exited with ${reason}.`;
+}
+
 function environmentPython(
 	environmentDirectory: string,
 	platform: NodeJS.Platform,
@@ -1528,9 +2069,63 @@ function runCommand(
 	options: CommandOptions,
 ): Promise<void> {
 	return new Promise((resolve, reject) => {
-		const child = startProcess(command, args, options);
+		const child = spawn(command, args, {
+			cwd: options.cwd,
+			env: options.env,
+			// A separate process group lets cancellation include Git and package installer descendants.
+			detached: process.platform !== "win32",
+			stdio: ["ignore", "pipe", "pipe"],
+		});
 		let output = "";
 		let processError: Error | null = null;
+		let forceTimer: NodeJS.Timeout | undefined;
+		let closeResult: { code: number | null; signal: NodeJS.Signals | null } | null =
+			null;
+		let aborted = false;
+		let forceComplete = false;
+		let settled = false;
+		const finish = (): void => {
+			if (closeResult === null || settled) return;
+			if (aborted && !forceComplete && commandTreeRunning(child)) return;
+			settled = true;
+			if (forceTimer !== undefined) clearTimeout(forceTimer);
+			options.signal?.removeEventListener("abort", abort);
+			if (processError !== null) reject(processError);
+			else if (closeResult.code === 0) resolve();
+			else {
+				reject(
+					new Error(
+						exitMessage(
+							basename(command),
+							closeResult.code,
+							closeResult.signal,
+							output,
+						),
+					),
+				);
+			}
+		};
+		const abort = (): void => {
+			aborted = true;
+			const reason = options.signal?.reason;
+			processError ??=
+				reason instanceof Error ? reason : new Error("Command was aborted.");
+			const gracefulTermination = terminateCommandTree(child, "SIGTERM");
+			if (process.platform === "win32") {
+				void gracefulTermination.then(() => {
+					forceComplete = true;
+					finish();
+				});
+			}
+			forceTimer = setTimeout(() => {
+				forceTimer = undefined;
+				void terminateCommandTree(child, "SIGKILL").then(() => {
+					forceComplete = true;
+					finish();
+				});
+			}, options.terminationTimeoutMs ?? 10_000);
+			forceTimer.unref();
+		};
 		const record = (text: string): void => {
 			output = `${output}${text}`.slice(-LOG_TAIL_LENGTH);
 			options.onOutput(text);
@@ -1542,14 +2137,64 @@ function runCommand(
 			record(chunk.toString());
 		});
 		child.once("error", (error) => {
-			processError = error;
+			processError ??= error;
 		});
 		child.once("close", (code, signal) => {
-			if (processError !== null) reject(processError);
-			else if (code === 0) resolve();
-			else reject(new Error(exitMessage(basename(command), code, signal, output)));
+			closeResult = { code, signal };
+			finish();
 		});
+		if (options.signal?.aborted) abort();
+		else options.signal?.addEventListener("abort", abort, { once: true });
 	});
+}
+
+async function terminateCommandTree(
+	child: ChildProcess,
+	signal: NodeJS.Signals,
+): Promise<void> {
+	const pid = child.pid;
+	if (pid === undefined) return;
+	if (process.platform !== "win32") {
+		try {
+			process.kill(-pid, signal);
+		} catch {
+			try {
+				child.kill(signal);
+			} catch {}
+		}
+		if (signal === "SIGKILL") {
+			while (commandTreeRunning(child)) await delay(10);
+		}
+		return;
+	}
+	const args = ["/PID", String(pid), "/T", ...(signal === "SIGKILL" ? ["/F"] : [])];
+	await new Promise<void>((resolve) => {
+		const killer = spawn("taskkill", args, { stdio: "ignore", windowsHide: true });
+		const fallback = (): void => {
+			try {
+				child.kill(signal);
+			} catch {}
+			resolve();
+		};
+		killer.once("error", fallback);
+		killer.once("close", (code) => {
+			if (code !== 0) fallback();
+			else resolve();
+		});
+		killer.unref();
+	});
+}
+
+function commandTreeRunning(child: ChildProcess): boolean {
+	const pid = child.pid;
+	if (pid === undefined) return false;
+	if (process.platform === "win32") return true;
+	try {
+		process.kill(-pid, 0);
+		return true;
+	} catch (error) {
+		return (error as NodeJS.ErrnoException).code !== "ESRCH";
+	}
 }
 
 function exitMessage(

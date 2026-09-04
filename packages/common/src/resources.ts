@@ -22,6 +22,9 @@ export type Resources = {
 		addModelsAndCustomNodes: string;
 	};
 	discord: string;
+	comfyRegistry: {
+		api: string;
+	};
 	dockerHub: RuntimeValues<string>;
 	workerTemplates: {
 		runpod: { hub: string } & ChannelValues<string>;
@@ -45,6 +48,7 @@ export function parseResources(source: string): Resources {
 	const resources = record(value, "resources.jsonc");
 	const downloads = record(resources.downloads, "downloads");
 	const docs = record(resources.docs, "docs");
+	const comfyRegistry = record(resources.comfyRegistry, "comfyRegistry");
 	const dockerHub = runtimeValues(resources.dockerHub, "dockerHub", nonEmptyString);
 	const workerTemplates = record(resources.workerTemplates, "workerTemplates");
 	const runpod = record(workerTemplates.runpod, "workerTemplates.runpod");
@@ -76,6 +80,9 @@ export function parseResources(source: string): Resources {
 			),
 		},
 		discord: httpsUrl(resources.discord, "discord"),
+		comfyRegistry: {
+			api: httpsUrl(comfyRegistry.api, "comfyRegistry.api"),
+		},
 		dockerHub,
 		workerTemplates: {
 			runpod: {

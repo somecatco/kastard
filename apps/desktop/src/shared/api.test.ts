@@ -6,6 +6,10 @@ import {
 	isConnectionRequest,
 	isConnectionState,
 	isCustomNodeEntry,
+	isCustomNodeInstallOptionsRequest,
+	isCustomNodeInstallOptionsResult,
+	isCustomNodeInstallRequest,
+	isCustomNodeInstallResult,
 	isCustomNodeRemoveRequest,
 	isCustomNodeRemoveResult,
 	isDesktopAppInfo,
@@ -51,6 +55,83 @@ test("validates custom-node startup recovery and removal messages", () => {
 		isComfyUiManagerNode({ name: "manager-folder", managerId: "comfyui_manager" }),
 	).toBe(true);
 	expect(isComfyUiManagerNode({ name: "manager-tools", managerId: null })).toBe(false);
+});
+
+test("validates canonical GitHub custom-node installation messages", () => {
+	const node = {
+		name: "example-node",
+		version: "a".repeat(40),
+		managerId: null,
+		repository: "https://github.com/owner/example-node.git",
+		sync: true,
+	};
+	expect(
+		isCustomNodeInstallRequest({
+			repository: "https://github.com/owner/example-node.git",
+			version: "1.2.3",
+		}),
+	).toBe(true);
+	expect(
+		isCustomNodeInstallRequest({
+			repository: "https://github.com/owner/example-node.git",
+			version: "nightly",
+		}),
+	).toBe(true);
+	expect(
+		isCustomNodeInstallRequest({
+			repository: "https://github.com/owner/example-node.git",
+			version: "latest",
+		}),
+	).toBe(false);
+	expect(
+		isCustomNodeInstallOptionsRequest({
+			repository: "https://github.com/owner/example-node.git",
+		}),
+	).toBe(true);
+	expect(
+		isCustomNodeInstallRequest({ repository: "https://github.com/Owner/Example-Node" }),
+	).toBe(false);
+	expect(
+		isCustomNodeInstallRequest({ repository: "git@github.com:owner/example-node.git" }),
+	).toBe(false);
+	expect(
+		isCustomNodeInstallRequest({
+			repository: "https://example.com/owner/example-node.git",
+		}),
+	).toBe(false);
+	expect(
+		isCustomNodeInstallResult({
+			ok: true,
+			node,
+			nodes: [node],
+			restartRequired: true,
+		}),
+	).toBe(true);
+	expect(isCustomNodeInstallResult({ ok: true, node, nodes: [node] })).toBe(false);
+	expect(isCustomNodeInstallResult({ ok: false, error: "Installation failed." })).toBe(
+		true,
+	);
+	expect(
+		isCustomNodeInstallOptionsResult({
+			ok: true,
+			options: {
+				managerId: "example-node",
+				latestVersion: "1.2.3",
+				versions: ["1.2.3", "1.2.2"],
+			},
+		}),
+	).toBe(true);
+	expect(isCustomNodeInstallOptionsResult({ ok: true, options: null })).toBe(true);
+	expect(
+		isCustomNodeInstallOptionsResult({
+			ok: true,
+			options: {
+				managerId: "example-node",
+				latestVersion: "1.2.3",
+				versions: ["1.2.2"],
+			},
+		}),
+	).toBe(false);
 });
 
 test("validates individual custom node reinstall requests", () => {

@@ -13,6 +13,8 @@ import {
 	CONNECTION_SETTINGS_GET_CHANNEL,
 	CONNECTION_SETTINGS_UPDATE_CHANNEL,
 	type ConnectionResult,
+	CUSTOM_NODES_INSTALL_CHANNEL,
+	CUSTOM_NODES_INSTALL_OPTIONS_CHANNEL,
 	CUSTOM_NODES_LIST_CHANNEL,
 	CUSTOM_NODES_REMOVE_CHANNEL,
 	CUSTOM_NODES_UPDATE_CHANNEL,
@@ -26,6 +28,8 @@ import {
 	isComfyVersionState,
 	isConnectionResult,
 	isConnectionSettingsResult,
+	isCustomNodeInstallOptionsResult,
+	isCustomNodeInstallResult,
 	isCustomNodeRemoveResult,
 	isCustomNodesListResult,
 	isDesktopAppInfo,
@@ -315,6 +319,26 @@ const api: KastardApi = {
 			const result: unknown = await ipcRenderer.invoke(CUSTOM_NODES_LIST_CHANNEL);
 			if (!isCustomNodesListResult(result)) {
 				throw new Error("Kastard returned an invalid custom-nodes result.");
+			}
+			return result;
+		},
+		getInstallOptions: async (request) => {
+			const result: unknown = await ipcRenderer.invoke(
+				CUSTOM_NODES_INSTALL_OPTIONS_CHANNEL,
+				request,
+			);
+			if (!isCustomNodeInstallOptionsResult(result)) {
+				throw new Error("Kastard returned invalid custom-node install options.");
+			}
+			return result;
+		},
+		install: async (request) => {
+			const result: unknown = await ipcRenderer.invoke(
+				CUSTOM_NODES_INSTALL_CHANNEL,
+				request,
+			);
+			if (!isCustomNodeInstallResult(result)) {
+				throw new Error("Kastard returned an invalid custom-node installation result.");
 			}
 			return result;
 		},

@@ -1,6 +1,10 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
-import type { ConnectionResult, CustomNodeRemoveResult } from "../../shared/api";
+import type {
+	ConnectionResult,
+	CustomNodeInstallResult,
+	CustomNodeRemoveResult,
+} from "../../shared/api";
 import { App } from "./App";
 import { emitComfyRuntime, emitWorkerSession } from "./App.test-harness";
 
@@ -134,6 +138,249 @@ test("lists custom nodes installed in local ComfyUI", async () => {
 	expect(screen.getByLabelText("Custom nodes summary")).toHaveTextContent("All5Sync3");
 });
 
+test("installs a trusted GitHub custom node and refreshes the local list", async () => {
+	let finishInstallation: ((result: CustomNodeInstallResult) => void) | undefined;
+	vi.mocked(window.kastard.customNodes.install).mockImplementation(
+		() =>
+			new Promise((resolve) => {
+				finishInstallation = resolve;
+			}),
+	);
+	render(<App />);
+	fireEvent.click(screen.getByRole("button", { name: "Custom Nodes" }));
+	const addButton = await screen.findByRole("button", { name: "Add Custom Node" });
+	await waitFor(() => expect(addButton).toBeEnabled());
+	fireEvent.click(addButton);
+
+	const dialog = screen.getByRole("dialog", { name: "Add Custom Node" });
+	expect(dialog).toHaveTextContent(
+		"ComfyUI Manager installs the Registry package when recognized; otherwise it clones the GitHub repository.",
+	);
+	expect(dialog).toHaveTextContent(
+		"Only install code you trust. Installation may add Python dependencies and run repository scripts.",
+	);
+	const repository = screen.getByRole("textbox", { name: "GitHub repository URL" });
+	fireEvent.change(repository, {
+		target: { value: "https://github.com/Owner/New-Node/tree/main" },
+	});
+	fireEvent.click(screen.getByRole("button", { name: "Install" }));
+	expect(await screen.findByRole("alert")).toHaveTextContent(
+		"Enter a public GitHub repository URL.",
+	);
+	expect(window.kastard.customNodes.install).not.toHaveBeenCalled();
+
+	fireEvent.change(repository, {
+		target: { value: "https://github.com/Owner/New-Node" },
+	});
+	expect(screen.getByText("Checking ComfyUI Registry…")).toBeVisible();
+	expect(
+		await screen.findByText(
+			"This repository is not registered. Manager will clone its default branch.",
+		),
+	).toBeVisible();
+	expect(screen.queryByRole("combobox", { name: "Version" })).not.toBeInTheDocument();
+	fireEvent.click(screen.getByRole("button", { name: "Install" }));
+	await waitFor(() =>
+		expect(window.kastard.customNodes.install).toHaveBeenCalledWith({
+			repository: "https://github.com/owner/new-node.git",
+		}),
+	);
+	expect(screen.getByRole("button", { name: "Installing…" })).toBeDisabled();
+	expect(repository).toBeVisible();
+
+	const installedNode = {
+		name: "new-node",
+		version: "1.0.0",
+		managerId: "new-node",
+		repository: "https://github.com/owner/new-node.git",
+		sync: true,
+	};
+	await act(async () => {
+		finishInstallation?.({
+			ok: true,
+			node: installedNode,
+			nodes: [installedNode],
+			restartRequired: true,
+		});
+	});
+
+	expect(await screen.findByText("new-node")).toBeVisible();
+	expect(screen.getByRole("switch", { name: "Sync new-node" })).toBeChecked();
+	expect(
+		screen.queryByRole("dialog", { name: "Add Custom Node" }),
+	).not.toBeInTheDocument();
+	expect(
+		screen.getByText("Installed new-node. Restart ComfyUI to load it."),
+	).toBeVisible();
+	expect(window.kastard.comfy.restart).not.toHaveBeenCalled();
+	expect(window.kastard.workerSession.syncCustomNodes).not.toHaveBeenCalled();
+});
+
+test("offers registered releases and installs Nightly through Manager", async () => {
+	vi.mocked(window.kastard.customNodes.getInstallOptions).mockResolvedValue({
+		ok: true,
+		options: {
+			managerId: "registered-node",
+			latestVersion: "1.2.3",
+			versions: ["1.2.3", "1.2.2", "1.1.0"],
+		},
+	});
+	vi.mocked(window.kastard.customNodes.install).mockResolvedValue({
+		ok: false,
+		error: "Installation stopped for this test.",
+	});
+	render(<App />);
+	fireEvent.click(screen.getByRole("button", { name: "Custom Nodes" }));
+	const addButton = await screen.findByRole("button", { name: "Add Custom Node" });
+	await waitFor(() => expect(addButton).toBeEnabled());
+	fireEvent.click(addButton);
+	fireEvent.change(screen.getByRole("textbox", { name: "GitHub repository URL" }), {
+		target: { value: "https://github.com/Owner/Registered-Node" },
+	});
+
+	const version = await screen.findByRole("combobox", { name: "Version" });
+	expect(version).toHaveValue("1.2.3");
+	expect(screen.getByRole("option", { name: "Latest (1.2.3)" })).toBeVisible();
+	expect(
+		screen.getByRole("option", { name: "Nightly (latest GitHub code)" }),
+	).toBeVisible();
+	expect(screen.getByRole("option", { name: "1.2.2" })).toBeVisible();
+	fireEvent.click(screen.getByRole("button", { name: "Install" }));
+	await waitFor(() =>
+		expect(window.kastard.customNodes.install).toHaveBeenCalledWith({
+			repository: "https://github.com/owner/registered-node.git",
+			version: "1.2.3",
+		}),
+	);
+	await waitFor(() =>
+		expect(screen.getByRole("button", { name: "Install" })).toBeEnabled(),
+	);
+	vi.mocked(window.kastard.customNodes.install).mockClear();
+
+	fireEvent.change(version, { target: { value: "nightly" } });
+	expect(
+		screen.getByText(
+			"Nightly installs the latest code from the repository's default branch.",
+		),
+	).toBeVisible();
+	fireEvent.click(screen.getByRole("button", { name: "Install" }));
+
+	await waitFor(() =>
+		expect(window.kastard.customNodes.install).toHaveBeenCalledWith({
+			repository: "https://github.com/owner/registered-node.git",
+			version: "nightly",
+		}),
+	);
+});
+
+test("ignores Registry options resolved for an older repository input", async () => {
+	let resolveFirst:
+		| ((
+				result: Awaited<
+					ReturnType<typeof window.kastard.customNodes.getInstallOptions>
+				>,
+		  ) => void)
+		| undefined;
+	vi.mocked(window.kastard.customNodes.getInstallOptions).mockImplementation(
+		({ repository }) => {
+			if (repository.endsWith("/first-node.git")) {
+				return new Promise((resolve) => {
+					resolveFirst = resolve;
+				});
+			}
+			return Promise.resolve({ ok: true, options: null });
+		},
+	);
+	render(<App />);
+	fireEvent.click(screen.getByRole("button", { name: "Custom Nodes" }));
+	const addButton = await screen.findByRole("button", { name: "Add Custom Node" });
+	await waitFor(() => expect(addButton).toBeEnabled());
+	fireEvent.click(addButton);
+	const repository = screen.getByRole("textbox", { name: "GitHub repository URL" });
+	fireEvent.change(repository, {
+		target: { value: "https://github.com/owner/first-node" },
+	});
+	await waitFor(() =>
+		expect(window.kastard.customNodes.getInstallOptions).toHaveBeenCalledWith({
+			repository: "https://github.com/owner/first-node.git",
+		}),
+	);
+	fireEvent.change(repository, {
+		target: { value: "https://github.com/owner/second-node" },
+	});
+	expect(
+		await screen.findByText(
+			"This repository is not registered. Manager will clone its default branch.",
+		),
+	).toBeVisible();
+
+	await act(async () => {
+		resolveFirst?.({
+			ok: true,
+			options: {
+				managerId: "first-node",
+				latestVersion: "9.9.9",
+				versions: ["9.9.9"],
+			},
+		});
+	});
+	expect(screen.queryByRole("combobox", { name: "Version" })).not.toBeInTheDocument();
+});
+
+test("refreshes the custom-node list while keeping the install form after failure", async () => {
+	const existingNode = {
+		name: "existing-node",
+		version: "1.0.0",
+		managerId: "existing-node",
+		sync: true,
+	};
+	vi.mocked(window.kastard.customNodes.list)
+		.mockResolvedValueOnce({ ok: true, nodes: [existingNode] })
+		.mockResolvedValueOnce({
+			ok: true,
+			nodes: [
+				existingNode,
+				{
+					name: "failing-node",
+					version: "1.0.0",
+					managerId: "failing-node",
+					sync: true,
+				},
+			],
+		});
+	vi.mocked(window.kastard.customNodes.install).mockResolvedValue({
+		ok: false,
+		error: "ComfyUI Manager could not install the custom node.",
+	});
+	vi.mocked(window.kastard.customNodes.getInstallOptions).mockResolvedValue({
+		ok: false,
+		error: "ComfyUI Registry returned HTTP 503.",
+	});
+	render(<App />);
+	fireEvent.click(screen.getByRole("button", { name: "Custom Nodes" }));
+	const addButton = await screen.findByRole("button", { name: "Add Custom Node" });
+	await waitFor(() => expect(addButton).toBeEnabled());
+	fireEvent.click(addButton);
+	fireEvent.change(screen.getByRole("textbox", { name: "GitHub repository URL" }), {
+		target: { value: "https://github.com/owner/failing-node" },
+	});
+	expect(
+		await screen.findByText(/Registry versions are unavailable\./),
+	).toHaveTextContent("ComfyUI Registry returned HTTP 503.");
+	fireEvent.click(screen.getByRole("button", { name: "Install" }));
+
+	expect(await screen.findByRole("alert")).toHaveTextContent(
+		"ComfyUI Manager could not install the custom node.",
+	);
+	expect(screen.getByRole("dialog", { name: "Add Custom Node" })).toBeVisible();
+	expect(screen.getByText("existing-node")).toBeVisible();
+	expect(await screen.findByText("failing-node")).toBeVisible();
+	expect(window.kastard.customNodes.list).toHaveBeenCalledTimes(2);
+	expect(window.kastard.customNodes.install).toHaveBeenCalledWith({
+		repository: "https://github.com/owner/failing-node.git",
+	});
+});
+
 test("removes a Manager-owned custom node only after uninstall succeeds", async () => {
 	vi.mocked(window.kastard.customNodes.list).mockResolvedValue({
 		ok: true,
@@ -209,12 +456,15 @@ test("disables deletion until the Editor state allows it and hides it during Wor
 	expect(
 		await screen.findByRole("button", { name: "Delete manual-node" }),
 	).toBeVisible();
+	const addButton = screen.getByRole("button", { name: "Add Custom Node" });
+	expect(addButton).toBeEnabled();
 	expect(
 		screen.queryByRole("button", { name: "Delete ComfyUI-Manager" }),
 	).not.toBeInTheDocument();
 
 	act(() => emitComfyRuntime({ status: "starting" }));
 	expect(screen.getByRole("button", { name: "Delete manual-node" })).toBeDisabled();
+	expect(addButton).toBeDisabled();
 	act(() =>
 		emitComfyRuntime({
 			status: "preparing",
@@ -234,6 +484,10 @@ test("disables deletion until the Editor state allows it and hides it during Wor
 		}),
 	);
 	expect(screen.getByRole("button", { name: "Delete manual-node" })).toBeEnabled();
+	expect(addButton).toBeDisabled();
+
+	act(() => emitComfyRuntime({ status: "ready", url: "about:blank" }));
+	expect(addButton).toBeEnabled();
 
 	act(() => emitWorkerSession({ customNodes: { status: "loading" } }));
 	await waitFor(() =>
@@ -241,6 +495,7 @@ test("disables deletion until the Editor state allows it and hides it during Wor
 			screen.queryByRole("button", { name: "Delete manual-node" }),
 		).not.toBeInTheDocument(),
 	);
+	expect(addButton).toBeDisabled();
 	act(() =>
 		emitWorkerSession({
 			customNodes: {
@@ -251,6 +506,7 @@ test("disables deletion until the Editor state allows it and hides it during Wor
 		}),
 	);
 	expect(screen.getByRole("button", { name: "Delete manual-node" })).toBeEnabled();
+	expect(addButton).toBeEnabled();
 
 	act(() =>
 		emitWorkerSession({
@@ -269,6 +525,7 @@ test("disables deletion until the Editor state allows it and hides it during Wor
 			screen.queryByRole("button", { name: "Delete manual-node" }),
 		).not.toBeInTheDocument(),
 	);
+	expect(addButton).toBeDisabled();
 });
 
 test("uses Trash for startup recovery and keeps the Worker untouched", async () => {

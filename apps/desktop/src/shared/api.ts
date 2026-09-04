@@ -85,6 +85,8 @@ export const COMFY_VERSION_GET_CHANNEL = "comfy-version:get";
 export const COMFY_VERSION_CATALOG_CHANNEL = "comfy-version:catalog";
 export const COMFY_VERSION_UPDATE_CHANNEL = "comfy-version:update";
 export const COMFY_VERSION_STATE_CHANNEL = "comfy-version:state";
+export const CUSTOM_NODES_INSTALL_OPTIONS_CHANNEL = "custom-nodes:install-options";
+export const CUSTOM_NODES_INSTALL_CHANNEL = "custom-nodes:install";
 export const CUSTOM_NODES_LIST_CHANNEL = "custom-nodes:list";
 export const CUSTOM_NODES_REMOVE_CHANNEL = "custom-nodes:remove";
 export const CUSTOM_NODES_UPDATE_CHANNEL = "custom-nodes:update";
@@ -442,7 +444,33 @@ export function applyWorkerSessionStateChange(
 
 export type CustomNodeUpdateRequest = Pick<CustomNodeEntry, "name" | "sync">;
 
+export type CustomNodeInstallOptionsRequest = { repository: string };
+
+export type CustomNodeInstallOptions = {
+	managerId: string;
+	latestVersion: string;
+	versions: string[];
+};
+
+export type CustomNodeInstallOptionsResult =
+	| { ok: true; options: CustomNodeInstallOptions | null }
+	| { ok: false; error: string };
+
+export type CustomNodeInstallRequest = {
+	repository: string;
+	version?: string;
+};
+
 export type CustomNodeRemoveRequest = Pick<CustomNodeEntry, "name">;
+
+export type CustomNodeInstallResult =
+	| {
+			ok: true;
+			node: CustomNodeEntry;
+			nodes: CustomNodeEntry[];
+			restartRequired: boolean;
+	  }
+	| { ok: false; error: string };
 
 export type CustomNodeRemoveResult =
 	| { ok: true; restartRequired: boolean }
@@ -626,6 +654,10 @@ export type KastardApi = {
 	};
 	customNodes: {
 		list: () => Promise<CustomNodesListResult>;
+		getInstallOptions: (
+			request: CustomNodeInstallOptionsRequest,
+		) => Promise<CustomNodeInstallOptionsResult>;
+		install: (request: CustomNodeInstallRequest) => Promise<CustomNodeInstallResult>;
 		remove: (request: CustomNodeRemoveRequest) => Promise<CustomNodeRemoveResult>;
 		update: (request: CustomNodeUpdateRequest) => Promise<ConnectionResult>;
 	};
@@ -1344,6 +1376,48 @@ export function isCustomNodeUpdateRequest(
 	);
 }
 
+export function isCustomNodeInstallRequest(
+	value: unknown,
+): value is CustomNodeInstallRequest {
+	return (
+		isCustomNodeInstallOptionsRequest(value) &&
+		(!("version" in value) ||
+			value.version === undefined ||
+			value.version === "nightly" ||
+			isCustomNodeManagerVersion(value.version))
+	);
+}
+
+export function isCustomNodeInstallOptionsRequest(
+	value: unknown,
+): value is CustomNodeInstallOptionsRequest {
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		"repository" in value &&
+		canonicalGitHubRepository(value.repository)
+	);
+}
+
+export function isCustomNodeInstallOptionsResult(
+	value: unknown,
+): value is CustomNodeInstallOptionsResult {
+	if (!isRecord(value) || typeof value.ok !== "boolean") return false;
+	if (!value.ok) return typeof value.error === "string";
+	if (value.options === null) return true;
+	if (!isRecord(value.options)) return false;
+	const { managerId, latestVersion, versions } = value.options;
+	return (
+		isCustomNodeManagerId(managerId) &&
+		isCustomNodeManagerVersion(latestVersion) &&
+		Array.isArray(versions) &&
+		versions.length > 0 &&
+		versions.every(isCustomNodeManagerVersion) &&
+		new Set(versions).size === versions.length &&
+		versions.includes(latestVersion)
+	);
+}
+
 export function isCustomNodeRemoveRequest(
 	value: unknown,
 ): value is CustomNodeRemoveRequest {
@@ -1361,6 +1435,18 @@ export function isCustomNodeRemoveResult(
 	if (!isRecord(value) || typeof value.ok !== "boolean") return false;
 	return value.ok
 		? typeof value.restartRequired === "boolean"
+		: typeof value.error === "string";
+}
+
+export function isCustomNodeInstallResult(
+	value: unknown,
+): value is CustomNodeInstallResult {
+	if (!isRecord(value) || typeof value.ok !== "boolean") return false;
+	return value.ok
+		? isCustomNodeEntry(value.node) &&
+				Array.isArray(value.nodes) &&
+				value.nodes.every(isCustomNodeEntry) &&
+				typeof value.restartRequired === "boolean"
 		: typeof value.error === "string";
 }
 

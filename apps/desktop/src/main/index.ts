@@ -28,9 +28,12 @@ import {
 	CONNECTION_SETTINGS_GET_CHANNEL,
 	CONNECTION_SETTINGS_UPDATE_CHANNEL,
 	type ConnectionResult,
+	CUSTOM_NODES_INSTALL_CHANNEL,
+	CUSTOM_NODES_INSTALL_OPTIONS_CHANNEL,
 	CUSTOM_NODES_LIST_CHANNEL,
 	CUSTOM_NODES_REMOVE_CHANNEL,
 	CUSTOM_NODES_UPDATE_CHANNEL,
+	type CustomNodeInstallResult,
 	type CustomNodeRemoveResult,
 	DEBUG_INFO_COPY_CHANNEL,
 	EDITOR_DIRECTORY_GET_CHANNEL,
@@ -39,6 +42,8 @@ import {
 	isComfyVersionUpdate,
 	isConnectionRequest,
 	isConnectionSettings,
+	isCustomNodeInstallOptionsRequest,
+	isCustomNodeInstallRequest,
 	isCustomNodeRemoveRequest,
 	isCustomNodeUpdateRequest,
 	isDesktopTheme,
@@ -102,6 +107,7 @@ import {
 	verifyModelProviderArtifact,
 } from "./model-provider";
 import { ModelProviderTokenStore } from "./model-provider-settings";
+import { resources } from "./resources";
 import { ThemeStore } from "./theme-store";
 import { readWorkerBackendTarget } from "./worker/backend-target";
 import { ConnectionPreferencesStore } from "./worker/connection-store";
@@ -139,31 +145,32 @@ let modelProviderSettingsError: string | null = null;
 let themeSettingsError: string | null = null;
 let syncCompletionNotificationSettingsError: string | null = null;
 let customNodeSyncError: string | null = null;
-let customNodeDeletionActive = false;
+let customNodeMutationActive = false;
+let comfyVersionMutationCount = 0;
 const ipcHandlers = new IpcHandlerRegistry(ipcMain);
 
 function enqueueComfyRuntimeRestart(): Promise<string | null> {
 	const restart = comfyRestartQueue
 		.catch(() => undefined)
 		.then(async () => {
-			assertCustomNodeDeletionInactive();
+			assertCustomNodeMutationInactive();
 			const runtime = comfyRuntime;
 			const gateway = comfyGateway;
 			if (runtime === null || gateway === null) return null;
 			if (comfyGatewayPortError !== null) throw new Error(comfyGatewayPortError);
 			await gateway.start();
 			if (comfyRuntime !== runtime || comfyGateway !== gateway) return null;
-			assertCustomNodeDeletionInactive();
+			assertCustomNodeMutationInactive();
 			return runtime.restart();
 		});
 	comfyRestartQueue = restart;
 	return restart;
 }
 
-function assertCustomNodeDeletionInactive(): void {
-	if (customNodeDeletionActive) {
+function assertCustomNodeMutationInactive(): void {
+	if (customNodeMutationActive) {
 		throw new Error(
-			"ComfyUI cannot start or restart while a custom-node deletion is in progress.",
+			"ComfyUI cannot start or restart while a custom-node change is in progress.",
 		);
 	}
 }
@@ -272,8 +279,8 @@ async function readBundledFrontendRelease(): Promise<{
 }
 
 async function buildCustomNodeSyncPlan(): Promise<CustomNodeSyncPlan> {
-	if (customNodeDeletionActive) {
-		throw new Error("Custom nodes cannot sync while a local deletion is in progress.");
+	if (customNodeMutationActive) {
+		throw new Error("Custom nodes cannot sync while a local change is in progress.");
 	}
 	if (customNodeSyncError) throw new Error(customNodeSyncError);
 	if (comfyRuntime === null) throw new Error("The ComfyUI runtime is unavailable.");
@@ -281,13 +288,25 @@ async function buildCustomNodeSyncPlan(): Promise<CustomNodeSyncPlan> {
 		throw new Error("Custom-node sync settings are unavailable.");
 	}
 	const syncStore = customNodeSync;
-	const entries = await comfyRuntime.listCustomNodes();
 	const managerVersion =
 		comfyVersions?.getManagerVersion() ?? (await comfyRuntime.getManagerVersion());
-	const selected = await Promise.all(
-		entries.map(async (node) => ({ ...node, sync: await syncStore.get(node.name) })),
+	const selected = await customNodeEntriesWithSync(
+		await comfyRuntime.listCustomNodes(),
+		syncStore,
 	);
 	return createCustomNodeSyncPlan(selected, managerVersion);
+}
+
+async function customNodeEntriesWithSync(
+	nodes: Awaited<ReturnType<ComfyRuntime["listCustomNodes"]>>,
+	syncStore: CustomNodeSyncStore,
+) {
+	return Promise.all(
+		nodes.map(async (node) => ({
+			...node,
+			sync: await syncStore.get(node.name),
+		})),
+	);
 }
 
 async function buildModelSyncPlan() {
@@ -545,6 +564,7 @@ app.whenReady().then(async () => {
 		resolveManagerVersion: (backendDirectory) =>
 			comfyVersions?.getRuntimeManagerVersion() ?? readManagerVersion(backendDirectory),
 		trashItem: (path) => shell.trashItem(path),
+		registryApiUrl: resources.comfyRegistry.api,
 	});
 	const backendTargetPath = app.isPackaged
 		? join(resourceRoot("comfyui-runtime"), ".kastard-source.json")
@@ -654,10 +674,10 @@ app.whenReady().then(async () => {
 		const runtime = comfyRuntime;
 		let runtimeStartAttempted = false;
 		try {
-			assertCustomNodeDeletionInactive();
+			assertCustomNodeMutationInactive();
 			if (comfyGatewayPortError !== null) throw new Error(comfyGatewayPortError);
 			const gatewayUrl = await comfyGateway?.start();
-			assertCustomNodeDeletionInactive();
+			assertCustomNodeMutationInactive();
 			runtimeStartAttempted = runtime !== null;
 			const runtimeUrl = await runtime?.start();
 			return gatewayUrl === undefined || runtimeUrl === undefined
@@ -729,8 +749,18 @@ app.whenReady().then(async () => {
 			};
 		}
 		try {
-			assertCustomNodeDeletionInactive();
-			return { ok: true, state: await comfyVersions.select(request) };
+			assertCustomNodeMutationInactive();
+			comfyVersionMutationCount += 1;
+			try {
+				const restartBeforeSelection = comfyRestartQueue;
+				const state = await comfyVersions.select(request);
+				if (comfyRestartQueue !== restartBeforeSelection) {
+					await comfyRestartQueue.catch(() => undefined);
+				}
+				return { ok: true, state };
+			} finally {
+				comfyVersionMutationCount -= 1;
+			}
 		} catch (error) {
 			return { ok: false, error: errorMessage(error) };
 		}
@@ -752,25 +782,105 @@ app.whenReady().then(async () => {
 			return { ok: false, error: "Custom-node sync settings are unavailable." };
 		}
 		try {
-			const nodes = await Promise.all(
-				(await comfyRuntime.listCustomNodes()).map(async (node) => ({
-					...node,
-					sync: await syncStore.get(node.name),
-				})),
+			const nodes = await customNodeEntriesWithSync(
+				await comfyRuntime.listCustomNodes(),
+				syncStore,
 			);
 			return { ok: true, nodes };
 		} catch (error) {
 			return { ok: false, error: errorMessage(error) };
 		}
 	});
+	ipcHandlers.handle(
+		CUSTOM_NODES_INSTALL_OPTIONS_CHANNEL,
+		async (_event, request: unknown) => {
+			if (!isCustomNodeInstallOptionsRequest(request)) {
+				return { ok: false, error: "Enter a public GitHub repository URL." };
+			}
+			if (comfyRuntime === null) {
+				return { ok: false, error: "The ComfyUI runtime is unavailable." };
+			}
+			try {
+				return {
+					ok: true,
+					options: await comfyRuntime.resolveCustomNodeInstallOptions(
+						request.repository,
+					),
+				};
+			} catch (error) {
+				return { ok: false, error: errorMessage(error) };
+			}
+		},
+	);
+	ipcHandlers.handle(CUSTOM_NODES_INSTALL_CHANNEL, async (_event, request: unknown) => {
+		if (!isCustomNodeInstallRequest(request)) {
+			return { ok: false, error: "Enter a public GitHub repository URL." };
+		}
+		if (customNodeMutationActive) {
+			return { ok: false, error: "Another custom-node change is in progress." };
+		}
+		if (comfyVersionMutationCount > 0) {
+			return {
+				ok: false,
+				error: "Custom nodes cannot be installed during a ComfyUI version change.",
+			};
+		}
+		if (customNodeSyncError) return { ok: false, error: customNodeSyncError };
+		const runtime = comfyRuntime;
+		const syncStore = customNodeSync;
+		if (runtime === null) {
+			return { ok: false, error: "The ComfyUI runtime is unavailable." };
+		}
+		if (syncStore === null) {
+			return { ok: false, error: "Custom-node sync settings are unavailable." };
+		}
+		const workerCustomNodes = workerSession?.getState().customNodes;
+		if (
+			workerCustomNodes?.status === "loading" ||
+			workerCustomNodes?.status === "syncing" ||
+			workerCustomNodes?.status === "canceling"
+		) {
+			return {
+				ok: false,
+				error: "Custom nodes cannot be installed during Worker synchronization.",
+			};
+		}
+
+		customNodeMutationActive = true;
+		let response: CustomNodeInstallResult;
+		try {
+			const result = await runtime.installCustomNode(
+				request.repository,
+				request.version,
+			);
+			const nodes = await customNodeEntriesWithSync(result.nodes, syncStore);
+			const node = nodes.find((entry) => entry.name === result.node.name);
+			if (node === undefined) {
+				throw new Error("The installed custom node is missing from the local library.");
+			}
+			response = {
+				ok: true,
+				node,
+				nodes,
+				restartRequired: result.restartRequired,
+			};
+		} catch (error) {
+			response = { ok: false, error: errorMessage(error) };
+		} finally {
+			customNodeMutationActive = false;
+		}
+		workerSession?.refreshEditorCustomNodeTarget();
+		return response;
+	});
 	ipcHandlers.handle(CUSTOM_NODES_UPDATE_CHANNEL, async (_event, request: unknown) => {
 		if (!isCustomNodeUpdateRequest(request)) {
 			return { ok: false, error: "Invalid custom-node sync update." };
 		}
-		if (customNodeDeletionActive) {
+		if (customNodeMutationActive) {
 			return {
 				ok: false,
-				error: "Custom-node sync settings cannot change during deletion.",
+				error:
+					"Custom-node sync settings cannot change during installation or deletion.",
 			};
 		}
 		if (customNodeSyncError) return { ok: false, error: customNodeSyncError };
@@ -788,8 +898,14 @@ app.whenReady().then(async () => {
 		if (!isCustomNodeRemoveRequest(request)) {
 			return { ok: false, error: "Invalid custom-node removal request." };
 		}
-		if (customNodeDeletionActive) {
-			return { ok: false, error: "Another custom-node deletion is in progress." };
+		if (customNodeMutationActive) {
+			return { ok: false, error: "Another custom-node change is in progress." };
+		}
+		if (comfyVersionMutationCount > 0) {
+			return {
+				ok: false,
+				error: "Custom nodes cannot be removed during a ComfyUI version change.",
+			};
 		}
 		if (customNodeSyncError) return { ok: false, error: customNodeSyncError };
 		const runtime = comfyRuntime;
@@ -812,7 +928,7 @@ app.whenReady().then(async () => {
 			};
 		}
 
-		customNodeDeletionActive = true;
+		customNodeMutationActive = true;
 		let response: CustomNodeRemoveResult;
 		let previousSync: boolean | undefined;
 		let selectionRemoved = false;
@@ -832,7 +948,7 @@ app.whenReady().then(async () => {
 			}
 			response = { ok: false, error: message };
 		} finally {
-			customNodeDeletionActive = false;
+			customNodeMutationActive = false;
 		}
 		if (response.ok) workerSession?.refreshEditorCustomNodeTarget();
 		return response;

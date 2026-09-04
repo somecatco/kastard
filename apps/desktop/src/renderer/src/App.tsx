@@ -51,6 +51,16 @@ export function App(): React.JSX.Element {
 		},
 		[],
 	);
+	const handleCustomNodeInstalled = useCallback(
+		(name: string, restartRequired: boolean) => {
+			setCustomNodeNotice(
+				restartRequired
+					? `Installed ${name}. Restart ComfyUI to load it.`
+					: `Installed ${name}.`,
+			);
+		},
+		[],
+	);
 	const restartComfy = useCallback((): Promise<ConnectionResult> => {
 		if (comfyRestartPromise.current !== null) return comfyRestartPromise.current;
 		setComfyRestarting(true);
@@ -138,6 +148,7 @@ export function App(): React.JSX.Element {
 						<CustomNodesSurface
 							runtime={comfyRuntimeState}
 							notice={customNodeNotice}
+							onInstalled={handleCustomNodeInstalled}
 							onRemoved={handleCustomNodeRemoved}
 						/>
 					) : null}

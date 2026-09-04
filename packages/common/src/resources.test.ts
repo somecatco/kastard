@@ -15,6 +15,9 @@ const validResources = {
 		addModelsAndCustomNodes: "https://docs.example.com/models",
 	},
 	discord: "https://discord.gg/example",
+	comfyRegistry: {
+		api: "https://api.comfy.org",
+	},
 	dockerHub: {
 		cu128: "somecatco/kastard-worker-cu128",
 		cu130: "somecatco/kastard-worker-cu130",
