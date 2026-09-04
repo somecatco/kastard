@@ -48,6 +48,7 @@ const virtualModel: ModelLibraryEntry = {
 };
 
 afterEach(async () => {
+	vi.unstubAllEnvs();
 	await Promise.all(
 		temporaryDirectories
 			.splice(0)
@@ -122,13 +123,16 @@ async function createManagedPython(args: string[]): Promise<void> {
 	await writeFile(join(environment, "bin", "python"), "");
 }
 
-async function createGitHubNode(directory: string): Promise<string> {
+async function createGitHubNode(
+	directory: string,
+	repository = "git@github.com:Owner/local-git-node.git",
+): Promise<string> {
 	await mkdir(directory, { recursive: true });
 	git(directory, "init", "--quiet");
 	await writeFile(join(directory, "__init__.py"), "NODE_CLASS_MAPPINGS = {}\n");
 	git(directory, "add", "__init__.py");
 	commitGit(directory, "initial");
-	git(directory, "remote", "add", "origin", "git@github.com:Owner/local-git-node.git");
+	git(directory, "remote", "add", "origin", repository);
 	git(directory, "update-ref", "refs/remotes/origin/main", "HEAD");
 	return git(directory, "rev-parse", "HEAD").trim().toLowerCase();
 }
@@ -607,6 +611,545 @@ test("lists local custom nodes without starting ComfyUI", async () => {
 	expect(runtime.getState()).toEqual({ status: "idle" });
 });
 
+test("installs a GitHub custom node with the active ComfyUI Manager", async () => {
+	const paths = await fixture();
+	const child = new FakeProcess();
+	const repository = "https://github.com/owner/local-git-node.git";
+	const customNodes = join(paths.dataDirectory, "data", "custom_nodes");
+	let installed = false;
+	let releaseInstall: (() => void) | undefined;
+	const installGate = new Promise<void>((resolve) => {
+		releaseInstall = resolve;
+	});
+	let installStarted: (() => void) | undefined;
+	const started = new Promise<void>((resolve) => {
+		installStarted = resolve;
+	});
+	let installInvocation:
+		| { command: string; args: string[]; env: NodeJS.ProcessEnv }
+		| undefined;
+	vi.stubEnv("KASTARD_PRIVATE_TOKEN", "not-for-custom-nodes");
+	const request = vi.fn(async (input: string | URL | Request): Promise<Response> => {
+		const url = new URL(input instanceof Request ? input.url : String(input));
+		if (
+			url.pathname === "/system_stats" ||
+			url.pathname === "/api/settings/Comfy.Workflow.NamedValuesRestore"
+		) {
+			return new Response(null, { status: 200 });
+		}
+		if (url.pathname === "/v2/customnode/installed") {
+			return Response.json(
+				installed ? { "local-git-node": { ver: "unknown", cnr_id: null } } : {},
+			);
+		}
+		return new Response(null, { status: 404 });
+	});
+	const runtime = new ComfyRuntime({
+		...paths,
+		platform: "darwin",
+		arch: "arm64",
+		allocatePort: async () => 18_202,
+		fetch: request as typeof fetch,
+		runCommand: async (command, args, options) => {
+			await createManagedPython(args);
+			if (args[0] !== "-m" || args[1] !== "cm_cli") return;
+			installInvocation = { command, args, env: options.env };
+			installStarted?.();
+			await installGate;
+			await createGitHubNode(join(customNodes, "local-git-node"));
+			installed = true;
+		},
+		startProcess: () => child as unknown as ChildProcess,
+		retryMs: 1,
+	});
+	await runtime.start();
+
+	const installation = runtime.installCustomNode(repository);
+	await started;
+	await expect(runtime.installCustomNode(repository)).rejects.toThrow(
+		"Another custom-node change is in progress.",
+	);
+	await expect(runtime.start()).rejects.toThrow(
+		"ComfyUI cannot start while a custom-node change is in progress.",
+	);
+	await expect(runtime.restart()).rejects.toThrow(
+		"ComfyUI cannot restart while a custom-node change is in progress.",
+	);
+	releaseInstall?.();
+
+	const result = await installation;
+	expect(result).toMatchObject({
+		node: {
+			name: "local-git-node",
+			managerId: null,
+			repository,
+		},
+		nodes: [
+			{
+				name: "local-git-node",
+				managerId: null,
+				repository,
+			},
+		],
+		restartRequired: true,
+	});
+	expect(installInvocation).toEqual({
+		command: join(paths.dataDirectory, "environment", "bin", "python"),
+		args: [
+			"-m",
+			"cm_cli",
+			"install",
+			repository,
+			"--mode",
+			"cache",
+			"--user-directory",
+			join(paths.dataDirectory, "data", "user", "__manager"),
+			"--exit-on-fail",
+		],
+		env: expect.objectContaining({
+			COMFYUI_PATH: join(paths.resourcesDirectory, "backend"),
+			COMFYUI_FOLDERS_BASE_PATH: join(paths.dataDirectory, "data"),
+			GIT_TERMINAL_PROMPT: "0",
+			PIP_NO_INPUT: "1",
+		}),
+	});
+	expect(installInvocation?.env.KASTARD_PRIVATE_TOKEN).toBeUndefined();
+	expect(
+		await readFile(
+			join(paths.dataDirectory, "data", "user", "__manager", "extra_model_paths.yaml"),
+			"utf8",
+		),
+	).toContain(`base_path: ${JSON.stringify(join(paths.dataDirectory, "data"))}`);
+	await expect(runtime.installCustomNode(repository)).rejects.toThrow(
+		"local-git-node already uses this GitHub repository.",
+	);
+	await runtime.stop();
+});
+
+test("resolves registered versions by exact GitHub repository", async () => {
+	const paths = await fixture();
+	const repository = "https://github.com/owner/registered-node.git";
+	const request = vi.fn(async (input: string | URL | Request): Promise<Response> => {
+		const url = new URL(input instanceof Request ? input.url : String(input));
+		if (url.pathname === "/nodes/search") {
+			return Response.json({
+				nodes: [
+					{
+						id: "different-node",
+						repository: "https://github.com/another/registered-node",
+						latest_version: { version: "9.9.9" },
+					},
+					{
+						id: "registered-node",
+						repository: "https://github.com/Owner/Registered-Node",
+						latest_version: { version: "1.2.3" },
+					},
+				],
+			});
+		}
+		if (url.pathname === "/nodes/registered-node/versions") {
+			return Response.json([
+				{ version: "1.2.3", status: "active" },
+				{ version: "1.2.2", status: "pending" },
+				{ version: "1.2.2", status: "pending" },
+				{ version: "1.0.0", status: "banned" },
+			]);
+		}
+		return new Response(null, { status: 404 });
+	});
+	const runtime = new ComfyRuntime({
+		...paths,
+		registryApiUrl: "https://registry.example.com",
+		fetch: request as typeof fetch,
+	});
+
+	await expect(runtime.resolveCustomNodeInstallOptions(repository)).resolves.toEqual({
+		managerId: "registered-node",
+		latestVersion: "1.2.3",
+		versions: ["1.2.3", "1.2.2"],
+	});
+	const searchUrl = new URL(String(request.mock.calls[0]?.[0]));
+	expect(searchUrl.searchParams.get("search")).toBe("registered-node");
+	const versionsUrl = new URL(String(request.mock.calls[1]?.[0]));
+	expect(versionsUrl.searchParams.getAll("statuses")).toEqual([
+		"NodeVersionStatusActive",
+		"NodeVersionStatusPending",
+	]);
+});
+
+test("does not treat a fuzzy Registry search result as a registered repository", async () => {
+	const paths = await fixture();
+	const request = vi.fn(
+		async (): Promise<Response> =>
+			Response.json({
+				nodes: [
+					{
+						id: "similar-node",
+						repository: "https://github.com/another/similar-node",
+						latest_version: { version: "1.0.0" },
+					},
+				],
+			}),
+	);
+	const runtime = new ComfyRuntime({
+		...paths,
+		registryApiUrl: "https://registry.example.com",
+		fetch: request as typeof fetch,
+	});
+
+	await expect(
+		runtime.resolveCustomNodeInstallOptions(
+			"https://github.com/owner/similar-node.git",
+		),
+	).resolves.toBeNull();
+	expect(request).toHaveBeenCalledTimes(1);
+});
+
+test.each([
+	{ selectedVersion: "1.2.2", packageSpec: "registered-node@1.2.2" },
+	{ selectedVersion: "nightly", packageSpec: "registered-node@nightly" },
+])(
+	"revalidates and installs a registered custom node as $packageSpec",
+	async ({ selectedVersion, packageSpec }) => {
+		const paths = await fixture();
+		const child = new FakeProcess();
+		const repository = "https://github.com/owner/registered-node.git";
+		const customNodes = join(paths.dataDirectory, "data", "custom_nodes");
+		let installed = false;
+		let installedCommit = "";
+		let invokedPackageSpec: string | undefined;
+		const request = vi.fn(async (input: string | URL | Request): Promise<Response> => {
+			const url = new URL(input instanceof Request ? input.url : String(input));
+			if (
+				url.pathname === "/system_stats" ||
+				url.pathname === "/api/settings/Comfy.Workflow.NamedValuesRestore"
+			) {
+				return new Response(null, { status: 200 });
+			}
+			if (url.pathname === "/v2/customnode/installed") {
+				return Response.json(
+					installed
+						? {
+								"registered-node": {
+									ver:
+										selectedVersion === "nightly" ? installedCommit : selectedVersion,
+									cnr_id: "registered-node",
+								},
+							}
+						: {},
+				);
+			}
+			if (url.pathname === "/nodes/search") {
+				return Response.json({
+					nodes: [
+						{
+							id: "registered-node",
+							repository,
+							latest_version: { version: "1.2.3" },
+						},
+					],
+				});
+			}
+			if (url.pathname === "/nodes/registered-node/versions") {
+				return Response.json([{ version: "1.2.3" }, { version: "1.2.2" }]);
+			}
+			return new Response(null, { status: 404 });
+		});
+		const runtime = new ComfyRuntime({
+			...paths,
+			platform: "darwin",
+			arch: "arm64",
+			allocatePort: async () => 18_204,
+			registryApiUrl: "https://registry.example.com",
+			fetch: request as typeof fetch,
+			runCommand: async (_command, args) => {
+				await createManagedPython(args);
+				if (args[0] !== "-m" || args[1] !== "cm_cli") return;
+				invokedPackageSpec = args[3];
+				if (selectedVersion === "nightly") {
+					installedCommit = await createGitHubNode(
+						join(customNodes, "registered-node"),
+						repository,
+					);
+				} else {
+					await createCnrNode(
+						join(customNodes, "registered-node"),
+						"registered-node",
+						selectedVersion,
+						repository,
+					);
+				}
+				installed = true;
+			},
+			startProcess: () => child as unknown as ChildProcess,
+			retryMs: 1,
+		});
+		await runtime.start();
+
+		const result = await runtime.installCustomNode(repository, selectedVersion);
+
+		expect(invokedPackageSpec).toBe(packageSpec);
+		expect(result.node).toMatchObject({
+			name: "registered-node",
+			version: selectedVersion === "nightly" ? installedCommit : selectedVersion,
+			repository,
+		});
+		if (selectedVersion === "nightly") expect(result.node.managerId).toBeNull();
+		await runtime.stop();
+	},
+);
+
+test("keeps a Manager-installed custom node when dependency installation fails", async () => {
+	const paths = await fixture();
+	const child = new FakeProcess();
+	const repository = "https://github.com/owner/registered-node.git";
+	const customNodes = join(paths.dataDirectory, "data", "custom_nodes");
+	const installedNode = join(customNodes, "registered-node");
+	const trashItem = vi.fn(async () => undefined);
+	let installed = false;
+	const request = vi.fn(async (input: string | URL | Request): Promise<Response> => {
+		const url = new URL(input instanceof Request ? input.url : String(input));
+		if (
+			url.pathname === "/system_stats" ||
+			url.pathname === "/api/settings/Comfy.Workflow.NamedValuesRestore"
+		) {
+			return new Response(null, { status: 200 });
+		}
+		if (url.pathname === "/v2/customnode/installed") {
+			return Response.json(
+				installed
+					? { "registered-node": { ver: "1.2.3", cnr_id: "registered-node" } }
+					: {},
+			);
+		}
+		return new Response(null, { status: 404 });
+	});
+	const runtime = new ComfyRuntime({
+		...paths,
+		platform: "darwin",
+		arch: "arm64",
+		allocatePort: async () => 18_203,
+		fetch: request as typeof fetch,
+		runCommand: async (_command, args, options) => {
+			await createManagedPython(args);
+			if (args[0] !== "-m" || args[1] !== "cm_cli") return;
+			await createCnrNode(installedNode, "registered-node", "1.2.3", repository);
+			installed = true;
+			options.onOutput(
+				"[ComfyUI-Manager] Installation failed:\nFailed to execute install script: registered-node@1.2.3\nERROR: An error occurred while installing registered-node\n",
+			);
+			throw new Error("python exited with code 1. Full dependency traceback.");
+		},
+		startProcess: () => child as unknown as ChildProcess,
+		retryMs: 1,
+		trashItem,
+	});
+	await runtime.start();
+
+	await expect(runtime.installCustomNode(repository)).resolves.toMatchObject({
+		node: {
+			name: "registered-node",
+			version: "1.2.3",
+			managerId: "registered-node",
+			repository,
+		},
+		restartRequired: true,
+	});
+	expect(trashItem).not.toHaveBeenCalled();
+	await expect(access(installedNode)).resolves.toBeUndefined();
+	await runtime.stop();
+});
+
+test("moves only the matching incomplete Manager installation to Trash", async () => {
+	const paths = await fixture();
+	const child = new FakeProcess();
+	const repository = "https://github.com/owner/incomplete-node.git";
+	const customNodes = join(paths.dataDirectory, "data", "custom_nodes");
+	const incompleteNode = join(customNodes, "incomplete-node");
+	const unrelatedNode = join(customNodes, "unrelated-node");
+	const trashItem = vi.fn(async () => undefined);
+	const request = vi.fn(async (input: string | URL | Request): Promise<Response> => {
+		const url = new URL(input instanceof Request ? input.url : String(input));
+		if (
+			url.pathname === "/system_stats" ||
+			url.pathname === "/api/settings/Comfy.Workflow.NamedValuesRestore"
+		) {
+			return new Response(null, { status: 200 });
+		}
+		if (url.pathname === "/v2/customnode/installed") return Response.json({});
+		return new Response(null, { status: 404 });
+	});
+	const runtime = new ComfyRuntime({
+		...paths,
+		platform: "darwin",
+		arch: "arm64",
+		allocatePort: async () => 18_203,
+		fetch: request as typeof fetch,
+		runCommand: async (_command, args, options) => {
+			await createManagedPython(args);
+			if (args[0] !== "-m" || args[1] !== "cm_cli") return;
+			await Promise.all([
+				createCnrNode(incompleteNode, "incomplete-node", "1.0.0", repository),
+				mkdir(unrelatedNode, { recursive: true }),
+			]);
+			options.onOutput("[ FAIL ] requirements installation failed\n");
+			throw new Error("python exited with code 1. Full dependency traceback.");
+		},
+		startProcess: () => child as unknown as ChildProcess,
+		retryMs: 1,
+		trashItem,
+	});
+	await runtime.start();
+
+	await expect(runtime.installCustomNode(repository)).rejects.toThrow(
+		"ComfyUI Manager reported installation errors. [ FAIL ] requirements installation failed",
+	);
+	expect(trashItem).toHaveBeenCalledWith(incompleteNode);
+	expect(trashItem).not.toHaveBeenCalledWith(unrelatedNode);
+	await runtime.stop();
+});
+
+test("keeps an unrelated directory created during a failed installation", async () => {
+	const paths = await fixture();
+	const child = new FakeProcess();
+	const customNodes = join(paths.dataDirectory, "data", "custom_nodes");
+	const unrelatedNode = join(customNodes, "unrelated-node");
+	const trashItem = vi.fn(async () => undefined);
+	const request = vi.fn(async (input: string | URL | Request): Promise<Response> => {
+		const url = new URL(input instanceof Request ? input.url : String(input));
+		if (
+			url.pathname === "/system_stats" ||
+			url.pathname === "/api/settings/Comfy.Workflow.NamedValuesRestore"
+		) {
+			return new Response(null, { status: 200 });
+		}
+		if (url.pathname === "/v2/customnode/installed") return Response.json({});
+		return new Response(null, { status: 404 });
+	});
+	const runtime = new ComfyRuntime({
+		...paths,
+		platform: "darwin",
+		arch: "arm64",
+		allocatePort: async () => 18_203,
+		fetch: request as typeof fetch,
+		runCommand: async (_command, args) => {
+			await createManagedPython(args);
+			if (args[0] !== "-m" || args[1] !== "cm_cli") return;
+			await mkdir(unrelatedNode, { recursive: true });
+			throw new Error("python exited with code 1");
+		},
+		startProcess: () => child as unknown as ChildProcess,
+		retryMs: 1,
+		trashItem,
+	});
+	await runtime.start();
+
+	await expect(
+		runtime.installCustomNode("https://github.com/owner/requested-node.git"),
+	).rejects.toThrow("ComfyUI Manager could not install the custom node.");
+	expect(trashItem).not.toHaveBeenCalled();
+	await expect(access(unrelatedNode)).resolves.toBeUndefined();
+	await runtime.stop();
+});
+
+test("cancels an active custom-node installation when ComfyUI stops", async () => {
+	const paths = await fixture();
+	const child = new FakeProcess();
+	let installStarted: (() => void) | undefined;
+	const started = new Promise<void>((resolve) => {
+		installStarted = resolve;
+	});
+	const request = vi.fn(async (input: string | URL | Request): Promise<Response> => {
+		const url = new URL(input instanceof Request ? input.url : String(input));
+		if (
+			url.pathname === "/system_stats" ||
+			url.pathname === "/api/settings/Comfy.Workflow.NamedValuesRestore"
+		) {
+			return new Response(null, { status: 200 });
+		}
+		if (url.pathname === "/v2/customnode/installed") return Response.json({});
+		return new Response(null, { status: 404 });
+	});
+	const runtime = new ComfyRuntime({
+		...paths,
+		platform: "darwin",
+		arch: "arm64",
+		allocatePort: async () => 18_204,
+		fetch: request as typeof fetch,
+		runCommand: async (_command, args, options) => {
+			await createManagedPython(args);
+			if (args[0] !== "-m" || args[1] !== "cm_cli") return;
+			installStarted?.();
+			await new Promise<void>((_resolve, reject) => {
+				options.signal?.addEventListener("abort", () => reject(new Error("aborted")), {
+					once: true,
+				});
+			});
+		},
+		startProcess: () => child as unknown as ChildProcess,
+		retryMs: 1,
+	});
+	await runtime.start();
+
+	const installation = runtime.installCustomNode(
+		"https://github.com/owner/canceled-node.git",
+	);
+	await started;
+	await runtime.stop();
+	await expect(installation).rejects.toThrow("Custom-node installation was canceled.");
+	expect(child.signalCode).toBe("SIGTERM");
+});
+
+test("cancels a Registry version lookup when ComfyUI stops", async () => {
+	const paths = await fixture();
+	const child = new FakeProcess();
+	let lookupStarted: (() => void) | undefined;
+	const started = new Promise<void>((resolve) => {
+		lookupStarted = resolve;
+	});
+	const request = vi.fn(
+		async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+			const url = new URL(input instanceof Request ? input.url : String(input));
+			if (
+				url.pathname === "/system_stats" ||
+				url.pathname === "/api/settings/Comfy.Workflow.NamedValuesRestore"
+			) {
+				return new Response(null, { status: 200 });
+			}
+			if (url.pathname === "/v2/customnode/installed") return Response.json({});
+			if (url.pathname === "/nodes/search") {
+				lookupStarted?.();
+				return new Promise<Response>((_resolve, reject) => {
+					init?.signal?.addEventListener("abort", () => reject(new Error("aborted")), {
+						once: true,
+					});
+				});
+			}
+			return new Response(null, { status: 404 });
+		},
+	);
+	const runtime = new ComfyRuntime({
+		...paths,
+		platform: "darwin",
+		arch: "arm64",
+		allocatePort: async () => 18_204,
+		registryApiUrl: "https://registry.example.com",
+		fetch: request as typeof fetch,
+		runCommand: async (_command, args) => createManagedPython(args),
+		startProcess: () => child as unknown as ChildProcess,
+		retryMs: 1,
+	});
+	await runtime.start();
+
+	const installation = runtime.installCustomNode(
+		"https://github.com/owner/canceled-node.git",
+		"1.0.0",
+	);
+	await started;
+	await runtime.stop();
+	await expect(installation).rejects.toThrow("Custom-node installation was canceled.");
+});
+
 test("uninstalls Manager-owned custom nodes without restarting ComfyUI", async () => {
 	const paths = await fixture();
 	const child = new FakeProcess();
@@ -665,10 +1208,10 @@ test("uninstalls Manager-owned custom nodes without restarting ComfyUI", async (
 	const removal = runtime.removeCustomNode("comfyui-kjnodes");
 	await vi.waitFor(() => expect(queuedTask).not.toBeNull());
 	await expect(runtime.start()).rejects.toThrow(
-		"ComfyUI cannot start while a custom-node deletion is in progress.",
+		"ComfyUI cannot start while a custom-node change is in progress.",
 	);
 	await expect(runtime.restart()).rejects.toThrow(
-		"ComfyUI cannot restart while a custom-node deletion is in progress.",
+		"ComfyUI cannot restart while a custom-node change is in progress.",
 	);
 	expect(child.signalCode).toBeNull();
 	uninstallComplete = true;

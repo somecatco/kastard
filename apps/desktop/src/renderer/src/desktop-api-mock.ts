@@ -317,6 +317,8 @@ export function createDesktopApiMock() {
 		},
 		customNodes: {
 			list: async () => ({ ok: true as const, nodes: [] }),
+			getInstallOptions: async () => ({ ok: true as const, options: null }),
+			install: async () => unexpected("Unexpected custom-node installation."),
 			remove: async () => unexpected("Unexpected custom-node removal."),
 			update: async () => unexpected("Unexpected custom-node update."),
 		},

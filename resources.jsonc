@@ -11,6 +11,9 @@
 		"addModelsAndCustomNodes": "https://kastard.mintlify.site/en/add-models-and-custom-nodes"
 	},
 	"discord": "https://discord.gg/Z9eUBVFncN",
+	"comfyRegistry": {
+		"api": "https://api.comfy.org"
+	},
 	"dockerHub": {
 		"cu128": "somecatco/kastard-worker-cu128",
 		"cu130": "somecatco/kastard-worker-cu130"
