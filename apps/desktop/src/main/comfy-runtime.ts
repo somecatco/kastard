@@ -2074,13 +2074,50 @@ function runCommand(
 		let output = "";
 		let processError: Error | null = null;
 		let forceTimer: NodeJS.Timeout | undefined;
+		let closeResult: { code: number | null; signal: NodeJS.Signals | null } | null =
+			null;
+		let aborted = false;
+		let forceComplete = false;
+		let settled = false;
+		const finish = (): void => {
+			if (closeResult === null || settled) return;
+			if (aborted && !forceComplete && commandTreeRunning(child)) return;
+			settled = true;
+			if (forceTimer !== undefined) clearTimeout(forceTimer);
+			options.signal?.removeEventListener("abort", abort);
+			if (processError !== null) reject(processError);
+			else if (closeResult.code === 0) resolve();
+			else {
+				reject(
+					new Error(
+						exitMessage(
+							basename(command),
+							closeResult.code,
+							closeResult.signal,
+							output,
+						),
+					),
+				);
+			}
+		};
 		const abort = (): void => {
+			aborted = true;
 			const reason = options.signal?.reason;
 			processError ??=
 				reason instanceof Error ? reason : new Error("Command was aborted.");
-			terminateCommandTree(child, "SIGTERM");
+			const gracefulTermination = terminateCommandTree(child, "SIGTERM");
+			if (process.platform === "win32") {
+				void gracefulTermination.then(() => {
+					forceComplete = true;
+					finish();
+				});
+			}
 			forceTimer = setTimeout(() => {
-				terminateCommandTree(child, "SIGKILL");
+				forceTimer = undefined;
+				void terminateCommandTree(child, "SIGKILL").then(() => {
+					forceComplete = true;
+					finish();
+				});
 			}, options.terminationTimeoutMs ?? 10_000);
 			forceTimer.unref();
 		};
@@ -2098,18 +2135,18 @@ function runCommand(
 			processError ??= error;
 		});
 		child.once("close", (code, signal) => {
-			if (forceTimer !== undefined) clearTimeout(forceTimer);
-			options.signal?.removeEventListener("abort", abort);
-			if (processError !== null) reject(processError);
-			else if (code === 0) resolve();
-			else reject(new Error(exitMessage(basename(command), code, signal, output)));
+			closeResult = { code, signal };
+			finish();
 		});
 		if (options.signal?.aborted) abort();
 		else options.signal?.addEventListener("abort", abort, { once: true });
 	});
 }
 
-function terminateCommandTree(child: ChildProcess, signal: NodeJS.Signals): void {
+async function terminateCommandTree(
+	child: ChildProcess,
+	signal: NodeJS.Signals,
+): Promise<void> {
 	const pid = child.pid;
 	if (pid === undefined) return;
 	if (process.platform !== "win32") {
@@ -2120,20 +2157,39 @@ function terminateCommandTree(child: ChildProcess, signal: NodeJS.Signals): void
 				child.kill(signal);
 			} catch {}
 		}
+		if (signal === "SIGKILL") {
+			while (commandTreeRunning(child)) await delay(10);
+		}
 		return;
 	}
 	const args = ["/PID", String(pid), "/T", ...(signal === "SIGKILL" ? ["/F"] : [])];
-	const killer = spawn("taskkill", args, { stdio: "ignore", windowsHide: true });
-	const fallback = (): void => {
-		try {
-			child.kill(signal);
-		} catch {}
-	};
-	killer.once("error", fallback);
-	killer.once("close", (code) => {
-		if (code !== 0) fallback();
+	await new Promise<void>((resolve) => {
+		const killer = spawn("taskkill", args, { stdio: "ignore", windowsHide: true });
+		const fallback = (): void => {
+			try {
+				child.kill(signal);
+			} catch {}
+			resolve();
+		};
+		killer.once("error", fallback);
+		killer.once("close", (code) => {
+			if (code !== 0) fallback();
+			else resolve();
+		});
+		killer.unref();
 	});
-	killer.unref();
+}
+
+function commandTreeRunning(child: ChildProcess): boolean {
+	const pid = child.pid;
+	if (pid === undefined) return false;
+	if (process.platform === "win32") return true;
+	try {
+		process.kill(-pid, 0);
+		return true;
+	} catch (error) {
+		return (error as NodeJS.ErrnoException).code !== "ESRCH";
+	}
 }
 
 function exitMessage(

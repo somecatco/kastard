@@ -2110,7 +2110,6 @@ test("terminates preparation descendants before releasing runtime state", async 
 const { appendFileSync, writeFileSync } = require("node:fs");
 process.on("SIGTERM", () => writeFileSync(${JSON.stringify(stoppingMarker)}, ""));
 setInterval(() => appendFileSync(${JSON.stringify(activityMarker)}, "x"), 5);
-setTimeout(() => process.exit(0), 2000);
 `;
 	await writeFile(
 		uv,
@@ -2119,11 +2118,10 @@ const { spawn } = require("node:child_process");
 const { mkdirSync, writeFileSync } = require("node:fs");
 mkdirSync(${JSON.stringify(paths.dataDirectory)}, { recursive: true });
 spawn(process.execPath, ["-e", ${JSON.stringify(descendantSource)}], {
-	stdio: ["ignore", "inherit", "inherit"],
+	stdio: "ignore",
 });
-process.on("SIGTERM", () => {});
+process.on("SIGTERM", () => process.exit(0));
 setInterval(() => {}, 1000);
-setTimeout(() => process.exit(0), 2000);
 writeFileSync(${JSON.stringify(startedMarker)}, "");
 `,
 	);
