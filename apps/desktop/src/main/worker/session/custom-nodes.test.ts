@@ -556,6 +556,60 @@ test("does not publish a stale reinstall plan failure after disconnecting", asyn
 	session.stop();
 });
 
+test("resumes polling after restoring a running state from an invalid reinstall plan", async () => {
+	const pendingPlan = deferred<CustomNodeSyncPlan>();
+	const buildCustomNodeSyncPlan = vi
+		.fn()
+		.mockResolvedValueOnce({
+			managerVersion: CUSTOM_NODE_TARGET.managerVersion,
+			nodes: CUSTOM_NODE_TARGET.nodes,
+			unsupportedNodes: [],
+		})
+		.mockReturnValueOnce(pendingPlan.promise);
+	const readCustomNodes = vi
+		.fn()
+		.mockResolvedValueOnce({
+			ok: true,
+			state: currentCustomNodeState({
+				capabilities: { forceReinstall: true as const },
+				status: "syncing" as const,
+				phase: "install" as const,
+				current: 0,
+				total: 1,
+				currentNode: "comfyui-kjnodes",
+			}),
+		})
+		.mockResolvedValue({
+			ok: true,
+			state: currentCustomNodeState({
+				capabilities: { forceReinstall: true as const },
+				status: "ready" as const,
+				nodes: CUSTOM_NODE_TARGET.nodes,
+			}),
+		});
+	const { session } = createHarness(
+		{ readCustomNodes, pollMs: 1 },
+		{ buildCustomNodeSyncPlan },
+	);
+	await initializeAndConnect(session);
+
+	const reinstall = session.reinstallCustomNode("comfyui-kjnodes");
+	await vi.waitFor(() => expect(buildCustomNodeSyncPlan).toHaveBeenCalledTimes(2));
+	pendingPlan.resolve({
+		managerVersion: CUSTOM_NODE_TARGET.managerVersion,
+		nodes: [],
+		unsupportedNodes: [],
+	});
+
+	await expect(reinstall).resolves.toEqual({
+		ok: false,
+		error: "The selected custom node is no longer part of the Editor sync target.",
+	});
+	await vi.waitFor(() => expect(readCustomNodes).toHaveBeenCalledTimes(2));
+	expect(session.getState().customNodes).toMatchObject({ status: "ready" });
+	session.stop();
+});
+
 test("rejects individual reinstall from an older Worker or a stale selection", async () => {
 	const reinstallCustomNode = vi.fn();
 	const { session } = createHarness({ reinstallCustomNode });

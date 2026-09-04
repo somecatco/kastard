@@ -214,7 +214,8 @@ export class WorkerCustomNodeSync {
 		if (!this.isCurrent(generation, intent)) return replacedResult();
 		const node = plan.nodes.find((candidate) => candidate.id === id);
 		if (node === undefined) {
-			this.reprojectRemoteState();
+			const state = this.reprojectRemoteState();
+			if (state !== null && customNodeRunning(state)) this.schedulePoll(generation);
 			return {
 				ok: false,
 				error: "The selected custom node is no longer part of the Editor sync target.",
@@ -286,7 +287,8 @@ export class WorkerCustomNodeSync {
 		}
 		if (!this.isCurrent(generation, intent)) return replacedResult();
 		if (plan.nodes.some((target) => target.id === customNodeInventoryId(node))) {
-			this.reprojectRemoteState();
+			const state = this.reprojectRemoteState();
+			if (state !== null && customNodeRunning(state)) this.schedulePoll(generation);
 			return {
 				ok: false,
 				error: "Selected custom nodes cannot be removed from the Worker.",
@@ -590,9 +592,10 @@ export class WorkerCustomNodeSync {
 		};
 	}
 
-	private reprojectRemoteState(): void {
-		if (this.remoteState !== null)
-			this.setState(this.projectRemoteState(this.remoteState));
+	private reprojectRemoteState(): WorkerCustomNodeSyncState | null {
+		return this.remoteState === null
+			? null
+			: this.setState(this.projectRemoteState(this.remoteState));
 	}
 
 	private setState(state: WorkerCustomNodeSyncState): WorkerCustomNodeSyncState {
