@@ -406,10 +406,7 @@ export class ComfyRuntime {
 							node.version === version)),
 			);
 			const node = matches.length === 1 ? matches[0] : undefined;
-			if (node !== undefined) {
-				preserveNewEntries = true;
-				return { node, nodes: installed, restartRequired: true };
-			}
+			if (node !== undefined) preserveNewEntries = true;
 			if (failures.length > 0) {
 				throw new Error(
 					`ComfyUI Manager reported installation errors. ${failures.slice(0, 3).join(" ")}`,
@@ -417,6 +414,9 @@ export class ComfyRuntime {
 			}
 			if (commandError !== undefined) {
 				throw new Error(managerInstallCommandError(commandError));
+			}
+			if (node !== undefined) {
+				return { node, nodes: installed, restartRequired: true };
 			}
 			throw new Error(
 				"ComfyUI Manager completed, but the installed custom node could not be identified.",

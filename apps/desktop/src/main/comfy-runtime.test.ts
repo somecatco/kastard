@@ -899,7 +899,7 @@ test.each([
 	},
 );
 
-test("keeps a Manager-installed custom node when dependency installation fails", async () => {
+test("reports a dependency failure without trashing the installed custom node", async () => {
 	const paths = await fixture();
 	const child = new FakeProcess();
 	const repository = "https://github.com/owner/registered-node.git";
@@ -946,15 +946,9 @@ test("keeps a Manager-installed custom node when dependency installation fails",
 	});
 	await runtime.start();
 
-	await expect(runtime.installCustomNode(repository)).resolves.toMatchObject({
-		node: {
-			name: "registered-node",
-			version: "1.2.3",
-			managerId: "registered-node",
-			repository,
-		},
-		restartRequired: true,
-	});
+	await expect(runtime.installCustomNode(repository)).rejects.toThrow(
+		"ComfyUI Manager reported installation errors.",
+	);
 	expect(trashItem).not.toHaveBeenCalled();
 	await expect(access(installedNode)).resolves.toBeUndefined();
 	await runtime.stop();
