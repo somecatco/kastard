@@ -2051,6 +2051,53 @@ writeFileSync(${JSON.stringify(startedMarker)}, "");
 	expect(runtime.getState()).toEqual({ status: "idle" });
 });
 
+test("terminates preparation descendants before releasing runtime state", async () => {
+	const paths = await fixture();
+	const uv = join(paths.resourcesDirectory, "bin", "uv");
+	const startedMarker = join(paths.dataDirectory, "descendant-started");
+	const stoppingMarker = join(paths.dataDirectory, "descendant-stopping");
+	const activityMarker = join(paths.dataDirectory, "descendant-activity");
+	const descendantSource = `
+const { appendFileSync, writeFileSync } = require("node:fs");
+process.on("SIGTERM", () => writeFileSync(${JSON.stringify(stoppingMarker)}, ""));
+setInterval(() => appendFileSync(${JSON.stringify(activityMarker)}, "x"), 5);
+setTimeout(() => process.exit(0), 2000);
+`;
+	await writeFile(
+		uv,
+		`#!/usr/bin/env node
+const { spawn } = require("node:child_process");
+const { mkdirSync, writeFileSync } = require("node:fs");
+mkdirSync(${JSON.stringify(paths.dataDirectory)}, { recursive: true });
+spawn(process.execPath, ["-e", ${JSON.stringify(descendantSource)}], {
+	stdio: ["ignore", "inherit", "inherit"],
+});
+process.on("SIGTERM", () => {});
+setInterval(() => {}, 1000);
+setTimeout(() => process.exit(0), 2000);
+writeFileSync(${JSON.stringify(startedMarker)}, "");
+`,
+	);
+	await chmod(uv, 0o755);
+	const runtime = new ComfyRuntime({
+		...paths,
+		platform: "darwin",
+		arch: "arm64",
+		terminationTimeoutMs: 100,
+	});
+	const start = runtime.start();
+	await vi.waitFor(() => access(startedMarker));
+	await vi.waitFor(() => access(activityMarker));
+
+	await runtime.stop();
+	await expect(start).rejects.toThrow(/abort/iu);
+	await expect(access(stoppingMarker)).resolves.toBeUndefined();
+	const activity = await readFile(activityMarker, "utf8");
+	await new Promise((resolve) => setTimeout(resolve, 50));
+	expect(await readFile(activityMarker, "utf8")).toBe(activity);
+	expect(runtime.getState()).toEqual({ status: "idle" });
+});
+
 test("starts a selected ComfyUI release from its own requirements", async () => {
 	const paths = await fixture();
 	const selected = await selectedBackend();

@@ -59,6 +59,7 @@ type CommandOptions = {
 	env: NodeJS.ProcessEnv;
 	onOutput: (text: string) => void;
 	signal?: AbortSignal;
+	terminationTimeoutMs?: number;
 };
 
 type RunCommand = (
@@ -378,6 +379,7 @@ export class ComfyRuntime {
 							output = `${output}${text}`.slice(-LOG_TAIL_LENGTH);
 						},
 						signal: controller.signal,
+						terminationTimeoutMs: this.terminationTimeoutMs,
 					},
 				);
 			} catch (error) {
@@ -820,6 +822,7 @@ export class ComfyRuntime {
 					env: commandEnvironment,
 					onOutput: (text) => this.recordOutput(text),
 					signal,
+					terminationTimeoutMs: this.terminationTimeoutMs,
 				},
 			);
 		}
@@ -880,6 +883,7 @@ export class ComfyRuntime {
 					reportDependencyProgress(text);
 				},
 				signal,
+				terminationTimeoutMs: this.terminationTimeoutMs,
 			},
 		);
 		if (managerVersion !== pinnedManagerVersion) {
@@ -902,6 +906,7 @@ export class ComfyRuntime {
 						reportDependencyProgress(text);
 					},
 					signal,
+					terminationTimeoutMs: this.terminationTimeoutMs,
 				},
 			);
 		}
@@ -925,6 +930,7 @@ export class ComfyRuntime {
 						env: commandEnvironment,
 						onOutput: (text) => this.recordOutput(text),
 						signal,
+						terminationTimeoutMs: this.terminationTimeoutMs,
 					},
 				);
 			}
@@ -2058,9 +2064,26 @@ function runCommand(
 	options: CommandOptions,
 ): Promise<void> {
 	return new Promise((resolve, reject) => {
-		const child = startProcess(command, args, options);
+		const child = spawn(command, args, {
+			cwd: options.cwd,
+			env: options.env,
+			// A separate process group lets cancellation include Git and package installer descendants.
+			detached: process.platform !== "win32",
+			stdio: ["ignore", "pipe", "pipe"],
+		});
 		let output = "";
 		let processError: Error | null = null;
+		let forceTimer: NodeJS.Timeout | undefined;
+		const abort = (): void => {
+			const reason = options.signal?.reason;
+			processError ??=
+				reason instanceof Error ? reason : new Error("Command was aborted.");
+			terminateCommandTree(child, "SIGTERM");
+			forceTimer = setTimeout(() => {
+				terminateCommandTree(child, "SIGKILL");
+			}, options.terminationTimeoutMs ?? 10_000);
+			forceTimer.unref();
+		};
 		const record = (text: string): void => {
 			output = `${output}${text}`.slice(-LOG_TAIL_LENGTH);
 			options.onOutput(text);
@@ -2072,14 +2095,45 @@ function runCommand(
 			record(chunk.toString());
 		});
 		child.once("error", (error) => {
-			processError = error;
+			processError ??= error;
 		});
 		child.once("close", (code, signal) => {
+			if (forceTimer !== undefined) clearTimeout(forceTimer);
+			options.signal?.removeEventListener("abort", abort);
 			if (processError !== null) reject(processError);
 			else if (code === 0) resolve();
 			else reject(new Error(exitMessage(basename(command), code, signal, output)));
 		});
+		if (options.signal?.aborted) abort();
+		else options.signal?.addEventListener("abort", abort, { once: true });
 	});
+}
+
+function terminateCommandTree(child: ChildProcess, signal: NodeJS.Signals): void {
+	const pid = child.pid;
+	if (pid === undefined) return;
+	if (process.platform !== "win32") {
+		try {
+			process.kill(-pid, signal);
+		} catch {
+			try {
+				child.kill(signal);
+			} catch {}
+		}
+		return;
+	}
+	const args = ["/PID", String(pid), "/T", ...(signal === "SIGKILL" ? ["/F"] : [])];
+	const killer = spawn("taskkill", args, { stdio: "ignore", windowsHide: true });
+	const fallback = (): void => {
+		try {
+			child.kill(signal);
+		} catch {}
+	};
+	killer.once("error", fallback);
+	killer.once("close", (code) => {
+		if (code !== 0) fallback();
+	});
+	killer.unref();
 }
 
 function exitMessage(
