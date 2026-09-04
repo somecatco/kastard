@@ -391,20 +391,21 @@ export class ComfyRuntime {
 			}
 			const installed = await this.listCustomNodes(controller.signal);
 			controller.signal.throwIfAborted();
-			const repositoryMatches = installed.filter(
+			const matches = installed.filter(
 				(node) =>
-					node.repository !== undefined &&
-					normalizeGitHubRepository(node.repository)?.id === repository.id,
+					!before.some((previous) => previous.name === node.name) &&
+					((node.repository !== undefined &&
+						normalizeGitHubRepository(node.repository)?.id === repository.id &&
+						(version === undefined ||
+							version === "nightly" ||
+							node.version === version)) ||
+						(managerId !== null &&
+							version !== undefined &&
+							version !== "nightly" &&
+							node.managerId === managerId &&
+							node.version === version)),
 			);
-			const newNodes = installed.filter(
-				(node) => !before.some((previous) => previous.name === node.name),
-			);
-			const node =
-				repositoryMatches.length === 1
-					? repositoryMatches[0]
-					: newNodes.length === 1
-						? newNodes[0]
-						: undefined;
+			const node = matches.length === 1 ? matches[0] : undefined;
 			if (node !== undefined) {
 				preserveNewEntries = true;
 				return { node, nodes: installed, restartRequired: true };

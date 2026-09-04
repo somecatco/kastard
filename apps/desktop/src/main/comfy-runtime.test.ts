@@ -1009,12 +1009,13 @@ test("moves only the matching incomplete Manager installation to Trash", async (
 	await runtime.stop();
 });
 
-test("keeps an unrelated directory created during a failed installation", async () => {
+test("rejects an unrelated directory reported after a failed installation", async () => {
 	const paths = await fixture();
 	const child = new FakeProcess();
 	const customNodes = join(paths.dataDirectory, "data", "custom_nodes");
 	const unrelatedNode = join(customNodes, "unrelated-node");
 	const trashItem = vi.fn(async () => undefined);
+	let installed = false;
 	const request = vi.fn(async (input: string | URL | Request): Promise<Response> => {
 		const url = new URL(input instanceof Request ? input.url : String(input));
 		if (
@@ -1023,7 +1024,11 @@ test("keeps an unrelated directory created during a failed installation", async 
 		) {
 			return new Response(null, { status: 200 });
 		}
-		if (url.pathname === "/v2/customnode/installed") return Response.json({});
+		if (url.pathname === "/v2/customnode/installed") {
+			return Response.json(
+				installed ? { "unrelated-node": { ver: "unknown", cnr_id: null } } : {},
+			);
+		}
 		return new Response(null, { status: 404 });
 	});
 	const runtime = new ComfyRuntime({
@@ -1036,6 +1041,7 @@ test("keeps an unrelated directory created during a failed installation", async 
 			await createManagedPython(args);
 			if (args[0] !== "-m" || args[1] !== "cm_cli") return;
 			await mkdir(unrelatedNode, { recursive: true });
+			installed = true;
 			throw new Error("python exited with code 1");
 		},
 		startProcess: () => child as unknown as ChildProcess,
