@@ -15,6 +15,11 @@ Kastard is a desktop app for editing ComfyUI workflows locally and running them 
   <img src="./assets/screenshots/screenshot-1.png" alt="Kastard screenshot" width="800">
 </p>
 
+## What you need
+
+- A Mac with Apple silicon
+- macOS 14 Sonoma or later
+
 ## Key features
 
 - Local ComfyUI workflow editing
