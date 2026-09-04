@@ -317,11 +317,14 @@ test("removes one unselected Worker custom node and preserves the selected targe
 			currentNode: removedNode.name,
 		},
 	});
+	const removalPlan = deferred<CustomNodeSyncPlan>();
+	const buildCustomNodeSyncPlan = vi
+		.fn()
+		.mockResolvedValueOnce({ ...target, unsupportedNodes: [] })
+		.mockReturnValueOnce(removalPlan.promise);
 	const { session } = createHarness(
 		{ readCustomNodes, removeCustomNode, pollMs: 1 },
-		{
-			buildCustomNodeSyncPlan: async () => ({ ...target, unsupportedNodes: [] }),
-		},
+		{ buildCustomNodeSyncPlan },
 	);
 	await initializeAndConnect(session);
 	await vi.waitFor(() =>
@@ -331,7 +334,11 @@ test("removes one unselected Worker custom node and preserves the selected targe
 		}),
 	);
 
-	expect(await session.removeCustomNode(removedNode)).toMatchObject({
+	const removal = session.removeCustomNode(removedNode);
+	await vi.waitFor(() => expect(buildCustomNodeSyncPlan).toHaveBeenCalledTimes(2));
+	expect(session.getState().customNodes).toEqual({ status: "loading" });
+	removalPlan.resolve({ ...target, unsupportedNodes: [] });
+	expect(await removal).toMatchObject({
 		ok: true,
 		state: { status: "syncing", operationKind: "remove", removalNode: removedNode },
 	});
@@ -537,6 +544,7 @@ test("does not publish a stale reinstall plan failure after disconnecting", asyn
 
 	const reinstall = session.reinstallCustomNode("comfyui-kjnodes");
 	await vi.waitFor(() => expect(buildCustomNodeSyncPlan).toHaveBeenCalledTimes(2));
+	expect(session.getState().customNodes).toEqual({ status: "loading" });
 	await session.disconnect();
 	rejectPlan(new Error("Could not read the Editor custom node target."));
 

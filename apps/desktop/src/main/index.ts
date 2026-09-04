@@ -146,6 +146,7 @@ let themeSettingsError: string | null = null;
 let syncCompletionNotificationSettingsError: string | null = null;
 let customNodeSyncError: string | null = null;
 let customNodeMutationActive = false;
+let comfyVersionMutationCount = 0;
 const ipcHandlers = new IpcHandlerRegistry(ipcMain);
 
 function enqueueComfyRuntimeRestart(): Promise<string | null> {
@@ -749,7 +750,17 @@ app.whenReady().then(async () => {
 		}
 		try {
 			assertCustomNodeMutationInactive();
-			return { ok: true, state: await comfyVersions.select(request) };
+			comfyVersionMutationCount += 1;
+			try {
+				const restartBeforeSelection = comfyRestartQueue;
+				const state = await comfyVersions.select(request);
+				if (comfyRestartQueue !== restartBeforeSelection) {
+					await comfyRestartQueue.catch(() => undefined);
+				}
+				return { ok: true, state };
+			} finally {
+				comfyVersionMutationCount -= 1;
+			}
 		} catch (error) {
 			return { ok: false, error: errorMessage(error) };
 		}
@@ -807,6 +818,12 @@ app.whenReady().then(async () => {
 		}
 		if (customNodeMutationActive) {
 			return { ok: false, error: "Another custom-node change is in progress." };
+		}
+		if (comfyVersionMutationCount > 0) {
+			return {
+				ok: false,
+				error: "Custom nodes cannot be installed during a ComfyUI version change.",
+			};
 		}
 		if (customNodeSyncError) return { ok: false, error: customNodeSyncError };
 		const runtime = comfyRuntime;
@@ -883,6 +900,12 @@ app.whenReady().then(async () => {
 		}
 		if (customNodeMutationActive) {
 			return { ok: false, error: "Another custom-node change is in progress." };
+		}
+		if (comfyVersionMutationCount > 0) {
+			return {
+				ok: false,
+				error: "Custom nodes cannot be removed during a ComfyUI version change.",
+			};
 		}
 		if (customNodeSyncError) return { ok: false, error: customNodeSyncError };
 		const runtime = comfyRuntime;
