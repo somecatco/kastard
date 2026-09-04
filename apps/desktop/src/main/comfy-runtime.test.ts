@@ -769,7 +769,7 @@ test("resolves registered versions by exact GitHub repository", async () => {
 		versions: ["1.2.3", "1.2.2"],
 	});
 	const searchUrl = new URL(String(request.mock.calls[0]?.[0]));
-	expect(searchUrl.searchParams.get("search")).toBe("registered-node");
+	expect(searchUrl.searchParams.get("repository_url_search")).toBe(repository);
 	const versionsUrl = new URL(String(request.mock.calls[1]?.[0]));
 	expect(versionsUrl.searchParams.getAll("statuses")).toEqual([
 		"NodeVersionStatusActive",
@@ -1098,6 +1098,96 @@ test("cancels an active custom-node installation when ComfyUI stops", async () =
 	await runtime.stop();
 	await expect(installation).rejects.toThrow("Custom-node installation was canceled.");
 	expect(child.signalCode).toBe("SIGTERM");
+});
+
+test("times out an unresponsive Manager inventory during installation", async () => {
+	const paths = await fixture();
+	const child = new FakeProcess();
+	const request = vi.fn(
+		async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+			const url = new URL(input instanceof Request ? input.url : String(input));
+			if (
+				url.pathname === "/system_stats" ||
+				url.pathname === "/api/settings/Comfy.Workflow.NamedValuesRestore"
+			) {
+				return new Response(null, { status: 200 });
+			}
+			if (url.pathname === "/v2/customnode/installed") {
+				return new Promise<Response>((_resolve, reject) => {
+					init?.signal?.addEventListener("abort", () => reject(new Error("aborted")), {
+						once: true,
+					});
+				});
+			}
+			return new Response(null, { status: 404 });
+		},
+	);
+	const runtime = new ComfyRuntime({
+		...paths,
+		platform: "darwin",
+		arch: "arm64",
+		allocatePort: async () => 18_204,
+		customNodeInventoryTimeoutMs: 5,
+		fetch: request as typeof fetch,
+		runCommand: async (_command, args) => createManagedPython(args),
+		startProcess: () => child as unknown as ChildProcess,
+		retryMs: 1,
+	});
+	await runtime.start();
+
+	await expect(
+		runtime.installCustomNode("https://github.com/owner/timeout-node.git"),
+	).rejects.toThrow(
+		"ComfyUI Manager did not return the custom-node inventory in time.",
+	);
+	await runtime.stop();
+});
+
+test("cancels an unresponsive Manager inventory when ComfyUI stops", async () => {
+	const paths = await fixture();
+	const child = new FakeProcess();
+	let inventoryStarted: (() => void) | undefined;
+	const started = new Promise<void>((resolve) => {
+		inventoryStarted = resolve;
+	});
+	const request = vi.fn(
+		async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+			const url = new URL(input instanceof Request ? input.url : String(input));
+			if (
+				url.pathname === "/system_stats" ||
+				url.pathname === "/api/settings/Comfy.Workflow.NamedValuesRestore"
+			) {
+				return new Response(null, { status: 200 });
+			}
+			if (url.pathname === "/v2/customnode/installed") {
+				inventoryStarted?.();
+				return new Promise<Response>((_resolve, reject) => {
+					init?.signal?.addEventListener("abort", () => reject(new Error("aborted")), {
+						once: true,
+					});
+				});
+			}
+			return new Response(null, { status: 404 });
+		},
+	);
+	const runtime = new ComfyRuntime({
+		...paths,
+		platform: "darwin",
+		arch: "arm64",
+		allocatePort: async () => 18_204,
+		fetch: request as typeof fetch,
+		runCommand: async (_command, args) => createManagedPython(args),
+		startProcess: () => child as unknown as ChildProcess,
+		retryMs: 1,
+	});
+	await runtime.start();
+
+	const installation = runtime.installCustomNode(
+		"https://github.com/owner/canceled-node.git",
+	);
+	await started;
+	await runtime.stop();
+	await expect(installation).rejects.toThrow("Custom-node installation was canceled.");
 });
 
 test("cancels a Registry version lookup when ComfyUI stops", async () => {

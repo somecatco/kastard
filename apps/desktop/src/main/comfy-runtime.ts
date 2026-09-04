@@ -95,6 +95,7 @@ type RuntimeOptions = {
 	startupTimeoutMs?: number;
 	retryMs?: number;
 	terminationTimeoutMs?: number;
+	customNodeInventoryTimeoutMs?: number;
 	getModels?: () => readonly ModelLibraryEntry[];
 	/** Resolves the selected ComfyUI release, installing it when needed, or `null` for the bundled one. */
 	resolveBackend?: () => Promise<Omit<BackendSource, "dependencyLock"> | null>;
@@ -112,6 +113,7 @@ const LOG_TAIL_LENGTH = 12_000;
 const FRONTEND_SETTINGS_TIMEOUT_MS = 5_000;
 const MANAGER_OPERATION_TIMEOUT_MS = 120_000;
 const MANAGER_OPERATION_POLL_MS = 250;
+const CUSTOM_NODE_INVENTORY_TIMEOUT_MS = 10_000;
 const REGISTRY_REQUEST_TIMEOUT_MS = 10_000;
 const CUSTOM_NODE_INSTALL_TIMEOUT_MS = 15 * 60 * 1_000;
 const NAMED_VALUES_SETTING = "Comfy.Workflow.NamedValuesRestore";
@@ -144,6 +146,7 @@ export class ComfyRuntime {
 	private readonly startupTimeoutMs: number;
 	private readonly retryMs: number;
 	private readonly terminationTimeoutMs: number;
+	private readonly customNodeInventoryTimeoutMs: number;
 	private startPromise: Promise<string> | null = null;
 	private prepareController: AbortController | null = null;
 	private process: ChildProcess | null = null;
@@ -165,6 +168,8 @@ export class ComfyRuntime {
 		this.startupTimeoutMs = options.startupTimeoutMs ?? 180_000;
 		this.retryMs = options.retryMs ?? 250;
 		this.terminationTimeoutMs = options.terminationTimeoutMs ?? 10_000;
+		this.customNodeInventoryTimeoutMs =
+			options.customNodeInventoryTimeoutMs ?? CUSTOM_NODE_INVENTORY_TIMEOUT_MS;
 	}
 
 	getState(): ComfyRuntimeState {
@@ -194,15 +199,29 @@ export class ComfyRuntime {
 		return pending;
 	}
 
-	async listCustomNodes(): Promise<InstalledCustomNode[]> {
+	async listCustomNodes(signal?: AbortSignal): Promise<InstalledCustomNode[]> {
 		const directory = join(this.options.dataDirectory, "data", "custom_nodes");
 		const url = this.getUrl();
 		if (url === null) {
 			return localInstalledCustomNodes(directory);
 		}
-		const response = await this.requestFetch(
-			new URL("v2/customnode/installed?mode=default", url),
-		);
+		const timeout = AbortSignal.timeout(this.customNodeInventoryTimeoutMs);
+		const requestSignal =
+			signal === undefined ? timeout : AbortSignal.any([signal, timeout]);
+		let response: Response;
+		try {
+			response = await this.requestFetch(
+				new URL("v2/customnode/installed?mode=default", url),
+				{ signal: requestSignal },
+			);
+		} catch (error) {
+			if (timeout.aborted && !signal?.aborted) {
+				throw new Error(
+					"ComfyUI Manager did not return the custom-node inventory in time.",
+				);
+			}
+			throw error;
+		}
 		if (!response.ok) {
 			throw new Error(`ComfyUI Manager returned HTTP ${response.status}.`);
 		}
@@ -262,7 +281,15 @@ export class ComfyRuntime {
 		version: string | undefined,
 		controller: AbortController,
 	): Promise<CustomNodeInstallOutcome> {
-		const before = await this.listCustomNodes();
+		let before: InstalledCustomNode[];
+		try {
+			before = await this.listCustomNodes(controller.signal);
+		} catch (error) {
+			if (controller.signal.aborted) {
+				throw new Error("Custom-node installation was canceled.");
+			}
+			throw error;
+		}
 		const existing = before.find(
 			(node) =>
 				node.repository !== undefined &&
@@ -361,7 +388,7 @@ export class ComfyRuntime {
 			if (commandError === undefined && failures.length === 0) {
 				preserveNewEntries = true;
 			}
-			const installed = await this.listCustomNodes();
+			const installed = await this.listCustomNodes(controller.signal);
 			controller.signal.throwIfAborted();
 			const repositoryMatches = installed.filter(
 				(node) =>
@@ -440,7 +467,7 @@ export class ComfyRuntime {
 			"nodes/search",
 			`${apiUrl.toString().replace(/\/$/u, "")}/`,
 		);
-		searchUrl.searchParams.set("search", normalized.id.split("/")[1] ?? normalized.id);
+		searchUrl.searchParams.set("repository_url_search", normalized.url);
 		searchUrl.searchParams.set("limit", "64");
 		searchUrl.searchParams.set("page", "1");
 		const searchResponse = await this.fetchRegistry(searchUrl, signal);
