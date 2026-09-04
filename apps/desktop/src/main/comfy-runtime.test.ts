@@ -899,7 +899,7 @@ test.each([
 	},
 );
 
-test("reports a dependency failure without trashing the installed custom node", async () => {
+test("retains an early dependency failure without trashing the installed custom node", async () => {
 	const paths = await fixture();
 	const child = new FakeProcess();
 	const repository = "https://github.com/owner/registered-node.git";
@@ -938,7 +938,7 @@ test("reports a dependency failure without trashing the installed custom node", 
 			options.onOutput(
 				"[ComfyUI-Manager] Installation failed:\nFailed to execute install script: registered-node@1.2.3\nERROR: An error occurred while installing registered-node\n",
 			);
-			throw new Error("python exited with code 1. Full dependency traceback.");
+			options.onOutput("x".repeat(20_000));
 		},
 		startProcess: () => child as unknown as ChildProcess,
 		retryMs: 1,
@@ -947,7 +947,7 @@ test("reports a dependency failure without trashing the installed custom node", 
 	await runtime.start();
 
 	await expect(runtime.installCustomNode(repository)).rejects.toThrow(
-		"ComfyUI Manager reported installation errors.",
+		"ComfyUI Manager reported installation errors. ERROR: An error occurred while installing registered-node",
 	);
 	expect(trashItem).not.toHaveBeenCalled();
 	await expect(access(installedNode)).resolves.toBeUndefined();

@@ -340,6 +340,7 @@ export class ComfyRuntime {
 		]);
 		const initialEntries = await customNodeEntryNames(customNodesDirectory);
 		let output = "";
+		const failures: string[] = [];
 		let timedOut = false;
 		let preserveNewEntries = false;
 		const timeout = setTimeout(() => {
@@ -375,7 +376,12 @@ export class ComfyRuntime {
 							this.platform,
 						),
 						onOutput: (text) => {
-							output = `${output}${text}`.slice(-LOG_TAIL_LENGTH);
+							const nextOutput = `${output}${text}`;
+							for (const failure of managerCommandFailureLines(nextOutput)) {
+								if (failures.length >= 3) break;
+								if (!failures.includes(failure)) failures.push(failure);
+							}
+							output = nextOutput.slice(-LOG_TAIL_LENGTH);
 						},
 						signal: controller.signal,
 						terminationTimeoutMs: this.terminationTimeoutMs,
@@ -385,7 +391,6 @@ export class ComfyRuntime {
 				commandError = error;
 			}
 			controller.signal.throwIfAborted();
-			const failures = managerCommandFailureLines(output);
 			if (commandError === undefined && failures.length === 0) {
 				preserveNewEntries = true;
 			}
