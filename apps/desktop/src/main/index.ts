@@ -869,7 +869,7 @@ app.whenReady().then(async () => {
 		} finally {
 			customNodeMutationActive = false;
 		}
-		if (response.ok) workerSession?.refreshEditorCustomNodeTarget();
+		workerSession?.refreshEditorCustomNodeTarget();
 		return response;
 	});
 	ipcHandlers.handle(CUSTOM_NODES_UPDATE_CHANNEL, async (_event, request: unknown) => {

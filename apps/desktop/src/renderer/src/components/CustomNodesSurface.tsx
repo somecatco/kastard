@@ -238,6 +238,11 @@ export function CustomNodesSurface({
 			);
 			if (!result.ok) {
 				setInstallError(result.error);
+				const refreshed = await window.kastard.customNodes.list().catch(() => null);
+				if (refreshed?.ok) {
+					for (const node of refreshed.nodes) confirmNodeSync(node.name, node.sync);
+					setState({ status: "ready", nodes: refreshed.nodes, message: null });
+				}
 				return;
 			}
 			for (const node of result.nodes) confirmNodeSync(node.name, node.sync);

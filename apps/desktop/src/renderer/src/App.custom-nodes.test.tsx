@@ -327,18 +327,27 @@ test("ignores Registry options resolved for an older repository input", async ()
 	expect(screen.queryByRole("combobox", { name: "Version" })).not.toBeInTheDocument();
 });
 
-test("keeps the custom-node list and install form when Manager fails", async () => {
-	vi.mocked(window.kastard.customNodes.list).mockResolvedValue({
-		ok: true,
-		nodes: [
-			{
-				name: "existing-node",
-				version: "1.0.0",
-				managerId: "existing-node",
-				sync: true,
-			},
-		],
-	});
+test("refreshes the custom-node list while keeping the install form after failure", async () => {
+	const existingNode = {
+		name: "existing-node",
+		version: "1.0.0",
+		managerId: "existing-node",
+		sync: true,
+	};
+	vi.mocked(window.kastard.customNodes.list)
+		.mockResolvedValueOnce({ ok: true, nodes: [existingNode] })
+		.mockResolvedValueOnce({
+			ok: true,
+			nodes: [
+				existingNode,
+				{
+					name: "failing-node",
+					version: "1.0.0",
+					managerId: "failing-node",
+					sync: true,
+				},
+			],
+		});
 	vi.mocked(window.kastard.customNodes.install).mockResolvedValue({
 		ok: false,
 		error: "ComfyUI Manager could not install the custom node.",
@@ -365,6 +374,8 @@ test("keeps the custom-node list and install form when Manager fails", async () 
 	);
 	expect(screen.getByRole("dialog", { name: "Add Custom Node" })).toBeVisible();
 	expect(screen.getByText("existing-node")).toBeVisible();
+	expect(await screen.findByText("failing-node")).toBeVisible();
+	expect(window.kastard.customNodes.list).toHaveBeenCalledTimes(2);
 	expect(window.kastard.customNodes.install).toHaveBeenCalledWith({
 		repository: "https://github.com/owner/failing-node.git",
 	});
