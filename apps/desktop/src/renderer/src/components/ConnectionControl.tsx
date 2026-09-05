@@ -13,6 +13,7 @@ import {
 import {
 	createContext,
 	type ReactNode,
+	useCallback,
 	useContext,
 	useEffect,
 	useEffectEvent,
@@ -46,6 +47,7 @@ import { workerComputeLabel } from "@/lib/worker-runtime";
 import type {
 	BackendVerification,
 	CollectionVerification,
+	ConnectionRequest,
 	ConnectionResult,
 	ConnectionSettings as ConnectionSettingsValue,
 	ConnectionState,
@@ -83,6 +85,10 @@ type ConnectionController = {
 	syncAfterConnect: boolean;
 	systemMetricsEnabled: boolean;
 	settingsLoading: boolean;
+	settingsReady: boolean;
+	settingsLoadError: string | null;
+	reloadSettings: () => Promise<void>;
+	pendingSettingsFields: ReadonlySet<keyof ConnectionSettingsValue>;
 	settingsError: string | null;
 	systemMetricsError: string | null;
 	setupState: WorkerSetupState;
@@ -155,6 +161,15 @@ export function ConnectionProvider({
 	const [systemMetricsEnabled, setSystemMetricsEnabled] = useState(true);
 	const [connectSyncAfterConnect, setConnectSyncAfterConnect] = useState(true);
 	const [settingsLoading, setSettingsLoading] = useState(true);
+	const [settingsReady, setSettingsReady] = useState(false);
+	const [settingsLoadError, setSettingsLoadError] = useState<string | null>(null);
+	const settingsReadVersion = useRef(0);
+	const settingsChanges = useRef<
+		Array<{ field: keyof ConnectionSettingsValue; value: boolean }>
+	>([]);
+	const [pendingSettingsFields, setPendingSettingsFields] = useState<
+		ReadonlySet<keyof ConnectionSettingsValue>
+	>(new Set());
 	const [settingsError, setSettingsError] = useState<string | null>(null);
 	const [systemMetricsError, setSystemMetricsError] = useState<string | null>(null);
 	const { confirm: confirmSettings, enqueue: enqueueSettings } =
@@ -165,7 +180,6 @@ export function ConnectionProvider({
 		syncAfterConnect: true,
 		systemMetricsEnabled: true,
 	});
-	const settingsUpdateTailRef = useRef<Promise<boolean>>(Promise.resolve(true));
 	const [backendAction, setBackendAction] = useState(false);
 	const [backendError, setBackendError] = useState<string | null>(null);
 	const [comfyRestartAction, setComfyRestartAction] = useState(false);
@@ -232,30 +246,35 @@ export function ConnectionProvider({
 		}
 	});
 
-	useEffect(() => {
-		let active = true;
-		void window.kastard.connection
-			.getSettings()
-			.then((result) => {
-				if (!active) return;
-				if (result.ok) {
-					confirmedSettingsRef.current = result.settings;
-					confirmSettings("settings", result.settings);
-					setSyncAfterConnect(result.settings.syncAfterConnect);
-					setSystemMetricsEnabled(result.settings.systemMetricsEnabled);
-					setConnectSyncAfterConnect(result.settings.syncAfterConnect);
-				} else setSettingsError(result.error);
-			})
-			.catch((error: unknown) => {
-				if (active) setSettingsError(errorMessage(error));
-			})
-			.finally(() => {
-				if (active) setSettingsLoading(false);
-			});
-		return () => {
-			active = false;
-		};
+	const reloadSettings = useCallback(async () => {
+		if (settingsChanges.current.length > 0) return;
+		const request = ++settingsReadVersion.current;
+		setSettingsLoading(true);
+		setSettingsLoadError(null);
+		try {
+			const result = await window.kastard.connection.getSettings();
+			if (request !== settingsReadVersion.current) return;
+			if (result.ok) {
+				confirmedSettingsRef.current = result.settings;
+				confirmSettings("settings", result.settings);
+				setSyncAfterConnect(result.settings.syncAfterConnect);
+				setSystemMetricsEnabled(result.settings.systemMetricsEnabled);
+				setConnectSyncAfterConnect(result.settings.syncAfterConnect);
+				setSettingsReady(true);
+			} else setSettingsLoadError(result.error);
+		} catch (error) {
+			if (request === settingsReadVersion.current)
+				setSettingsLoadError(errorMessage(error));
+		} finally {
+			if (request === settingsReadVersion.current) setSettingsLoading(false);
+		}
 	}, [confirmSettings]);
+	useEffect(() => {
+		void reloadSettings();
+		return () => {
+			++settingsReadVersion.current;
+		};
+	}, [reloadSettings]);
 
 	useEffect(() => {
 		if (state.status === "connected") {
@@ -474,61 +493,90 @@ export function ConnectionProvider({
 		}
 	};
 
+	const displaySettings = (): void => {
+		const visible = { ...confirmedSettingsRef.current };
+		for (const change of settingsChanges.current) visible[change.field] = change.value;
+		setSyncAfterConnect(visible.syncAfterConnect);
+		setSystemMetricsEnabled(visible.systemMetricsEnabled);
+		setPendingSettingsFields(
+			new Set(settingsChanges.current.map(({ field }) => field)),
+		);
+	};
 	const updateConnectionSettings = (
-		nextSettings: ConnectionSettingsValue,
-		errorTarget: "syncAfterConnect" | "systemMetrics",
+		field: keyof ConnectionSettingsValue,
+		value: boolean,
 	): Promise<boolean> => {
-		const previousValue = { syncAfterConnect, systemMetricsEnabled };
-		setSyncAfterConnect(nextSettings.syncAfterConnect);
-		setSystemMetricsEnabled(nextSettings.systemMetricsEnabled);
-		if (errorTarget === "syncAfterConnect") setSettingsError(null);
-		else setSystemMetricsError(null);
-		const update = enqueueSettings({
+		if (!settingsReady) return Promise.resolve(false);
+		++settingsReadVersion.current;
+		setSettingsLoading(false);
+		const change = { field, value };
+		settingsChanges.current.push(change);
+		displaySettings();
+		const setFieldError =
+			field === "syncAfterConnect" ? setSettingsError : setSystemMetricsError;
+		setFieldError(null);
+		const settle = (confirmed: ConnectionSettingsValue, error: string | null): void => {
+			confirmedSettingsRef.current = confirmed;
+			settingsChanges.current = settingsChanges.current.filter(
+				(pending) => pending !== change,
+			);
+			if (!settingsChanges.current.some((pending) => pending.field === field))
+				setFieldError(error);
+			displaySettings();
+		};
+		return enqueueSettings({
 			key: "settings",
-			previousValue,
+			previousValue: confirmedSettingsRef.current,
 			formatError: errorMessage,
 			save: async () => {
-				const result = await window.kastard.connection.updateSettings(nextSettings);
+				const result = await window.kastard.connection.updateSettings({
+					...confirmedSettingsRef.current,
+					[field]: value,
+				});
 				return result.ok
-					? {
-							ok: true,
-							value: result.settings,
-							data: undefined,
-						}
+					? { ok: true, value: result.settings, data: undefined }
 					: result;
 			},
-			onSuccess: (_data, { confirmed, latest }) => {
-				confirmedSettingsRef.current = confirmed;
-				if (latest) {
-					setSyncAfterConnect(confirmed.syncAfterConnect);
-					setSystemMetricsEnabled(confirmed.systemMetricsEnabled);
-					setSettingsError(null);
-					setSystemMetricsError(null);
-				}
-			},
-			onError: (error, { confirmed, latest }) => {
-				if (!latest) return;
-				setSyncAfterConnect(confirmed.syncAfterConnect);
-				setSystemMetricsEnabled(confirmed.systemMetricsEnabled);
-				if (errorTarget === "syncAfterConnect") setSettingsError(error);
-				else setSystemMetricsError(error);
-			},
+			onSuccess: (_, { confirmed }) => settle(confirmed, null),
+			onError: (error, { confirmed }) => settle(confirmed, error),
 		});
-		settingsUpdateTailRef.current = update;
-		return update;
 	};
-
 	const updateSyncAfterConnect = (value: boolean): Promise<boolean> =>
-		updateConnectionSettings(
-			{ syncAfterConnect: value, systemMetricsEnabled },
-			"syncAfterConnect",
-		);
-
+		updateConnectionSettings("syncAfterConnect", value);
 	const updateSystemMetricsEnabled = (value: boolean): Promise<boolean> =>
-		updateConnectionSettings(
-			{ syncAfterConnect, systemMetricsEnabled: value },
-			"systemMetrics",
-		);
+		updateConnectionSettings("systemMetricsEnabled", value);
+
+	const connect = (request: ConnectionRequest): Promise<ConnectionResult> => {
+		++settingsReadVersion.current;
+		return new Promise((resolve) => {
+			void enqueueSettings({
+				key: "settings",
+				previousValue: confirmedSettingsRef.current,
+				formatError: errorMessage,
+				save: async () => {
+					const result = await window.kastard.workerSession.connect(request);
+					return result.ok
+						? {
+								ok: true,
+								value: {
+									...confirmedSettingsRef.current,
+									syncAfterConnect: request.syncAfterConnect,
+								},
+								data: result,
+							}
+						: result;
+				},
+				onSuccess: (result, { confirmed }) => {
+					confirmedSettingsRef.current = confirmed;
+					setSettingsLoading(false);
+					setSettingsReady(true);
+					displaySettings();
+					resolve(result);
+				},
+				onError: (error) => resolve({ ok: false, error }),
+			});
+		});
+	};
 
 	const controller: ConnectionController = {
 		state,
@@ -537,6 +585,10 @@ export function ConnectionProvider({
 		syncAfterConnect,
 		systemMetricsEnabled,
 		settingsLoading,
+		settingsReady,
+		settingsLoadError,
+		reloadSettings,
+		pendingSettingsFields,
 		settingsError,
 		systemMetricsError,
 		setupState,
@@ -645,22 +697,12 @@ export function ConnectionProvider({
 								? null
 								: state.workerAddress
 					}
-					initialSyncAfterConnect={connectSyncAfterConnect}
+					initialSyncAfterConnect={settingsReady ? connectSyncAfterConnect : null}
 					defaultWorkerAddress={DEFAULT_WORKER_ADDRESS}
 					settingsLoading={settingsLoading}
-					onConnect={async (request) => {
-						await settingsUpdateTailRef.current;
-						return window.kastard.workerSession.connect(request);
-					}}
-					onConnected={(nextSyncAfterConnect) => {
-						const confirmed = {
-							...confirmedSettingsRef.current,
-							syncAfterConnect: nextSyncAfterConnect,
-						};
-						confirmedSettingsRef.current = confirmed;
-						confirmSettings("settings", confirmed);
-						setSyncAfterConnect(nextSyncAfterConnect);
-					}}
+					settingsError={settingsLoadError}
+					onRetrySettings={reloadSettings}
+					onConnect={connect}
 					onOpenChange={setOpen}
 				/>
 			) : null}
@@ -680,6 +722,10 @@ export function useConnectionSettings(): Pick<
 	ConnectionController,
 	| "syncAfterConnect"
 	| "systemMetricsEnabled"
+	| "settingsReady"
+	| "settingsLoadError"
+	| "reloadSettings"
+	| "pendingSettingsFields"
 	| "settingsLoading"
 	| "settingsError"
 	| "systemMetricsError"
@@ -691,6 +737,10 @@ export function useConnectionSettings(): Pick<
 		syncAfterConnect: controller.syncAfterConnect,
 		systemMetricsEnabled: controller.systemMetricsEnabled,
 		settingsLoading: controller.settingsLoading,
+		settingsReady: controller.settingsReady,
+		settingsLoadError: controller.settingsLoadError,
+		reloadSettings: controller.reloadSettings,
+		pendingSettingsFields: controller.pendingSettingsFields,
 		settingsError: controller.settingsError,
 		systemMetricsError: controller.systemMetricsError,
 		updateSyncAfterConnect: controller.updateSyncAfterConnect,

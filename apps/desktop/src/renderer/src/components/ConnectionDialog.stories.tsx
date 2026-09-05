@@ -28,7 +28,6 @@ function ConnectionDialogStory({
 					initialWorkerAddress={initialWorkerAddress}
 					initialSyncAfterConnect={initialSyncAfterConnect}
 					onConnect={async () => ({ ok: true })}
-					onConnected={() => undefined}
 					onOpenChange={setOpen}
 				/>
 			) : null}

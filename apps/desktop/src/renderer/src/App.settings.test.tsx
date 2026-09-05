@@ -469,7 +469,7 @@ test("loads and saves sync completion notification settings", async () => {
 	render(<App />);
 	fireEvent.click(screen.getByRole("button", { name: "Settings" }));
 
-	const notification = screen.getByRole("switch", {
+	const notification = await screen.findByRole("switch", {
 		name: /^Worker setup complete/,
 	});
 	await waitFor(() => expect(notification).toBeEnabled());
@@ -501,7 +501,7 @@ test("keeps rapid notification selections optimistic while saving in order", asy
 	render(<App />);
 	fireEvent.click(screen.getByRole("button", { name: "Settings" }));
 
-	const notification = screen.getByRole("switch", {
+	const notification = await screen.findByRole("switch", {
 		name: /^Worker setup complete/,
 	});
 	await waitFor(() => expect(notification).toBeEnabled());
@@ -537,33 +537,28 @@ test("keeps rapid notification selections optimistic while saving in order", asy
 	expect(second.enabled).toBe(true);
 });
 
-test("shows sync completion notifications disabled after a load error and recovers", async () => {
+test("retries unavailable notification settings before displaying the saved value", async () => {
 	vi.mocked(
 		window.kastard.syncCompletionNotification.getSettings,
 	).mockResolvedValueOnce({
 		ok: false,
-		error: "The saved sync completion notification settings are invalid.",
+		error: "The saved notification settings are unavailable.",
 	});
 	render(<App />);
 	fireEvent.click(screen.getByRole("button", { name: "Settings" }));
-
-	const notification = screen.getByRole("switch", {
-		name: /^Worker setup complete/,
-	});
-	await waitFor(() => expect(notification).toBeEnabled());
-	expect(notification).not.toBeChecked();
-	expect(screen.getByRole("alert")).toHaveTextContent(
-		"The saved sync completion notification settings are invalid.",
+	const region = screen.getByRole("region", { name: "Notification settings" });
+	expect(await within(region).findByRole("alert")).toHaveTextContent(
+		"The saved notification settings are unavailable.",
 	);
-
-	fireEvent.click(notification);
-
-	await waitFor(() =>
-		expect(
-			window.kastard.syncCompletionNotification.updateSettings,
-		).toHaveBeenCalledWith({ enabled: true }),
+	fireEvent.click(
+		within(region).getByRole("button", { name: "Retry notification settings" }),
 	);
-	expect(notification).toBeChecked();
+	expect(
+		await within(region).findByRole("switch", { name: /^Worker setup complete/ }),
+	).toBeChecked();
+	expect(window.kastard.syncCompletionNotification.getSettings).toHaveBeenCalledTimes(
+		2,
+	);
 });
 
 test("keeps sync completion notifications enabled when saving fails", async () => {
@@ -576,7 +571,7 @@ test("keeps sync completion notifications enabled when saving fails", async () =
 	render(<App />);
 	fireEvent.click(screen.getByRole("button", { name: "Settings" }));
 
-	const notification = screen.getByRole("switch", {
+	const notification = await screen.findByRole("switch", {
 		name: /^Worker setup complete/,
 	});
 	await waitFor(() => expect(notification).toBeEnabled());
@@ -588,7 +583,7 @@ test("keeps sync completion notifications enabled when saving fails", async () =
 	expect(notification).toBeChecked();
 });
 
-test("keeps the General section open while notification settings are saving", async () => {
+test("keeps notification changes across section navigation while saving", async () => {
 	let finishUpdate = (): void => undefined;
 	vi.mocked(
 		window.kastard.syncCompletionNotification.updateSettings,
@@ -601,7 +596,7 @@ test("keeps the General section open while notification settings are saving", as
 	render(<App />);
 
 	fireEvent.click(screen.getByRole("button", { name: "Settings" }));
-	const notification = screen.getByRole("switch", {
+	const notification = await screen.findByRole("switch", {
 		name: /^Worker setup complete/,
 	});
 	await waitFor(() => expect(notification).toBeEnabled());
@@ -612,15 +607,19 @@ test("keeps the General section open while notification settings are saving", as
 	const comfySection = within(
 		screen.getByRole("navigation", { name: "Settings sections" }),
 	).getByRole("button", { name: "ComfyUI" });
-	await waitFor(() => expect(comfySection).toHaveAttribute("aria-disabled", "true"));
-	expect(comfySection).toBeEnabled();
-	fireEvent.click(comfySection);
-	expect(screen.getByRole("heading", { name: "General" })).toBeVisible();
-
-	await act(async () => finishUpdate());
-	await waitFor(() => expect(comfySection).not.toHaveAttribute("aria-disabled"));
 	fireEvent.click(comfySection);
 	expect(screen.getByRole("heading", { name: "ComfyUI" })).toBeVisible();
+	await waitFor(() =>
+		expect(
+			window.kastard.syncCompletionNotification.updateSettings,
+		).toHaveBeenCalledOnce(),
+	);
+	await act(async () => finishUpdate());
+	openSettingsSection("General");
+	expect(
+		screen.getByRole("switch", { name: /^Worker setup complete/ }),
+	).not.toBeChecked();
+	expect(window.kastard.syncCompletionNotification.getSettings).toHaveBeenCalledOnce();
 });
 
 test("saves and removes each model provider token without reading it back", async () => {
@@ -798,40 +797,6 @@ test("keeps a configured token editor open when replacement fails", async () => 
 	);
 });
 
-test("keeps the model provider section open while a token update is pending", async () => {
-	let finishUpdate = (): void => undefined;
-	vi.mocked(window.kastard.modelProviders.updateToken).mockImplementationOnce(
-		() =>
-			new Promise((resolve) => {
-				finishUpdate = () =>
-					resolve({
-						ok: true,
-						configured: { huggingface: true, civitai: false },
-					});
-			}),
-	);
-	render(<App />);
-
-	fireEvent.click(screen.getByRole("button", { name: "Settings" }));
-	openSettingsSection("Model Providers");
-	const huggingFaceToken = await screen.findByLabelText("Hugging Face token");
-	fireEvent.change(huggingFaceToken, { target: { value: "hf_example-token" } });
-	fireEvent.click(screen.getByRole("button", { name: "Save Hugging Face token" }));
-
-	const generalSection = within(
-		screen.getByRole("navigation", { name: "Settings sections" }),
-	).getByRole("button", { name: "General" });
-	await waitFor(() => expect(generalSection).toHaveAttribute("aria-disabled", "true"));
-	expect(generalSection).toBeEnabled();
-	fireEvent.click(generalSection);
-	expect(screen.getByRole("heading", { name: "Model Providers" })).toBeVisible();
-
-	await act(async () => finishUpdate());
-	await waitFor(() => expect(generalSection).not.toHaveAttribute("aria-disabled"));
-	fireEvent.click(generalSection);
-	expect(screen.getByRole("heading", { name: "General" })).toBeVisible();
-});
-
 test("shows a model-provider load error for the whole section", async () => {
 	vi.mocked(window.kastard.modelProviders.getSettings).mockResolvedValueOnce({
 		ok: false,
@@ -851,6 +816,127 @@ test("shows a model-provider load error for the whole section", async () => {
 	expect(screen.getByRole("alert")).toHaveClass("select-text");
 	expect(screen.getByRole("alert")).toHaveAttribute("aria-atomic", "true");
 	expect(screen.getAllByText("Unavailable")).toHaveLength(2);
+	expect(
+		screen.getByRole("button", { name: "Retry Hugging Face settings" }),
+	).toBeEnabled();
+	expect(screen.getByRole("button", { name: "Retry CivitAI settings" })).toBeEnabled();
+});
+
+test("shows loading controls until saved settings arrive and reuses them after leaving Settings", async () => {
+	let finishLoad!: (result: SyncCompletionNotificationSettingsResult) => void;
+	vi.mocked(window.kastard.syncCompletionNotification.getSettings).mockReturnValueOnce(
+		new Promise((resolve) => {
+			finishLoad = resolve;
+		}),
+	);
+	render(<App />);
+	fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+	const region = screen.getByRole("region", { name: "Notification settings" });
+	expect(within(region).getByRole("status")).toHaveTextContent("Loading…");
+	expect(within(region).queryByRole("switch")).not.toBeInTheDocument();
+	await act(async () => finishLoad({ ok: true, settings: { enabled: false } }));
+	fireEvent.click(
+		within(screen.getByRole("navigation", { name: "Primary navigation" })).getByRole(
+			"button",
+			{ name: "ComfyUI" },
+		),
+	);
+	fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+	expect(
+		screen.getByRole("switch", { name: /^Worker setup complete/ }),
+	).not.toBeChecked();
+	expect(window.kastard.syncCompletionNotification.getSettings).toHaveBeenCalledOnce();
+});
+
+test("applies theme immediately and retains its failure after leaving Settings", async () => {
+	let finishUpdate!: (
+		result: Awaited<ReturnType<typeof window.kastard.theme.update>>,
+	) => void;
+	vi.mocked(window.kastard.theme.update).mockReturnValueOnce(
+		new Promise((resolve) => {
+			finishUpdate = resolve;
+		}),
+	);
+	render(<App />);
+	fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+	const theme = screen.getByRole("combobox", { name: "Theme" });
+	await waitFor(() => expect(theme).toBeEnabled());
+	fireEvent.change(theme, { target: { value: "dark" } });
+	expect(theme).toHaveValue("dark");
+	expect(theme).toBeEnabled();
+	expect(document.documentElement).toHaveClass("dark");
+	fireEvent.click(
+		within(screen.getByRole("navigation", { name: "Primary navigation" })).getByRole(
+			"button",
+			{ name: "ComfyUI" },
+		),
+	);
+	await waitFor(() => expect(window.kastard.theme.update).toHaveBeenCalledOnce());
+	await act(async () => finishUpdate({ ok: false, error: "Theme save failed." }));
+	fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+	expect(screen.getByRole("combobox", { name: "Theme" })).toHaveValue("system");
+	expect(screen.getByRole("alert")).toHaveTextContent("Theme save failed.");
+	expect(window.kastard.theme.get).toHaveBeenCalledOnce();
+});
+
+test("keeps the other provider usable while a token is saving across Settings visits", async () => {
+	let finishUpdate!: (
+		result: Awaited<ReturnType<typeof window.kastard.modelProviders.updateToken>>,
+	) => void;
+	vi.mocked(window.kastard.modelProviders.updateToken).mockReturnValueOnce(
+		new Promise((resolve) => {
+			finishUpdate = resolve;
+		}),
+	);
+	render(<App />);
+	fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+	openSettingsSection("Model Providers");
+	fireEvent.change(await screen.findByLabelText("Hugging Face token"), {
+		target: { value: "example-token" },
+	});
+	fireEvent.click(screen.getByRole("button", { name: "Save Hugging Face token" }));
+	openSettingsSection("General");
+	expect(screen.getByRole("heading", { name: "General" })).toBeVisible();
+	openSettingsSection("Model Providers");
+	expect(screen.getByLabelText("CivitAI token")).toBeEnabled();
+	fireEvent.change(screen.getByLabelText("CivitAI token"), {
+		target: { value: "example-token" },
+	});
+	fireEvent.click(screen.getByRole("button", { name: "Save CivitAI token" }));
+	await waitFor(() =>
+		expect(screen.getByRole("button", { name: "Edit CivitAI token" })).toBeEnabled(),
+	);
+	fireEvent.click(
+		within(screen.getByRole("navigation", { name: "Primary navigation" })).getByRole(
+			"button",
+			{ name: "ComfyUI" },
+		),
+	);
+	fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+	openSettingsSection("Model Providers");
 	expect(screen.getByLabelText("Hugging Face token")).toBeDisabled();
-	expect(screen.getByLabelText("CivitAI token")).toBeDisabled();
+	expect(screen.getByLabelText("Hugging Face token")).toHaveValue("");
+	await act(async () =>
+		finishUpdate({ ok: true, configured: { huggingface: true, civitai: false } }),
+	);
+	expect(screen.getByRole("button", { name: "Edit Hugging Face token" })).toBeEnabled();
+	expect(screen.getAllByText("Token saved.")).toHaveLength(2);
+	expect(window.kastard.modelProviders.getSettings).toHaveBeenCalledOnce();
+	expect(screen.getByRole("button", { name: "Edit CivitAI token" })).toBeEnabled();
+});
+
+test("retries a failed theme read and displays the confirmed theme", async () => {
+	vi.mocked(window.kastard.theme.get)
+		.mockResolvedValueOnce({ ok: false, error: "Theme settings unavailable." })
+		.mockResolvedValueOnce({ ok: true, theme: "dark" });
+	render(<App />);
+	fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+	expect(await screen.findByRole("alert")).toHaveTextContent(
+		"Theme settings unavailable.",
+	);
+	fireEvent.click(screen.getByRole("button", { name: "Retry theme settings" }));
+	await waitFor(() =>
+		expect(screen.getByRole("combobox", { name: "Theme" })).toHaveValue("dark"),
+	);
+	expect(window.kastard.theme.get).toHaveBeenCalledTimes(2);
 });

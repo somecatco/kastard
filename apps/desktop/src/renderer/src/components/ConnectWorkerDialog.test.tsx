@@ -19,7 +19,6 @@ test("shows concise Worker setup descriptions", () => {
 			initialWorkerAddress={null}
 			initialSyncAfterConnect={true}
 			onConnect={vi.fn()}
-			onConnected={vi.fn()}
 			onOpenChange={vi.fn()}
 		/>,
 	);
@@ -42,7 +41,6 @@ test("shows concise Worker setup descriptions", () => {
 
 test("submits the final provider, address, and authentication code", async () => {
 	const onConnect = vi.fn().mockResolvedValue({ ok: true });
-	const onConnected = vi.fn();
 	const onOpenChange = vi.fn();
 	render(
 		<ConnectWorkerDialog
@@ -50,7 +48,6 @@ test("submits the final provider, address, and authentication code", async () =>
 			initialWorkerAddress={null}
 			initialSyncAfterConnect={true}
 			onConnect={onConnect}
-			onConnected={onConnected}
 			onOpenChange={onOpenChange}
 		/>,
 	);
@@ -112,7 +109,6 @@ test("submits the final provider, address, and authentication code", async () =>
 			syncAfterConnect: true,
 		}),
 	);
-	expect(onConnected).toHaveBeenCalledWith(true);
 	expect(onOpenChange).toHaveBeenCalledWith(false);
 });
 
@@ -124,7 +120,6 @@ test("keeps the dialog open and shows a failed connection", async () => {
 			initialWorkerAddress="worker.example.com:22001"
 			initialSyncAfterConnect={false}
 			onConnect={async () => ({ ok: false, error: "Worker unavailable." })}
-			onConnected={vi.fn()}
 			onOpenChange={onOpenChange}
 		/>,
 	);
@@ -152,7 +147,6 @@ test("prevents dismissal while a connection is pending", async () => {
 			initialWorkerAddress="worker.example.com:22001"
 			initialSyncAfterConnect={false}
 			onConnect={onConnect}
-			onConnected={vi.fn()}
 			onOpenChange={onOpenChange}
 		/>,
 	);
@@ -170,55 +164,10 @@ test("prevents dismissal while a connection is pending", async () => {
 	expect(onOpenChange).toHaveBeenCalledWith(false);
 });
 
-test("uses the saved sync setting when settings finish loading", async () => {
-	const onConnect = vi.fn().mockResolvedValue({ ok: true });
-	const props = {
-		initialProvider: "other" as const,
-		initialWorkerAddress: "worker.example.com:22001",
-		onConnect,
-		onConnected: vi.fn(),
-		onOpenChange: vi.fn(),
-	};
-	const { rerender } = render(
-		<ConnectWorkerDialog
-			{...props}
-			initialSyncAfterConnect={true}
-			settingsLoading={true}
-		/>,
-	);
-
-	const syncSwitch = screen.getByRole("switch");
-	expect(syncSwitch).toBeChecked();
-	expect(syncSwitch).toBeDisabled();
-	renderAuthenticationCode();
-
-	rerender(
-		<ConnectWorkerDialog
-			{...props}
-			initialSyncAfterConnect={false}
-			settingsLoading={false}
-		/>,
-	);
-
-	await waitFor(() => expect(syncSwitch).not.toBeChecked());
-	expect(syncSwitch).toBeEnabled();
-	fireEvent.click(screen.getByRole("button", { name: "Connect" }));
-
-	await waitFor(() =>
-		expect(onConnect).toHaveBeenCalledWith({
-			provider: "other",
-			workerAddress: "worker.example.com:22001",
-			authenticationCode: "ABCD-EFGH-JKLM-NPQR",
-			syncAfterConnect: false,
-		}),
-	);
-});
-
 test("restores the target when session state arrives before user input", async () => {
 	const props = {
 		initialSyncAfterConnect: true,
 		onConnect: vi.fn().mockResolvedValue({ ok: true }),
-		onConnected: vi.fn(),
 		onOpenChange: vi.fn(),
 	};
 	const { rerender } = render(
@@ -248,8 +197,43 @@ test("restores the target when session state arrives before user input", async (
 	);
 });
 
-function renderAuthenticationCode(): void {
+test("waits for saved connection settings and allows retry after a read failure", async () => {
+	const onConnect = vi.fn().mockResolvedValue({ ok: true });
+	const onRetrySettings = vi.fn().mockResolvedValue(undefined);
+	const props = {
+		initialProvider: "other" as const,
+		initialWorkerAddress: "worker.example.com:22001",
+		onConnect,
+		onOpenChange: vi.fn(),
+		onRetrySettings,
+	};
+	const { rerender } = render(
+		<ConnectWorkerDialog {...props} initialSyncAfterConnect={null} settingsLoading />,
+	);
 	fireEvent.change(screen.getByLabelText("Authentication code"), {
 		target: { value: "ABCD-EFGH-JKLM-NPQR" },
 	});
-}
+	expect(screen.getByRole("status")).toHaveTextContent("Loading…");
+	expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+	expect(screen.getByRole("button", { name: "Connect" })).toBeDisabled();
+	rerender(
+		<ConnectWorkerDialog
+			{...props}
+			initialSyncAfterConnect={null}
+			settingsError="Settings unavailable."
+		/>,
+	);
+	expect(screen.getByRole("alert")).toHaveTextContent("Settings unavailable.");
+	fireEvent.click(screen.getByRole("button", { name: "Retry connection settings" }));
+	expect(onRetrySettings).toHaveBeenCalledOnce();
+	rerender(<ConnectWorkerDialog {...props} initialSyncAfterConnect={false} />);
+	expect(
+		screen.getByRole("switch", { name: /^Sync after connecting/ }),
+	).not.toBeChecked();
+	fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+	await waitFor(() =>
+		expect(onConnect).toHaveBeenCalledWith(
+			expect.objectContaining({ syncAfterConnect: false }),
+		),
+	);
+});

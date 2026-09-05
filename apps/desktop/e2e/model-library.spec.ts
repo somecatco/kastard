@@ -234,11 +234,8 @@ test("opens the desktop when model provider settings cannot initialize", async (
 			"Expected property name or '}'",
 		);
 		await expect(
-			settings.getByRole("textbox", { name: "Hugging Face token" }),
-		).toBeDisabled();
-		await expect(
-			settings.getByRole("textbox", { name: "CivitAI token" }),
-		).toBeDisabled();
+			settings.getByRole("button", { name: /^Retry .+ settings$/ }),
+		).toHaveCount(2);
 	} finally {
 		await closeDesktop(desktop);
 	}
