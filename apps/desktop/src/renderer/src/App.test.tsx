@@ -87,7 +87,7 @@ test("keeps rapid connection setting selections optimistic while saving in order
 
 	fireEvent.click(screen.getByRole("button", { name: "Settings" }));
 	openSettingsSection("Connection");
-	const setting = screen.getByRole("switch", { name: /^Sync after connecting/ });
+	const setting = await screen.findByRole("switch", { name: /^Sync after connecting/ });
 	await waitFor(() => expect(setting).toBeEnabled());
 	fireEvent.click(setting);
 	expect(setting).not.toBeChecked();
@@ -138,7 +138,7 @@ test("restores the confirmed connection setting when saving fails", async () => 
 
 	fireEvent.click(screen.getByRole("button", { name: "Settings" }));
 	openSettingsSection("Connection");
-	const setting = screen.getByRole("switch", { name: /^Sync after connecting/ });
+	const setting = await screen.findByRole("switch", { name: /^Sync after connecting/ });
 	await waitFor(() => expect(setting).toBeEnabled());
 	fireEvent.click(setting);
 	expect(setting).not.toBeChecked();
@@ -168,7 +168,7 @@ test("hides Worker system metrics optimistically without locking other settings"
 
 	fireEvent.click(screen.getByRole("button", { name: "Settings" }));
 	openSettingsSection("Connection");
-	const setting = screen.getByRole("switch", { name: /^Worker system metrics/ });
+	const setting = await screen.findByRole("switch", { name: /^Worker system metrics/ });
 	await waitFor(() => expect(setting).toBeEnabled());
 	fireEvent.click(setting);
 
@@ -211,7 +211,7 @@ test("restores Worker system metrics when saving the setting fails", async () =>
 
 	fireEvent.click(screen.getByRole("button", { name: "Settings" }));
 	openSettingsSection("Connection");
-	const setting = screen.getByRole("switch", { name: /^Worker system metrics/ });
+	const setting = await screen.findByRole("switch", { name: /^Worker system metrics/ });
 	await waitFor(() => expect(setting).toBeEnabled());
 	fireEvent.click(setting);
 	expect(setting).not.toBeChecked();
@@ -253,7 +253,7 @@ test.each([
 		render(<App />);
 		fireEvent.click(screen.getByRole("button", { name: "Settings" }));
 		openSettingsSection("Connection");
-		const metricsSetting = screen.getByRole("switch", {
+		const metricsSetting = await screen.findByRole("switch", {
 			name: /^Worker system metrics/,
 		});
 		await waitFor(() => expect(metricsSetting).toBeEnabled());
@@ -295,7 +295,7 @@ test("persists the final rapid Worker system metrics selection", async () => {
 	render(<App />);
 	fireEvent.click(screen.getByRole("button", { name: "Settings" }));
 	openSettingsSection("Connection");
-	const setting = screen.getByRole("switch", { name: /^Worker system metrics/ });
+	const setting = await screen.findByRole("switch", { name: /^Worker system metrics/ });
 	await waitFor(() => expect(setting).toBeEnabled());
 
 	fireEvent.click(setting);
@@ -445,7 +445,7 @@ test("navigates to Settings from the header and native menu event", async () => 
 	await waitFor(() => expect(settingsHeading).toHaveFocus());
 
 	openSettingsSection("Connection");
-	const connectionSetting = screen.getByRole("switch", {
+	const connectionSetting = await screen.findByRole("switch", {
 		name: /^Sync after connecting/,
 	});
 	connectionSetting.focus();
@@ -465,4 +465,107 @@ test("navigates to Settings from the header and native menu event", async () => 
 
 	unmount();
 	expect(hasOpenSettingsListener()).toBe(false);
+});
+
+test.each([
+	{
+		firstField: "syncAfterConnect",
+		firstName: /^Sync after connecting/,
+		secondName: /^Worker system metrics/,
+		expected: { syncAfterConnect: true, systemMetricsEnabled: false },
+	},
+	{
+		firstField: "systemMetricsEnabled",
+		firstName: /^Worker system metrics/,
+		secondName: /^Sync after connecting/,
+		expected: { syncAfterConnect: false, systemMetricsEnabled: true },
+	},
+])(
+	"keeps a failed $firstField change out of the next field's save",
+	async ({ firstName, secondName, expected }) => {
+		let finishUpdate!: (result: ConnectionSettingsResult) => void;
+		vi.mocked(window.kastard.connection.updateSettings).mockReturnValueOnce(
+			new Promise((resolve) => {
+				finishUpdate = resolve;
+			}),
+		);
+		render(<App />);
+		fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+		openSettingsSection("Connection");
+		const first = await screen.findByRole("switch", { name: firstName });
+		const second = screen.getByRole("switch", { name: secondName });
+		fireEvent.click(first);
+		fireEvent.click(second);
+		expect(first).not.toBeChecked();
+		expect(second).not.toBeChecked();
+		await waitFor(() =>
+			expect(window.kastard.connection.updateSettings).toHaveBeenCalledOnce(),
+		);
+		await act(async () => finishUpdate({ ok: false, error: "First setting failed." }));
+		await waitFor(() =>
+			expect(window.kastard.connection.updateSettings).toHaveBeenCalledTimes(2),
+		);
+		expect(window.kastard.connection.updateSettings).toHaveBeenLastCalledWith(expected);
+		expect(first).toBeChecked();
+		expect(second).not.toBeChecked();
+		expect(screen.getByRole("alert")).toHaveTextContent("First setting failed.");
+		openSettingsSection("General");
+		openSettingsSection("Connection");
+		expect(screen.getByRole("alert")).toHaveTextContent("First setting failed.");
+	},
+);
+
+test("retries unknown connection settings without showing default switches", async () => {
+	vi.mocked(window.kastard.connection.getSettings).mockResolvedValueOnce({
+		ok: false,
+		error: "Connection settings unavailable.",
+	});
+	render(<App />);
+	fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+	openSettingsSection("Connection");
+	const region = screen.getByRole("region", { name: "Connection settings" });
+	expect(within(region).getAllByRole("status")).toHaveLength(2);
+	expect(within(region).queryByRole("switch")).not.toBeInTheDocument();
+	await within(region).findByRole("alert");
+	fireEvent.click(
+		within(region).getByRole("button", { name: "Retry Sync after connecting" }),
+	);
+	expect(
+		await within(region).findByRole("switch", { name: /^Sync after connecting/ }),
+	).toBeChecked();
+	expect(window.kastard.connection.getSettings).toHaveBeenCalledTimes(2);
+});
+
+test("saves later settings after an in-flight Connect without overwriting the latest selection", async () => {
+	let finishConnect!: (
+		result: Awaited<ReturnType<typeof window.kastard.workerSession.connect>>,
+	) => void;
+	vi.mocked(window.kastard.workerSession.connect).mockReturnValueOnce(
+		new Promise((resolve) => {
+			finishConnect = resolve;
+		}),
+	);
+	render(<App />);
+	fireEvent.click(await screen.findByRole("button", { name: "Connect" }));
+	await screen.findByRole("switch", { name: /^Sync after connecting/ });
+	submitOtherWorkerConnection(false);
+	await waitFor(() =>
+		expect(window.kastard.workerSession.connect).toHaveBeenCalledOnce(),
+	);
+	act(() => openSettingsFromMenu());
+	openSettingsSection("Connection");
+	const setting = screen.getByRole("switch", { name: /^Sync after connecting/ });
+	fireEvent.click(setting);
+	fireEvent.click(setting);
+	expect(setting).toBeChecked();
+	expect(window.kastard.connection.updateSettings).not.toHaveBeenCalled();
+	await act(async () => finishConnect({ ok: true }));
+	await waitFor(() =>
+		expect(window.kastard.connection.updateSettings).toHaveBeenCalledTimes(2),
+	);
+	expect(window.kastard.connection.updateSettings).toHaveBeenLastCalledWith({
+		syncAfterConnect: true,
+		systemMetricsEnabled: true,
+	});
+	expect(setting).toBeChecked();
 });

@@ -13,7 +13,7 @@ import {
 	Settings2Icon,
 	WorkflowIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AppFormDialog } from "@/components/AppFormDialog";
 import { useConnectionSettings } from "@/components/ConnectionControl";
 import { Input } from "@/components/common/input";
@@ -22,7 +22,7 @@ import { Select } from "@/components/common/select";
 import { Switch } from "@/components/common/switch";
 import { EditorDirectoryLocation } from "@/components/EditorDirectoryLocation";
 import { Button } from "@/components/ui/button";
-import { useOptimisticUpdateQueue } from "@/hooks/useOptimisticUpdateQueue";
+import type { DesktopSettings, ProviderFeedback } from "@/hooks/useDesktopSettings";
 import { collectDebugInfo } from "@/lib/debug-info";
 import { resources } from "@/lib/resources";
 import { cn } from "@/lib/utils";
@@ -36,7 +36,6 @@ import {
 	type DesktopTheme,
 	isDesktopTheme,
 	type ModelProvider,
-	type ModelProviderSettings,
 } from "../../../shared/api";
 
 const SETTINGS_NAV_WIDTH = 220;
@@ -101,8 +100,7 @@ type SettingsSectionKey = (typeof SETTINGS_SECTIONS)[number]["key"];
 
 type SettingsSurfaceProps = {
 	focusRequest: number;
-	theme: DesktopTheme;
-	onThemeChange: (theme: DesktopTheme) => void;
+	settings: DesktopSettings;
 	comfyRestarting: boolean;
 	comfyRuntimeBusy: boolean;
 	comfyRestartResult: ConnectionResult | null;
@@ -163,7 +161,7 @@ function SettingsRow({
 	description?: React.ReactNode;
 	descriptionId?: string;
 	feedback?: React.ReactNode;
-	htmlFor?: string;
+	htmlFor?: string | undefined;
 	align?: "start" | "center";
 	children: React.ReactNode;
 }): React.JSX.Element {
@@ -241,8 +239,7 @@ function SettingsFeedback({
 
 export function SettingsSurface({
 	focusRequest,
-	theme,
-	onThemeChange,
+	settings,
 	comfyRestarting,
 	comfyRuntimeBusy,
 	comfyRestartResult,
@@ -252,13 +249,6 @@ export function SettingsSurface({
 	const headingRef = useRef<HTMLHeadingElement>(null);
 	const contentRef = useRef<HTMLDivElement>(null);
 	const [activeSection, setActiveSection] = useState<SettingsSectionKey>("general");
-	const [pendingSettingsUpdates, setPendingSettingsUpdates] = useState(0);
-	const beginSettingsUpdate = useCallback(() => {
-		setPendingSettingsUpdates((current) => current + 1);
-	}, []);
-	const endSettingsUpdate = useCallback(() => {
-		setPendingSettingsUpdates((current) => Math.max(0, current - 1));
-	}, []);
 	const activeSectionLabel =
 		SETTINGS_SECTIONS.find(({ key }) => key === activeSection)?.label ?? "General";
 
@@ -292,13 +282,11 @@ export function SettingsSurface({
 				<div className="min-h-0 space-y-0.5 overflow-y-auto px-3 pb-3">
 					{SETTINGS_SECTIONS.map(({ key, label, icon: SectionIcon }) => {
 						const active = activeSection === key;
-						const navigationLocked = pendingSettingsUpdates > 0 && !active;
 						return (
 							<button
 								key={key}
 								type="button"
 								aria-current={active ? "page" : undefined}
-								aria-disabled={navigationLocked ? true : undefined}
 								className={cn(
 									"flex h-8 w-full items-center gap-2 rounded-full px-2 text-left text-[13px]",
 									active
@@ -306,7 +294,7 @@ export function SettingsSurface({
 										: "text-foreground/70 hover:bg-accent hover:text-accent-foreground",
 								)}
 								onClick={() => {
-									if (active || navigationLocked) return;
+									if (active) return;
 									if (contentRef.current) contentRef.current.scrollTop = 0;
 									setActiveSection(key);
 								}}
@@ -324,16 +312,8 @@ export function SettingsSurface({
 					<h2 className="text-xl font-semibold">{activeSectionLabel}</h2>
 					{activeSection === "general" ? (
 						<>
-							<ThemeSettings
-								theme={theme}
-								onThemeChange={onThemeChange}
-								onUpdateStart={beginSettingsUpdate}
-								onUpdateEnd={endSettingsUpdate}
-							/>
-							<SyncCompletionNotificationSettings
-								onUpdateStart={beginSettingsUpdate}
-								onUpdateEnd={endSettingsUpdate}
-							/>
+							<ThemeSettings setting={settings.theme} />
+							<SyncCompletionNotificationSettings setting={settings.notification} />
 						</>
 					) : null}
 					{activeSection === "comfyui" ? (
@@ -345,17 +325,9 @@ export function SettingsSurface({
 							onClearRestartResult={onClearComfyRestartResult}
 						/>
 					) : null}
-					{activeSection === "connection" ? (
-						<ConnectionSettings
-							onUpdateStart={beginSettingsUpdate}
-							onUpdateEnd={endSettingsUpdate}
-						/>
-					) : null}
+					{activeSection === "connection" ? <ConnectionSettings /> : null}
 					{activeSection === "modelProviders" ? (
-						<ModelProviderTokenSettings
-							onUpdateStart={beginSettingsUpdate}
-							onUpdateEnd={endSettingsUpdate}
-						/>
+						<ModelProviderTokenSettings settings={settings.providers} />
 					) : null}
 					{activeSection === "help" ? <HelpSettings /> : null}
 					{activeSection === "about" ? (
@@ -408,13 +380,38 @@ export function HelpSettings(): React.JSX.Element {
 	);
 }
 
-function ConnectionSettings({
-	onUpdateStart,
-	onUpdateEnd,
+function SavingSetting(): React.JSX.Element {
+	return (
+		<span role="status" className="text-xs text-muted-foreground">
+			Saving…
+		</span>
+	);
+}
+
+function SettingUnavailable({
+	label,
+	loading,
+	retry,
 }: {
-	onUpdateStart: () => void;
-	onUpdateEnd: () => void;
+	label: string;
+	loading: boolean;
+	retry: () => Promise<void>;
 }): React.JSX.Element {
+	return loading ? (
+		<span
+			role="status"
+			className="inline-flex h-6 min-w-9 items-center text-xs text-muted-foreground"
+		>
+			Loading…
+		</span>
+	) : (
+		<Button aria-label={`Retry ${label}`} variant="ghost" onClick={() => void retry()}>
+			Retry
+		</Button>
+	);
+}
+
+function ConnectionSettings(): React.JSX.Element {
 	const connectionSettings = useConnectionSettings();
 
 	return (
@@ -431,21 +428,39 @@ function ConnectionSettings({
 							nodes, verify them, then start Worker ComfyUI after Connect succeeds.
 						</>
 					}
-					htmlFor="settings-sync-after-connect"
+					feedback={
+						connectionSettings.settingsError ? (
+							<SettingsFeedback kind="error" className="mt-1">
+								{connectionSettings.settingsError}
+							</SettingsFeedback>
+						) : null
+					}
+					htmlFor={
+						connectionSettings.settingsReady ? "settings-sync-after-connect" : undefined
+					}
 					align="start"
 				>
-					<Switch
-						id="settings-sync-after-connect"
-						className="mt-0.5"
-						checked={connectionSettings.syncAfterConnect}
-						onChange={(event) => {
-							onUpdateStart();
-							void connectionSettings
-								.updateSyncAfterConnect(event.currentTarget.checked)
-								.finally(onUpdateEnd);
-						}}
-						disabled={connectionSettings.settingsLoading}
-					/>
+					{connectionSettings.settingsReady ? (
+						<Switch
+							id="settings-sync-after-connect"
+							className="mt-0.5"
+							checked={connectionSettings.syncAfterConnect}
+							onChange={(event) => {
+								void connectionSettings.updateSyncAfterConnect(
+									event.currentTarget.checked,
+								);
+							}}
+						/>
+					) : (
+						<SettingUnavailable
+							label="Sync after connecting"
+							loading={connectionSettings.settingsLoading}
+							retry={connectionSettings.reloadSettings}
+						/>
+					)}
+					{connectionSettings.pendingSettingsFields.has("syncAfterConnect") ? (
+						<SavingSetting />
+					) : null}
 				</SettingsRow>
 				<SettingsRow
 					title="Worker system metrics"
@@ -457,24 +472,36 @@ function ConnectionSettings({
 							</SettingsFeedback>
 						) : null
 					}
-					htmlFor="settings-system-metrics"
+					htmlFor={
+						connectionSettings.settingsReady ? "settings-system-metrics" : undefined
+					}
 					align="start"
 				>
-					<Switch
-						id="settings-system-metrics"
-						className="mt-0.5"
-						checked={connectionSettings.systemMetricsEnabled}
-						onChange={(event) => {
-							void connectionSettings.updateSystemMetricsEnabled(
-								event.currentTarget.checked,
-							);
-						}}
-						disabled={connectionSettings.settingsLoading}
-					/>
+					{connectionSettings.settingsReady ? (
+						<Switch
+							id="settings-system-metrics"
+							className="mt-0.5"
+							checked={connectionSettings.systemMetricsEnabled}
+							onChange={(event) => {
+								void connectionSettings.updateSystemMetricsEnabled(
+									event.currentTarget.checked,
+								);
+							}}
+						/>
+					) : (
+						<SettingUnavailable
+							label="Worker system metrics"
+							loading={connectionSettings.settingsLoading}
+							retry={connectionSettings.reloadSettings}
+						/>
+					)}
+					{connectionSettings.pendingSettingsFields.has("systemMetricsEnabled") ? (
+						<SavingSetting />
+					) : null}
 				</SettingsRow>
-				{connectionSettings.settingsError ? (
+				{connectionSettings.settingsLoadError ? (
 					<SettingsFeedback kind="error" className="px-4 py-3">
-						{connectionSettings.settingsError}
+						{connectionSettings.settingsLoadError}
 					</SettingsFeedback>
 				) : null}
 			</SettingsCard>
@@ -631,83 +658,11 @@ function DebugInformationSettings(): React.JSX.Element {
 }
 
 function SyncCompletionNotificationSettings({
-	onUpdateStart,
-	onUpdateEnd,
+	setting,
 }: {
-	onUpdateStart: () => void;
-	onUpdateEnd: () => void;
+	setting: DesktopSettings["notification"];
 }): React.JSX.Element {
-	const [enabled, setEnabled] = useState(true);
-	const [loading, setLoading] = useState(true);
-	const [error, setError] = useState<string | null>(null);
-	const { confirm: confirmEnabled, enqueue: enqueueEnabled } = useOptimisticUpdateQueue<
-		"enabled",
-		boolean
-	>({ trackPending: false });
-
-	useEffect(() => {
-		let active = true;
-		void window.kastard.syncCompletionNotification
-			.getSettings()
-			.then((result) => {
-				if (!active) return;
-				if (result.ok) {
-					confirmEnabled("enabled", result.settings.enabled);
-					setEnabled(result.settings.enabled);
-				} else {
-					confirmEnabled("enabled", false);
-					setEnabled(false);
-					setError(result.error);
-				}
-			})
-			.catch((cause: unknown) => {
-				if (active) {
-					confirmEnabled("enabled", false);
-					setEnabled(false);
-					setError(errorMessage(cause));
-				}
-			})
-			.finally(() => {
-				if (active) setLoading(false);
-			});
-		return () => {
-			active = false;
-		};
-	}, [confirmEnabled]);
-
-	const updateEnabled = (nextEnabled: boolean): void => {
-		const previousValue = enabled;
-		setEnabled(nextEnabled);
-		onUpdateStart();
-		setError(null);
-		const mutation = enqueueEnabled({
-			key: "enabled",
-			previousValue,
-			formatError: errorMessage,
-			save: async () => {
-				const result = await window.kastard.syncCompletionNotification.updateSettings({
-					enabled: nextEnabled,
-				});
-				return result.ok
-					? { ok: true, value: result.settings.enabled, data: undefined }
-					: result;
-			},
-			onSuccess: (_data, { confirmed, latest }) => {
-				if (latest) {
-					setEnabled(confirmed);
-					setError(null);
-				}
-			},
-			onError: (message, { confirmed, latest }) => {
-				if (!latest) return;
-				setEnabled(confirmed);
-				setError(message);
-			},
-		});
-		void mutation.finally(() => {
-			onUpdateEnd();
-		});
-	};
+	const { value: enabled, error, saving } = setting;
 
 	return (
 		<SettingsSection
@@ -724,16 +679,26 @@ function SyncCompletionNotificationSettings({
 							finishes and Worker ComfyUI is ready.
 						</>
 					}
-					htmlFor="settings-sync-completion-notification"
+					htmlFor={
+						enabled === null ? undefined : "settings-sync-completion-notification"
+					}
 					align="start"
 				>
-					<Switch
-						id="settings-sync-completion-notification"
-						className="mt-0.5"
-						checked={enabled}
-						onChange={(event) => updateEnabled(event.currentTarget.checked)}
-						disabled={loading}
-					/>
+					{enabled === null ? (
+						<SettingUnavailable
+							label="notification settings"
+							loading={setting.loading}
+							retry={setting.reload}
+						/>
+					) : (
+						<Switch
+							id="settings-sync-completion-notification"
+							className="mt-0.5"
+							checked={enabled}
+							onChange={(event) => void setting.update(event.currentTarget.checked)}
+						/>
+					)}
+					{saving ? <SavingSetting /> : null}
 				</SettingsRow>
 				{error ? (
 					<SettingsFeedback kind="error" className="px-4 py-3">
@@ -1063,55 +1028,11 @@ const DESKTOP_THEMES: ReadonlyArray<{ value: DesktopTheme; label: string }> = [
 ];
 
 function ThemeSettings({
-	theme,
-	onThemeChange,
-	onUpdateStart,
-	onUpdateEnd,
+	setting,
 }: {
-	theme: DesktopTheme;
-	onThemeChange: (theme: DesktopTheme) => void;
-	onUpdateStart: () => void;
-	onUpdateEnd: () => void;
+	setting: DesktopSettings["theme"];
 }): React.JSX.Element {
-	const [loading, setLoading] = useState(true);
-	const [saving, setSaving] = useState(false);
-	const [error, setError] = useState<string | null>(null);
-
-	useEffect(() => {
-		let active = true;
-		void window.kastard.theme
-			.get()
-			.then((result) => {
-				if (!active) return;
-				if (result.ok) onThemeChange(result.theme);
-				else setError(result.error);
-			})
-			.catch((cause: unknown) => {
-				if (active) setError(errorMessage(cause));
-			})
-			.finally(() => {
-				if (active) setLoading(false);
-			});
-		return () => {
-			active = false;
-		};
-	}, [onThemeChange]);
-
-	const updateTheme = async (nextTheme: DesktopTheme): Promise<void> => {
-		setSaving(true);
-		onUpdateStart();
-		setError(null);
-		try {
-			const result = await window.kastard.theme.update(nextTheme);
-			if (result.ok) onThemeChange(result.theme);
-			else setError(result.error);
-		} catch (cause) {
-			setError(errorMessage(cause));
-		} finally {
-			setSaving(false);
-			onUpdateEnd();
-		}
-	};
+	const { value: theme, loading, error, saving } = setting;
 
 	return (
 		<SettingsSection
@@ -1130,10 +1051,10 @@ function ThemeSettings({
 						id="settings-theme"
 						aria-describedby="settings-theme-description"
 						value={theme}
-						disabled={loading || saving}
+						disabled={loading}
 						onChange={(event) => {
 							const nextTheme = event.currentTarget.value;
-							if (isDesktopTheme(nextTheme)) void updateTheme(nextTheme);
+							if (isDesktopTheme(nextTheme)) void setting.update(nextTheme);
 						}}
 					>
 						{DESKTOP_THEMES.map((option) => (
@@ -1142,11 +1063,21 @@ function ThemeSettings({
 							</option>
 						))}
 					</Select>
+					{saving ? <SavingSetting /> : null}
 				</SettingsRow>
 				{error ? (
 					<SettingsFeedback kind="error" className="px-4 py-3">
 						{error}
 					</SettingsFeedback>
+				) : null}
+				{setting.loadFailed ? (
+					<Button
+						aria-label="Retry theme settings"
+						variant="ghost"
+						onClick={() => void setting.reload()}
+					>
+						Retry
+					</Button>
 				) : null}
 			</SettingsCard>
 		</SettingsSection>
@@ -1158,80 +1089,12 @@ const MODEL_PROVIDERS = [
 	{ id: "civitai", label: "CivitAI" },
 ] as const;
 
-type ProviderFeedback = {
-	provider: ModelProvider;
-	type: "success" | "error";
-	message: string;
-};
-
 function ModelProviderTokenSettings({
-	onUpdateStart,
-	onUpdateEnd,
+	settings,
 }: {
-	onUpdateStart: () => void;
-	onUpdateEnd: () => void;
+	settings: DesktopSettings["providers"];
 }): React.JSX.Element {
-	const [configured, setConfigured] = useState<ModelProviderSettings>({
-		huggingface: false,
-		civitai: false,
-	});
-	const [loading, setLoading] = useState(true);
-	const [saving, setSaving] = useState<ModelProvider | null>(null);
-	const [feedback, setFeedback] = useState<ProviderFeedback | null>(null);
-	const [loadError, setLoadError] = useState<string | null>(null);
-
-	useEffect(() => {
-		let active = true;
-		void window.kastard.modelProviders
-			.getSettings()
-			.then((result) => {
-				if (!active) return;
-				if (result.ok) setConfigured(result.configured);
-				else setLoadError(result.error);
-			})
-			.catch((error: unknown) => {
-				if (!active) return;
-				setLoadError(errorMessage(error));
-			})
-			.finally(() => {
-				if (active) setLoading(false);
-			});
-		return () => {
-			active = false;
-		};
-	}, []);
-
-	const updateToken = async (
-		provider: ModelProvider,
-		token: string | null,
-	): Promise<boolean> => {
-		setSaving(provider);
-		onUpdateStart();
-		setFeedback(null);
-		try {
-			const result = await window.kastard.modelProviders.updateToken({
-				provider,
-				token,
-			});
-			if (!result.ok) {
-				setFeedback({ provider, type: "error", message: result.error });
-				return false;
-			}
-			setConfigured(result.configured);
-			setFeedback({
-				provider,
-				type: "success",
-				message: token === null ? "Token removed." : "Token saved.",
-			});
-			return true;
-		} catch (error) {
-			setFeedback({ provider, type: "error", message: errorMessage(error) });
-			return false;
-		} finally {
-			setSaving(null);
-			onUpdateEnd();
-		}
-	};
+	const { configured, loading, loadError, saving, feedback, updateToken } = settings;
 
 	return (
 		<SettingsSection
@@ -1241,28 +1104,32 @@ function ModelProviderTokenSettings({
 			{loadError ? <SettingsFeedback kind="error">{loadError}</SettingsFeedback> : null}
 			<SettingsCard>
 				{MODEL_PROVIDERS.map((provider) => {
-					const status = loading
-						? "Loading…"
-						: loadError
-							? "Unavailable"
-							: configured[provider.id]
+					const status =
+						configured !== null
+							? configured[provider.id]
 								? "Configured"
-								: "Not configured";
-					return (
+								: "Not configured"
+							: loading
+								? "Loading…"
+								: "Unavailable";
+					return configured === null ? (
+						<SettingsRow key={provider.id} title={provider.label} description={status}>
+							<SettingUnavailable
+								label={`${provider.label} settings`}
+								loading={loading}
+								retry={settings.reload}
+							/>
+						</SettingsRow>
+					) : (
 						<ModelProviderTokenRow
 							key={provider.id}
 							provider={provider}
 							configured={configured[provider.id]}
 							status={status}
-							busy={loading || saving !== null || loadError !== null}
-							saving={saving === provider.id}
-							feedback={feedback?.provider === provider.id ? feedback : null}
+							saving={saving.has(provider.id)}
+							feedback={feedback[provider.id] ?? null}
 							onUpdate={updateToken}
-							onClearFeedback={() =>
-								setFeedback((current) =>
-									current?.provider === provider.id ? null : current,
-								)
-							}
+							onClearFeedback={() => settings.clearFeedback(provider.id)}
 						/>
 					);
 				})}
@@ -1275,7 +1142,6 @@ function ModelProviderTokenRow({
 	provider,
 	configured,
 	status,
-	busy,
 	saving,
 	feedback,
 	onUpdate,
@@ -1284,7 +1150,6 @@ function ModelProviderTokenRow({
 	provider: (typeof MODEL_PROVIDERS)[number];
 	configured: boolean;
 	status: string;
-	busy: boolean;
 	saving: boolean;
 	feedback: ProviderFeedback | null;
 	onUpdate: (provider: ModelProvider, token: string | null) => Promise<boolean>;
@@ -1349,14 +1214,14 @@ function ModelProviderTokenRow({
 							onChange={(event) => setToken(event.currentTarget.value)}
 							placeholder={configured ? "Enter a new token" : "Enter token"}
 							autoComplete="off"
-							disabled={busy}
+							disabled={saving}
 						/>
 						<Button
 							type="submit"
 							variant="outline"
 							size="default"
 							aria-label={`Save ${provider.label} token`}
-							disabled={busy || token.trim().length === 0}
+							disabled={saving || token.trim().length === 0}
 						>
 							{saving ? <LoaderCircleIcon className="animate-spin" /> : null}
 							Save
@@ -1373,7 +1238,7 @@ function ModelProviderTokenRow({
 									onClearFeedback();
 									setFocusTarget("edit");
 								}}
-								disabled={busy}
+								disabled={saving}
 							>
 								Cancel
 							</Button>
@@ -1392,7 +1257,7 @@ function ModelProviderTokenRow({
 								setEditing(true);
 								setFocusTarget("input");
 							}}
-							disabled={busy}
+							disabled={saving}
 						>
 							Edit
 						</Button>
@@ -1407,7 +1272,7 @@ function ModelProviderTokenRow({
 									setFocusTarget(removed ? "input" : "remove");
 								})
 							}
-							disabled={busy}
+							disabled={saving}
 						>
 							Remove
 						</Button>

@@ -9,19 +9,17 @@ import {
 	closeHoverOverlays,
 	useHoverOverlayActive,
 } from "@/hooks/useCloseHoverOverlay";
+import { useDesktopSettings } from "@/hooks/useDesktopSettings";
 import { applyTheme, watchSystemTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
-import type {
-	ComfyRuntimeState,
-	ConnectionResult,
-	DesktopTheme,
-} from "../../shared/api";
+import type { ComfyRuntimeState, ConnectionResult } from "../../shared/api";
 
 export function App(): React.JSX.Element {
 	const [surface, setSurface] = useState<AppSurface>("comfy");
 	const [settingsFocusRequest, setSettingsFocusRequest] = useState(0);
 	const [modelLibraryRevision, setModelLibraryRevision] = useState(0);
-	const [theme, setTheme] = useState<DesktopTheme>(() => window.kastard.theme.initial);
+	const settings = useDesktopSettings();
+	const theme = settings.theme.value;
 	const [comfyRuntimeBusy, setComfyRuntimeBusy] = useState(true);
 	const [comfyRuntimeState, setComfyRuntimeState] = useState<ComfyRuntimeState>({
 		status: "idle",
@@ -155,8 +153,7 @@ export function App(): React.JSX.Element {
 					{surface === "settings" ? (
 						<SettingsSurface
 							focusRequest={settingsFocusRequest}
-							theme={theme}
-							onThemeChange={setTheme}
+							settings={settings}
 							comfyRestarting={comfyRestarting}
 							comfyRuntimeBusy={comfyRuntimeBusy}
 							comfyRestartResult={comfyRestartResult}

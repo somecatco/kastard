@@ -42,11 +42,12 @@ type ProviderOption = {
 export type ConnectWorkerDialogProps = {
 	initialProvider: WorkerProvider | null;
 	initialWorkerAddress: string | null;
-	initialSyncAfterConnect: boolean;
+	initialSyncAfterConnect: boolean | null;
 	defaultWorkerAddress?: string;
 	settingsLoading?: boolean;
+	settingsError?: string | null;
+	onRetrySettings?: () => Promise<void>;
 	onConnect: (request: ConnectionRequest) => Promise<ConnectionResult>;
-	onConnected: (syncAfterConnect: boolean) => void;
 	onOpenChange: (open: boolean) => void;
 };
 
@@ -96,8 +97,9 @@ export function ConnectWorkerDialog({
 	initialSyncAfterConnect,
 	defaultWorkerAddress = "",
 	settingsLoading = false,
+	settingsError,
+	onRetrySettings,
 	onConnect,
-	onConnected,
 	onOpenChange,
 }: ConnectWorkerDialogProps): React.JSX.Element {
 	const [provider, setProvider] = useState<WorkerProvider | null>(initialProvider);
@@ -105,7 +107,9 @@ export function ConnectWorkerDialog({
 		connectionInputValue(initialProvider, initialWorkerAddress),
 	);
 	const [authenticationCode, setAuthenticationCode] = useState("");
-	const [syncAfterConnect, setSyncAfterConnect] = useState(initialSyncAfterConnect);
+	const [syncAfterConnect, setSyncAfterConnect] = useState(
+		initialSyncAfterConnect ?? true,
+	);
 	const [submitting, setSubmitting] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const targetEdited = useRef(false);
@@ -118,8 +122,8 @@ export function ConnectWorkerDialog({
 	}, [initialProvider, initialWorkerAddress]);
 
 	useEffect(() => {
-		if (!settingsLoading) setSyncAfterConnect(initialSyncAfterConnect);
-	}, [initialSyncAfterConnect, settingsLoading]);
+		if (initialSyncAfterConnect !== null) setSyncAfterConnect(initialSyncAfterConnect);
+	}, [initialSyncAfterConnect]);
 
 	const selectProvider = (nextProvider: WorkerProvider): void => {
 		if (nextProvider === provider) return;
@@ -133,6 +137,8 @@ export function ConnectWorkerDialog({
 	const submit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
 		event.preventDefault();
 		if (
+			initialSyncAfterConnect === null ||
+			submitting ||
 			provider === null ||
 			workerAddress === null ||
 			authenticationCode.trim() === ""
@@ -149,7 +155,6 @@ export function ConnectWorkerDialog({
 				syncAfterConnect,
 			});
 			if (result.ok) {
-				onConnected(syncAfterConnect);
 				onOpenChange(false);
 			} else {
 				setError(result.error);
@@ -243,16 +248,31 @@ export function ConnectWorkerDialog({
 					)}
 
 					<label
-						className="flex items-start gap-3 rounded-lg border p-4"
 						htmlFor="connect-sync-after-connect"
+						className="flex items-start gap-3 rounded-lg border p-4"
 					>
-						<Switch
-							id="connect-sync-after-connect"
-							className="mt-0.5"
-							checked={syncAfterConnect}
-							onChange={(event) => setSyncAfterConnect(event.currentTarget.checked)}
-							disabled={submitting || settingsLoading}
-						/>
+						{initialSyncAfterConnect === null ? (
+							settingsLoading ? (
+								<span role="status">Loading…</span>
+							) : (
+								<Button
+									type="button"
+									aria-label="Retry connection settings"
+									variant="ghost"
+									onClick={() => void onRetrySettings?.()}
+								>
+									Retry
+								</Button>
+							)
+						) : (
+							<Switch
+								id="connect-sync-after-connect"
+								className="mt-0.5"
+								checked={syncAfterConnect}
+								onChange={(event) => setSyncAfterConnect(event.currentTarget.checked)}
+								disabled={submitting}
+							/>
+						)}
 						<span className="grid gap-1">
 							<span className="text-sm font-medium">Sync after connecting</span>
 							<span className="cursor-text select-text text-xs leading-relaxed text-muted-foreground">
@@ -261,6 +281,11 @@ export function ConnectWorkerDialog({
 							</span>
 						</span>
 					</label>
+					{settingsError ? (
+						<p role="alert" className="select-text text-sm text-destructive">
+							{settingsError}
+						</p>
+					) : null}
 
 					{error !== null ? (
 						<p className="select-text text-sm text-destructive" role="alert">
@@ -280,7 +305,10 @@ export function ConnectWorkerDialog({
 						<Button
 							type="submit"
 							disabled={
-								submitting || workerAddress === null || authenticationCode.trim() === ""
+								submitting ||
+								initialSyncAfterConnect === null ||
+								workerAddress === null ||
+								authenticationCode.trim() === ""
 							}
 						>
 							{submitting ? <LoaderCircleIcon className="animate-spin" /> : null}

@@ -8,6 +8,7 @@ import {
 } from "@/components/ConnectionControl";
 import { SettingsSurface } from "@/components/SettingsSurface";
 import { WorkerCustomNodeSyncStatus } from "@/components/WorkerCustomNodeSyncStatus";
+import { useDesktopSettings } from "@/hooks/useDesktopSettings";
 import type { ConnectionState } from "../../../shared/api";
 import { useConfigureStoryWorker } from "./desktop-api-mock";
 import {
@@ -108,6 +109,7 @@ export function WindowTitlebarMockup({
 
 export function SettingsHelpMockup(): React.JSX.Element {
 	useConfigureStoryWorker(disconnectedConnection);
+	const settings = useDesktopSettings();
 	return (
 		<div className="flex min-h-svh items-center justify-center bg-[#090a0b] p-6">
 			<ConnectionProvider closeRequest={0}>
@@ -115,8 +117,7 @@ export function SettingsHelpMockup(): React.JSX.Element {
 					<WindowTitlebarMockup activeSurface="settings" />
 					<SettingsSurface
 						focusRequest={0}
-						theme="system"
-						onThemeChange={noOp}
+						settings={settings}
 						comfyRestarting={false}
 						comfyRuntimeBusy={false}
 						comfyRestartResult={null}
