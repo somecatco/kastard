@@ -4,7 +4,11 @@ This glossary provides concise definitions for using terms consistently in Kasta
 
 ## Editor
 
-The internal domain role of the app in which users edit ComfyUI workflows. It is distinct from the Worker that executes workflows. Use Editor in code and developer documentation, and use the product name Kastard in the UI and user-facing documentation.
+The application component used to edit ComfyUI workflows, distinct from the Worker that executes them.
+
+Use Kastard as the product name in the application UI. Use Editor when referring to the component in code, technical documentation, development discussions, and build or release metadata.
+
+Public visibility does not determine terminology: developer and release surfaces may use Editor even when publicly accessible.
 
 ## Worker
 
