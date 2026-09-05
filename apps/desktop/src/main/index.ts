@@ -91,6 +91,7 @@ import {
 } from "../shared/api";
 import { readDesktopAppInfo } from "./app-info";
 import { installAppMenu } from "./app-menu";
+import { serializeComfyDownloads } from "./comfy-downloads";
 import { ComfyGateway } from "./comfy-gateway/gateway";
 import { ComfyGatewayPortStore } from "./comfy-gateway/port-store";
 import { ComfyGatewayRequestError } from "./comfy-gateway/worker-port";
@@ -184,6 +185,7 @@ function restartComfyRuntimeManually(): Promise<string | null> {
 	return restart;
 }
 let unsubscribeComfy: (() => void) | null = null;
+let stopComfyDownloads: (() => void) | null = null;
 let comfyVersionsError: string | null = null;
 let unsubscribeComfyVersions: (() => void) | null = null;
 let unsubscribeWorkerSession: (() => void) | null = null;
@@ -565,6 +567,7 @@ app.whenReady().then(async () => {
 			comfyVersions?.getRuntimeManagerVersion() ?? readManagerVersion(backendDirectory),
 		trashItem: (path) => shell.trashItem(path),
 		registryApiUrl: resources.comfyRegistry.api,
+		restoreResults: () => workflowResults.restoreNativeFiles(),
 	});
 	const backendTargetPath = app.isPackaged
 		? join(resourceRoot("comfyui-runtime"), ".kastard-source.json")
@@ -590,6 +593,14 @@ app.whenReady().then(async () => {
 	const workflowResults = new WorkflowResultStore(
 		join(comfyDataDirectory, "data", "output", "kastard"),
 		join(app.getPath("userData"), "workflow-results"),
+		async () => {
+			await dialog.showMessageBox({
+				type: "warning",
+				message: "Some saved results could not be opened in ComfyUI.",
+				detail:
+					"Original files are preserved. Check the saved result files and restart ComfyUI to try again.",
+			});
+		},
 	);
 	await workflowResults.initialize();
 	const comfyGatewayPort = new ComfyGatewayPortStore(
@@ -650,6 +661,17 @@ app.whenReady().then(async () => {
 			}
 		},
 	});
+	stopComfyDownloads = serializeComfyDownloads(
+		session.defaultSession,
+		() => comfyGateway?.getUrl() ?? null,
+		async () => {
+			await dialog.showMessageBox({
+				type: "error",
+				message: "Could not download the asset.",
+				detail: "Try downloading it again from ComfyUI.",
+			});
+		},
+	);
 	session.defaultSession.webRequest.onBeforeSendHeaders(
 		{ urls: ["http://127.0.0.1:*/*"] },
 		(details, callback) => {
@@ -1273,6 +1295,8 @@ app.on("will-quit", (event) => {
 });
 
 async function stopBeforeQuit(): Promise<void> {
+	stopComfyDownloads?.();
+	stopComfyDownloads = null;
 	nativeTheme.removeListener("updated", syncWindowBackgrounds);
 	const stoppingComfyGateway = comfyGateway?.stop();
 	comfyGateway = null;

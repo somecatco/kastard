@@ -8,14 +8,158 @@ import {
 	readFile,
 	rename,
 	rm,
+	stat,
 	writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
+import { comfyStoredJob } from "../comfy-gateway/compat";
 import { WorkflowResultStore } from "./workflow-result-store";
 
 const roots: string[] = [];
+
+test("preserves saved video and temporary preview references across collection and restart", async () => {
+	const data = await mkdtemp(join(tmpdir(), "kastard-results-"));
+	roots.push(data);
+	const root = join(data, "output", "kastard");
+	const store = new WorkflowResultStore(root);
+	await store.initialize();
+	const id = "11111111-1111-4111-8111-111111111111";
+	const files = [
+		{
+			id: "a".repeat(64),
+			filename: "result.mp4",
+			type: "output" as const,
+			contentType: "video/mp4",
+		},
+		{
+			id: "b".repeat(64),
+			filename: "preview.png",
+			type: "temp" as const,
+			contentType: "image/png",
+		},
+		{
+			id: "c".repeat(64),
+			filename: "source.png",
+			type: "input" as const,
+			contentType: "image/png",
+		},
+	].map((file) => ({
+		...file,
+		subfolder: "",
+		size: 6,
+		sha256: createHash("sha256").update("sample").digest("hex"),
+	}));
+	const manifest = {
+		id,
+		files,
+		outputs: {
+			"1": {
+				gifs: [
+					{
+						...files[0],
+						kastard_file_id: files[0]?.id,
+						format: "video/h264-mp4",
+						frame_rate: 24,
+					},
+				],
+			},
+			"2": { images: [{ ...files[1], kastard_file_id: files[1]?.id }] },
+			"3": { images: [{ ...files[2], kastard_file_id: files[2]?.id }] },
+		},
+	};
+	const requestFetch = vi.fn(async (input: string | URL | Request) =>
+		input.toString().endsWith("/results")
+			? Response.json(manifest)
+			: new Response("sample"),
+	);
+	await store.collect(
+		{
+			workerApiUrl: "https://worker.example.com",
+			sessionCapability: "test-capability",
+		},
+		{ id, number: 1, createdAt: 100, prompt: {}, extraData: {}, clientId: null },
+		requestFetch as typeof fetch,
+	);
+	const job = store.get(id);
+	expect(job).not.toBeNull();
+	if (job === null) throw new Error("The collected job is missing.");
+	expect(comfyStoredJob(job, true)).toMatchObject({
+		preview_output: { filename: "result.mp4", type: "output" },
+		outputs: {
+			"1": { gifs: [{ filename: "result.mp4", type: "output" }] },
+			"2": { images: [{ filename: "preview.png", type: "temp" }] },
+			"3": { images: [{ filename: "source.png", type: "input" }] },
+		},
+	});
+	for (const file of files) {
+		const path = join(data, file.type, "kastard", id, file.id, file.filename);
+		expect(await readFile(path, "utf8")).toBe("sample");
+		expect((await stat(path)).ino).toBe(
+			(await stat(join(root, id, file.id, file.filename))).ino,
+		);
+	}
+	await rm(join(data, "temp"), { recursive: true });
+	const restored = new WorkflowResultStore(root);
+	await restored.initialize();
+	await restored.restoreNativeFiles();
+	await restored.restoreNativeFiles();
+	expect(restored.get(id)).toEqual(job);
+	expect(
+		await readFile(
+			join(data, "temp", "kastard", id, files[1]?.id ?? "", "preview.png"),
+			"utf8",
+		),
+	).toBe("sample");
+	expect(requestFetch).toHaveBeenCalledTimes(4);
+
+	const outputs = job.outputs as Record<
+		string,
+		Record<string, Array<Record<string, unknown>>>
+	>;
+	for (const node of Object.values(outputs)) {
+		for (const items of Object.values(node))
+			for (const item of items) item.type = "output";
+	}
+	await writeFile(join(root, id, ".job.json"), JSON.stringify(job));
+	const onRestoreFailure = vi.fn(async () => {});
+	const existing = new WorkflowResultStore(root, undefined, onRestoreFailure);
+	await existing.initialize();
+	expect(existing.get(id)?.outputs).toMatchObject({
+		"2": { images: [{ type: "temp" }] },
+		"3": { images: [{ type: "input" }] },
+	});
+	const input = join(data, "input", "kastard", id, "c".repeat(64), "source.png");
+	await rm(join(data, "temp"), { recursive: true });
+	await rm(input);
+	await writeFile(input, "another image");
+	await expect(existing.restoreNativeFiles()).resolves.toBeUndefined();
+	expect(onRestoreFailure).toHaveBeenCalledOnce();
+	expect(existing.get(id)?.outputs).toMatchObject({
+		"1": { gifs: [{ filename: "result.mp4", type: "output" }] },
+		"2": { images: [{ filename: "preview.png", type: "temp" }] },
+		"3": { images: [] },
+	});
+	expect(await readFile(input, "utf8")).toBe("another image");
+	expect(await readFile(join(root, id, "c".repeat(64), "source.png"), "utf8")).toBe(
+		"sample",
+	);
+	await rm(input);
+	await existing.restoreNativeFiles();
+	expect(existing.get(id)?.outputs).toMatchObject({
+		"3": { images: [{ filename: "source.png", type: "input" }] },
+	});
+	await rm(join(root, id, "b".repeat(64), "preview.png"));
+	await rm(join(data, "temp"), { recursive: true });
+	await expect(existing.restoreNativeFiles()).resolves.toBeUndefined();
+	expect(onRestoreFailure).toHaveBeenCalledTimes(2);
+	expect(existing.get(id)?.outputs).toMatchObject({
+		"1": { gifs: [{ filename: "result.mp4", type: "output" }] },
+		"2": { images: [] },
+		"3": { images: [{ filename: "source.png", type: "input" }] },
+	});
+});
 
 afterEach(async () => {
 	await Promise.all(
@@ -488,4 +632,65 @@ test("records cancellation without replacing the terminal state", async () => {
 	} finally {
 		await rm(root, { recursive: true, force: true });
 	}
+});
+
+test("retains verified results when a native path cannot be restored during collection", async () => {
+	const data = await mkdtemp(join(tmpdir(), "kastard-results-"));
+	roots.push(data);
+	const root = join(data, "output", "kastard");
+	const onRestoreFailure = vi.fn(async () => {});
+	const store = new WorkflowResultStore(root, undefined, onRestoreFailure);
+	await store.initialize();
+	const id = "11111111-1111-4111-8111-111111111111";
+	const file = {
+		id: "a".repeat(64),
+		filename: "preview.png",
+		type: "temp",
+		subfolder: "",
+		contentType: "image/png",
+		size: 6,
+		sha256: createHash("sha256").update("sample").digest("hex"),
+	};
+	const native = join(data, "temp", "kastard", id, file.id, file.filename);
+	await mkdir(dirname(native), { recursive: true });
+	await writeFile(native, "another image");
+	const requestFetch = vi.fn(async (input: string | URL | Request) =>
+		input.toString().endsWith("/results")
+			? Response.json({
+					id,
+					files: [file],
+					outputs: { "1": { images: [{ ...file, kastard_file_id: file.id }] } },
+				})
+			: new Response("sample"),
+	);
+	await store.collect(
+		{
+			workerApiUrl: "https://worker.example.com",
+			sessionCapability: "test-capability",
+		},
+		{ id, number: 1, createdAt: 100, prompt: {}, extraData: {}, clientId: null },
+		requestFetch as typeof fetch,
+	);
+	expect(requestFetch).toHaveBeenCalledTimes(2);
+	expect(onRestoreFailure).toHaveBeenCalledOnce();
+	expect(store.get(id)).toMatchObject({
+		status: "completed",
+		outputs: { "1": { images: [] } },
+	});
+	expect(await readFile(native, "utf8")).toBe("another image");
+	expect(await readFile(join(root, id, file.id, file.filename), "utf8")).toBe("sample");
+	expect(JSON.parse(await readFile(join(root, id, ".job.json"), "utf8"))).toMatchObject(
+		{
+			outputs: { "1": { images: [{ filename: "preview.png", type: "temp" }] } },
+		},
+	);
+	await rm(native);
+	const restarted = new WorkflowResultStore(root);
+	await restarted.initialize();
+	await restarted.restoreNativeFiles();
+	expect(restarted.list()[0]).toMatchObject({
+		status: "completed",
+		outputs: { "1": { images: [{ filename: "preview.png", type: "temp" }] } },
+	});
+	expect(await readFile(native, "utf8")).toBe("sample");
 });

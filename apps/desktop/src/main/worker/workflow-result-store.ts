@@ -8,6 +8,7 @@ import {
 	readFile,
 	rename,
 	rm,
+	stat,
 	writeFile,
 } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
@@ -42,10 +43,12 @@ export type StoredWorkflowJob = WorkflowResultContext & {
 
 export class WorkflowResultStore {
 	private readonly jobs = new Map<string, StoredWorkflowJob>();
+	private readonly unavailableFiles = new Map<string, Set<string>>();
 
 	constructor(
 		private readonly rootDirectory: string,
 		private readonly legacyRootDirectory?: string,
+		private readonly onRestoreFailure: () => Promise<void> = async () => {},
 	) {}
 
 	async initialize(): Promise<void> {
@@ -69,13 +72,65 @@ export class WorkflowResultStore {
 	}
 
 	list(): StoredWorkflowJob[] {
-		return [...this.jobs.values()].sort(
-			(left, right) => right.createdAt - left.createdAt,
-		);
+		return [...this.jobs.values()]
+			.map((job) => this.visibleJob(job))
+			.sort((left, right) => right.createdAt - left.createdAt);
 	}
 
 	get(jobId: string): StoredWorkflowJob | null {
-		return this.jobs.get(jobId) ?? null;
+		const job = this.jobs.get(jobId);
+		return job === undefined ? null : this.visibleJob(job);
+	}
+
+	async restoreNativeFiles(): Promise<void> {
+		let failed = false;
+		for (const job of this.jobs.values()) {
+			if (!(await this.restoreJobFiles(job))) failed = true;
+		}
+		if (failed) void this.onRestoreFailure().catch(() => undefined);
+	}
+
+	private visibleJob(job: StoredWorkflowJob): StoredWorkflowJob {
+		const unavailable = this.unavailableFiles.get(job.id);
+		return unavailable === undefined
+			? job
+			: { ...job, outputs: availableOutputs(job.outputs, unavailable) };
+	}
+
+	private async restoreJobFiles(job: StoredWorkflowJob): Promise<boolean> {
+		const unavailable = new Set<string>();
+		for (const file of job.files) {
+			if (file.type === "output") continue;
+			try {
+				const source = join(this.rootDirectory, job.id, file.id, file.filename);
+				const destination = join(
+					dirname(dirname(this.rootDirectory)),
+					file.type,
+					"kastard",
+					job.id,
+					file.id,
+					file.filename,
+				);
+				await mkdir(dirname(destination), { recursive: true });
+				try {
+					await link(source, destination);
+				} catch (error) {
+					if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+					const [original, existing] = await Promise.all([
+						stat(source),
+						lstat(destination),
+					]);
+					if (original.dev !== existing.dev || original.ino !== existing.ino) {
+						unavailable.add(file.id);
+					}
+				}
+			} catch {
+				unavailable.add(file.id);
+			}
+		}
+		if (unavailable.size === 0) this.unavailableFiles.delete(job.id);
+		else this.unavailableFiles.set(job.id, unavailable);
+		return unavailable.size === 0;
 	}
 
 	async collect(
@@ -109,8 +164,8 @@ export class WorkflowResultStore {
 		signal?: AbortSignal,
 	): Promise<void> {
 		const manifest = await fetchManifest(credential, context.id, requestFetch, signal);
-		const fileIds = new Set(manifest.files.map((file) => file.id));
-		if (fileIds.size !== manifest.files.length) {
+		const files = new Map(manifest.files.map((file) => [file.id, file]));
+		if (files.size !== manifest.files.length) {
 			throw new Error("The Worker returned duplicate result files.");
 		}
 		await this.publish(
@@ -131,7 +186,7 @@ export class WorkflowResultStore {
 					...context,
 					status: "completed",
 					completedAt: Date.now(),
-					outputs: localOutputs(manifest.outputs, context.id, fileIds),
+					outputs: localOutputs(manifest.outputs, context.id, files),
 					files: manifest.files,
 				};
 				return job;
@@ -182,11 +237,10 @@ export class WorkflowResultStore {
 			await writeFile(join(staging, JOB_METADATA_NAME), JSON.stringify(job));
 			signal?.throwIfAborted();
 			await rename(staging, destination);
-			if (signal?.aborted) {
-				await rm(destination, { recursive: true, force: true });
-				signal.throwIfAborted();
-			}
+			// Verified files remain durable even when a native path is unavailable.
+			const restored = await this.restoreJobFiles(job);
 			this.jobs.set(job.id, job);
+			if (!restored) void this.onRestoreFailure().catch(() => undefined);
 		} catch (error) {
 			await rm(staging, { recursive: true, force: true }).catch(() => undefined);
 			throw error;
@@ -198,6 +252,7 @@ export class WorkflowResultStore {
 			if (!this.jobs.has(id)) continue;
 			await rm(join(this.rootDirectory, id, JOB_METADATA_NAME), { force: true });
 			this.jobs.delete(id);
+			this.unavailableFiles.delete(id);
 		}
 	}
 
@@ -256,7 +311,16 @@ async function readStoredWorkflowJob(
 			const value: unknown = JSON.parse(
 				await readFile(join(directory, filename), "utf8"),
 			);
-			if (isStoredWorkflowJob(value) && value.id === expectedId) return value;
+			if (isStoredWorkflowJob(value) && value.id === expectedId) {
+				return {
+					...value,
+					outputs: localOutputs(
+						value.outputs,
+						value.id,
+						new Map(value.files.map((file) => [file.id, file])),
+					),
+				};
+			}
 		} catch {}
 	}
 	return null;
@@ -341,23 +405,50 @@ function resultRequestSignal(signal?: AbortSignal): AbortSignal {
 	return signal === undefined ? timeout : AbortSignal.any([signal, timeout]);
 }
 
-function localOutputs(value: unknown, jobId: string, fileIds: Set<string>): unknown {
+function availableOutputs(value: unknown, unavailable: ReadonlySet<string>): unknown {
 	if (Array.isArray(value)) {
-		return value.map((entry) => localOutputs(entry, jobId, fileIds));
+		return value.flatMap((entry) => {
+			const output = availableOutputs(entry, unavailable);
+			return output === undefined ? [] : [output];
+		});
+	}
+	if (!isRecord(value)) return value;
+	if (
+		typeof value.kastard_file_id === "string" &&
+		unavailable.has(value.kastard_file_id)
+	)
+		return undefined;
+	return Object.fromEntries(
+		Object.entries(value).flatMap(([key, entry]) => {
+			const output = availableOutputs(entry, unavailable);
+			return output === undefined ? [] : [[key, output]];
+		}),
+	);
+}
+
+function localOutputs(
+	value: unknown,
+	jobId: string,
+	files: ReadonlyMap<string, WorkerResultFile>,
+): unknown {
+	if (Array.isArray(value)) {
+		return value.map((entry) => localOutputs(entry, jobId, files));
 	}
 	if (!isRecord(value)) return value;
 	const entries = Object.entries(value).map(([key, entry]) => [
 		key,
-		localOutputs(entry, jobId, fileIds),
+		localOutputs(entry, jobId, files),
 	]);
 	if (typeof value.kastard_file_id !== "string") return Object.fromEntries(entries);
-	if (!fileIds.has(value.kastard_file_id)) {
+	const file = files.get(value.kastard_file_id);
+	if (file === undefined) {
 		throw new Error("The Worker result output references an unknown file.");
 	}
 	return {
 		...Object.fromEntries(entries),
+		filename: file.filename,
 		subfolder: `kastard/${jobId}/${value.kastard_file_id}`,
-		type: "output",
+		type: file.type,
 	};
 }
 

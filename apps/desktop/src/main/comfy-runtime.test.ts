@@ -212,6 +212,9 @@ test("prepares a managed CPU environment and starts ComfyUI with Manager", async
 	const backendEnvironments: NodeJS.ProcessEnv[] = [];
 	const child = new FakeProcess();
 	const states: ComfyRuntimeState[] = [];
+	const restoreResults = vi.fn(async () => {
+		expect(states.at(-1)).toEqual({ status: "starting" });
+	});
 	const request = vi.fn().mockResolvedValue(new Response(null, { status: 200 }));
 	const runtime = new ComfyRuntime({
 		...paths,
@@ -235,12 +238,14 @@ test("prepares a managed CPU environment and starts ComfyUI with Manager", async
 		},
 		retryMs: 1,
 		getModels: () => [virtualModel],
+		restoreResults,
 	});
 	runtime.subscribe((state) => states.push(state));
 
 	await expect(runtime.start()).resolves.toBe("http://127.0.0.1:18188/");
 	await expect(runtime.start()).resolves.toBe("http://127.0.0.1:18188/");
 	await expect(runtime.getManagerVersion()).resolves.toBe("4.2.2");
+	expect(restoreResults).toHaveBeenCalledOnce();
 
 	expect(commands).toHaveLength(2);
 	expect(commands[0]).toEqual(
