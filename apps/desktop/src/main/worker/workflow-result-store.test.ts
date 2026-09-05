@@ -134,6 +134,32 @@ test("preserves saved video and temporary preview references across collection a
 	expect(links.mock.calls.length).toBe(previousLinks + 1);
 	await restored.restoreNativeFiles();
 	expect(restored.get(id)).toEqual(job);
+	const missing = {
+		filename: "missing.png",
+		type: "output",
+		kastard_file_id: "d".repeat(64),
+	};
+	const persisted = {
+		...job,
+		outputs: {
+			...(job.outputs as Record<string, unknown>),
+			"4": { images: [missing] },
+		},
+	};
+	await writeFile(join(root, id, ".job.json"), JSON.stringify(persisted));
+	const recovered = new WorkflowResultStore(root);
+	await recovered.initialize();
+	expect(recovered.get(id)).toMatchObject({
+		status: "completed",
+		outputs: {
+			"1": { gifs: [{ filename: "result.mp4", type: "output" }] },
+			"2": { images: [{ filename: "preview.png", type: "temp" }] },
+			"4": { images: [] },
+		},
+	});
+	expect(JSON.parse(await readFile(join(root, id, ".job.json"), "utf8"))).toEqual(
+		persisted,
+	);
 
 	const outputs = job.outputs as Record<
 		string,

@@ -96,7 +96,10 @@ export class WorkflowResultStore {
 		const unavailable = this.unavailableFiles.get(job.id);
 		return unavailable === undefined
 			? job
-			: { ...job, outputs: availableOutputs(job.outputs, unavailable) };
+			: {
+					...job,
+					outputs: filterResultOutputs(job.outputs, (id) => !unavailable.has(id)),
+				};
 	}
 
 	private async restoreJobFiles(
@@ -318,12 +321,13 @@ async function readStoredWorkflowJob(
 				await readFile(join(directory, filename), "utf8"),
 			);
 			if (isStoredWorkflowJob(value) && value.id === expectedId) {
+				const files = new Map(value.files.map((file) => [file.id, file]));
 				return {
 					...value,
 					outputs: localOutputs(
-						value.outputs,
+						filterResultOutputs(value.outputs, (id) => files.has(id)) ?? {},
 						value.id,
-						new Map(value.files.map((file) => [file.id, file])),
+						files,
 					),
 				};
 			}
@@ -411,22 +415,22 @@ function resultRequestSignal(signal?: AbortSignal): AbortSignal {
 	return signal === undefined ? timeout : AbortSignal.any([signal, timeout]);
 }
 
-function availableOutputs(value: unknown, unavailable: ReadonlySet<string>): unknown {
+function filterResultOutputs(
+	value: unknown,
+	keepFile: (id: string) => boolean,
+): unknown {
 	if (Array.isArray(value)) {
 		return value.flatMap((entry) => {
-			const output = availableOutputs(entry, unavailable);
+			const output = filterResultOutputs(entry, keepFile);
 			return output === undefined ? [] : [output];
 		});
 	}
 	if (!isRecord(value)) return value;
-	if (
-		typeof value.kastard_file_id === "string" &&
-		unavailable.has(value.kastard_file_id)
-	)
+	if (typeof value.kastard_file_id === "string" && !keepFile(value.kastard_file_id))
 		return undefined;
 	return Object.fromEntries(
 		Object.entries(value).flatMap(([key, entry]) => {
-			const output = availableOutputs(entry, unavailable);
+			const output = filterResultOutputs(entry, keepFile);
 			return output === undefined ? [] : [[key, output]];
 		}),
 	);

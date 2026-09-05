@@ -233,3 +233,38 @@ test.each(["", "about:blank"])(
 		stop();
 	},
 );
+
+test.each([`${gateway}another-page`, `${gateway}view?filename=third.png`])(
+	"discards queued downloads while their source document starts navigating to %s",
+	(url) => {
+		const { frame, owner, startDownload, download, stop } = fixture();
+		const first = download("result.mp4");
+		download("preview.png");
+		owner.emit("did-start-navigation", {
+			url,
+			isSameDocument: false,
+			isMainFrame: false,
+			frame,
+		});
+		first.item.emit("done", {}, "completed");
+		expect(startDownload).not.toHaveBeenCalled();
+		stop();
+		expect(owner.listenerCount("did-start-navigation")).toBe(0);
+	},
+);
+
+test.each([{ url: `${gateway}#details`, isSameDocument: true }])(
+	"preserves queued files during navigation that retains the document: $url",
+	(navigation) => {
+		const { frame, owner, startDownload, download, stop } = fixture();
+		const first = download("result.mp4");
+		download("preview.png");
+		owner.emit("did-start-navigation", { ...navigation, isMainFrame: false, frame });
+		first.item.emit("done", {}, "completed");
+		expect(startDownload).toHaveBeenCalledExactlyOnceWith(
+			`${gateway}view?filename=preview.png`,
+			"preview.png",
+		);
+		stop();
+	},
+);

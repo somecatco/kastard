@@ -1,4 +1,11 @@
-import type { DownloadItem, Event, Session, WebContents, WebFrameMain } from "electron";
+import type {
+	DownloadItem,
+	Event,
+	Session,
+	WebContents,
+	WebContentsDidStartNavigationEventParams,
+	WebFrameMain,
+} from "electron";
 
 export function serializeComfyDownloads(
 	session: Session,
@@ -18,14 +25,10 @@ export function serializeComfyDownloads(
 
 	const watchNavigation = (webContents: WebContents): void => {
 		if (navigationCleanups.has(webContents)) return;
-		const navigated = (
-			_event: Event,
-			_url: string,
-			_statusCode: number,
-			_statusText: string,
+		const discard = (
 			isMainFrame: boolean,
-			processId: number,
-			routingId: number,
+			processId?: number,
+			routingId?: number,
 		): void => {
 			for (let index = pending.length - 1; index >= 0; index -= 1) {
 				const request = pending[index];
@@ -39,12 +42,29 @@ export function serializeComfyDownloads(
 					pending.splice(index, 1);
 			}
 		};
+		const starting = (
+			details: Event<WebContentsDidStartNavigationEventParams>,
+		): void => {
+			if (details.isSameDocument) return;
+			discard(details.isMainFrame, details.frame?.processId, details.frame?.routingId);
+		};
+		const navigated = (
+			_event: Event,
+			_url: string,
+			_statusCode: number,
+			_statusText: string,
+			isMainFrame: boolean,
+			processId: number,
+			routingId: number,
+		): void => discard(isMainFrame, processId, routingId);
 		const cleanup = (): void => {
+			webContents.removeListener("did-start-navigation", starting);
 			webContents.removeListener("did-frame-navigate", navigated);
 			webContents.removeListener("destroyed", cleanup);
 			navigationCleanups.delete(webContents);
 		};
 		navigationCleanups.set(webContents, cleanup);
+		webContents.on("did-start-navigation", starting);
 		webContents.on("did-frame-navigate", navigated);
 		webContents.once("destroyed", cleanup);
 	};
