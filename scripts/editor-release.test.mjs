@@ -55,7 +55,7 @@ describe("Editor release tags", () => {
 			outputDirectory: "dist/preview",
 			prerelease: true,
 			productVersion: null,
-			releaseName: `Kastard Preview 11 (${shortRevision})`,
+			releaseName: `editor preview 11 (${shortRevision})`,
 			sourceRevision: release.sourceRevision,
 		});
 	});

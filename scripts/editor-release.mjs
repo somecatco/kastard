@@ -59,7 +59,7 @@ export function resolveEditorRelease(root, tag, sourceRevision) {
 			outputDirectory: "dist/preview",
 			prerelease: true,
 			productVersion: null,
-			releaseName: `Kastard Preview ${buildVersion} (${shortRevision})`,
+			releaseName: `editor preview ${buildVersion} (${shortRevision})`,
 			sourceRevision,
 		};
 	}
