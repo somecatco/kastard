@@ -107,6 +107,7 @@ type RuntimeOptions = {
 	resolveManagerVersion?: (backendDirectory: string) => Promise<string> | string;
 	trashItem?: (path: string) => Promise<void>;
 	registryApiUrl?: string;
+	restoreResults?: (signal: AbortSignal) => Promise<void>;
 };
 
 const STAMP_NAME = ".kastard-runtime.json";
@@ -1038,6 +1039,8 @@ export class ComfyRuntime {
 		this.assertBackendRunning(child);
 		try {
 			await this.enableNamedValuesRestore(url, signal);
+			// ComfyUI clears its temp directory on every startup.
+			await this.options.restoreResults?.(signal);
 		} catch (error) {
 			child.kill("SIGTERM");
 			throw error;
