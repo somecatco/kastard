@@ -13,7 +13,10 @@ function fixture() {
 	const startDownload = vi.fn();
 	const frame = {
 		url: gateway,
+		origin: new URL(gateway).origin,
 		detached: false,
+		processId: 10,
+		routingId: 20,
 		executeJavaScript: vi.fn(async (code: string) => {
 			const link = {
 				href: "",
@@ -73,8 +76,9 @@ test.each(["completed", "cancelled"])(
 		const next = download("preview.png");
 		expect(next.event.preventDefault).not.toHaveBeenCalled();
 		next.item.emit("done", {}, "completed");
-		expect(owner.listenerCount("destroyed")).toBe(0);
 		stop();
+		expect(owner.listenerCount("destroyed")).toBe(0);
+		expect(owner.listenerCount("did-frame-navigate")).toBe(0);
 	},
 );
 
@@ -137,7 +141,10 @@ test.each(["detached", "navigated"])(
 		const first = download("result.mp4");
 		download("preview.png");
 		if (state === "detached") frame.detached = true;
-		else frame.url = "https://example.com/";
+		else {
+			frame.url = "https://example.com/";
+			frame.origin = "https://example.com";
+		}
 		first.item.emit("done", {}, "completed");
 		expect(startDownload).not.toHaveBeenCalled();
 		stop();
@@ -154,3 +161,75 @@ test("preserves quoted filenames as data when starting a deferred download", () 
 	expect(startDownload).toHaveBeenCalledExactlyOnceWith(url, filename);
 	stop();
 });
+
+test.each([gateway, `${gateway}another-page`])(
+	"discards queued downloads after their frame navigates to %s",
+	(url) => {
+		const { frame, owner, startDownload, download, stop } = fixture();
+		const first = download("result.mp4");
+		download("preview.png");
+		frame.url = url;
+		owner.emit(
+			"did-frame-navigate",
+			{},
+			url,
+			200,
+			"OK",
+			false,
+			frame.processId,
+			frame.routingId,
+		);
+		first.item.emit("done", {}, "completed");
+		expect(startDownload).not.toHaveBeenCalled();
+		stop();
+	},
+);
+
+test("preserves queued downloads when a sibling frame navigates", () => {
+	const { frame, owner, startDownload, download, stop } = fixture();
+	const first = download("result.mp4");
+	download("preview.png");
+	owner.emit(
+		"did-frame-navigate",
+		{},
+		`${gateway}another-page`,
+		200,
+		"OK",
+		false,
+		frame.processId,
+		99,
+	);
+	first.item.emit("done", {}, "completed");
+	expect(startDownload).toHaveBeenCalledExactlyOnceWith(
+		`${gateway}view?filename=preview.png`,
+		"preview.png",
+	);
+	stop();
+});
+
+test("discards queued downloads when the top-level document navigates", () => {
+	const { owner, startDownload, download, stop } = fixture();
+	const first = download("result.mp4");
+	download("preview.png");
+	owner.emit("did-frame-navigate", {}, "file:///example.html", -1, "", true, 1, 1);
+	first.item.emit("done", {}, "completed");
+	expect(startDownload).not.toHaveBeenCalled();
+	stop();
+});
+
+test.each(["", "about:blank"])(
+	"downloads from a frame with an inherited origin and URL %s",
+	(url) => {
+		const { frame, startDownload, download, stop } = fixture();
+		frame.url = url;
+		const first = download("result.mp4");
+		const second = download("preview.png");
+		expect(second.event.preventDefault).toHaveBeenCalledOnce();
+		first.item.emit("done", {}, "completed");
+		expect(startDownload).toHaveBeenCalledExactlyOnceWith(
+			`${gateway}view?filename=preview.png`,
+			"preview.png",
+		);
+		stop();
+	},
+);

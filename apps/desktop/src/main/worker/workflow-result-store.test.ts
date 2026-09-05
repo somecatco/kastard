@@ -1,6 +1,7 @@
 // @vitest-environment node
 
 import { createHash } from "node:crypto";
+import * as filesystem from "node:fs/promises";
 import {
 	mkdir,
 	mkdtemp,
@@ -16,6 +17,11 @@ import { dirname, join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
 import { comfyStoredJob } from "../comfy-gateway/compat";
 import { WorkflowResultStore } from "./workflow-result-store";
+
+vi.mock("node:fs/promises", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("node:fs/promises")>();
+	return { ...actual, link: vi.fn(actual.link) };
+});
 
 const roots: string[] = [];
 
@@ -113,6 +119,21 @@ test("preserves saved video and temporary preview references across collection a
 		),
 	).toBe("sample");
 	expect(requestFetch).toHaveBeenCalledTimes(4);
+	const controller = new AbortController();
+	const actual =
+		await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+	const links = vi.mocked(filesystem.link);
+	const previousLinks = links.mock.calls.length;
+	links.mockImplementationOnce(async (source, destination) => {
+		controller.abort();
+		await actual.link(source, destination);
+	});
+	await expect(restored.restoreNativeFiles(controller.signal)).rejects.toThrow(
+		/abort/iu,
+	);
+	expect(links.mock.calls.length).toBe(previousLinks + 1);
+	await restored.restoreNativeFiles();
+	expect(restored.get(id)).toEqual(job);
 
 	const outputs = job.outputs as Record<
 		string,
@@ -634,63 +655,94 @@ test("records cancellation without replacing the terminal state", async () => {
 	}
 });
 
-test("retains verified results when a native path cannot be restored during collection", async () => {
-	const data = await mkdtemp(join(tmpdir(), "kastard-results-"));
-	roots.push(data);
-	const root = join(data, "output", "kastard");
-	const onRestoreFailure = vi.fn(async () => {});
-	const store = new WorkflowResultStore(root, undefined, onRestoreFailure);
-	await store.initialize();
-	const id = "11111111-1111-4111-8111-111111111111";
-	const file = {
-		id: "a".repeat(64),
-		filename: "preview.png",
-		type: "temp",
-		subfolder: "",
-		contentType: "image/png",
-		size: 6,
-		sha256: createHash("sha256").update("sample").digest("hex"),
-	};
-	const native = join(data, "temp", "kastard", id, file.id, file.filename);
-	await mkdir(dirname(native), { recursive: true });
-	await writeFile(native, "another image");
-	const requestFetch = vi.fn(async (input: string | URL | Request) =>
-		input.toString().endsWith("/results")
-			? Response.json({
-					id,
-					files: [file],
-					outputs: { "1": { images: [{ ...file, kastard_file_id: file.id }] } },
-				})
-			: new Response("sample"),
-	);
-	await store.collect(
-		{
-			workerApiUrl: "https://worker.example.com",
-			sessionCapability: "test-capability",
-		},
-		{ id, number: 1, createdAt: 100, prompt: {}, extraData: {}, clientId: null },
-		requestFetch as typeof fetch,
-	);
-	expect(requestFetch).toHaveBeenCalledTimes(2);
-	expect(onRestoreFailure).toHaveBeenCalledOnce();
-	expect(store.get(id)).toMatchObject({
-		status: "completed",
-		outputs: { "1": { images: [] } },
-	});
-	expect(await readFile(native, "utf8")).toBe("another image");
-	expect(await readFile(join(root, id, file.id, file.filename), "utf8")).toBe("sample");
-	expect(JSON.parse(await readFile(join(root, id, ".job.json"), "utf8"))).toMatchObject(
-		{
+test.each(["path conflict", "late cancellation"])(
+	"preserves published results after %s",
+	async (scenario) => {
+		const data = await mkdtemp(join(tmpdir(), "kastard-results-"));
+		roots.push(data);
+		const root = join(data, "output", "kastard");
+		const onRestoreFailure = vi.fn(async () => {});
+		const store = new WorkflowResultStore(root, undefined, onRestoreFailure);
+		await store.initialize();
+		const id = "11111111-1111-4111-8111-111111111111";
+		const file = {
+			id: "a".repeat(64),
+			filename: "preview.png",
+			type: "temp",
+			subfolder: "",
+			contentType: "image/png",
+			size: 6,
+			sha256: createHash("sha256").update("sample").digest("hex"),
+		};
+		const native = join(data, "temp", "kastard", id, file.id, file.filename);
+		const controller = new AbortController();
+		if (scenario === "path conflict") {
+			await mkdir(dirname(native), { recursive: true });
+			await writeFile(native, "another image");
+		} else {
+			const actual =
+				await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+			vi.mocked(filesystem.link).mockImplementationOnce(async (source, destination) => {
+				expect(await readFile(join(root, id, file.id, file.filename), "utf8")).toBe(
+					"sample",
+				);
+				controller.abort();
+				await actual.link(source, destination);
+			});
+		}
+		const requestFetch = vi.fn(async (input: string | URL | Request) =>
+			input.toString().endsWith("/results")
+				? Response.json({
+						id,
+						files: [file],
+						outputs: { "1": { images: [{ ...file, kastard_file_id: file.id }] } },
+					})
+				: new Response("sample"),
+		);
+		await store.collect(
+			{
+				workerApiUrl: "https://worker.example.com",
+				sessionCapability: "test-capability",
+			},
+			{ id, number: 1, createdAt: 100, prompt: {}, extraData: {}, clientId: null },
+			requestFetch as typeof fetch,
+			controller.signal,
+		);
+		expect(requestFetch).toHaveBeenCalledTimes(2);
+		expect(onRestoreFailure).toHaveBeenCalledTimes(
+			scenario === "path conflict" ? 1 : 0,
+		);
+		expect(controller.signal.aborted).toBe(scenario === "late cancellation");
+		expect(store.get(id)).toMatchObject({
+			status: "completed",
+			outputs: {
+				"1": {
+					images:
+						scenario === "path conflict"
+							? []
+							: [{ filename: "preview.png", type: "temp" }],
+				},
+			},
+		});
+		expect(await readFile(native, "utf8")).toBe(
+			scenario === "path conflict" ? "another image" : "sample",
+		);
+		expect(await readFile(join(root, id, file.id, file.filename), "utf8")).toBe(
+			"sample",
+		);
+		expect(
+			JSON.parse(await readFile(join(root, id, ".job.json"), "utf8")),
+		).toMatchObject({
 			outputs: { "1": { images: [{ filename: "preview.png", type: "temp" }] } },
-		},
-	);
-	await rm(native);
-	const restarted = new WorkflowResultStore(root);
-	await restarted.initialize();
-	await restarted.restoreNativeFiles();
-	expect(restarted.list()[0]).toMatchObject({
-		status: "completed",
-		outputs: { "1": { images: [{ filename: "preview.png", type: "temp" }] } },
-	});
-	expect(await readFile(native, "utf8")).toBe("sample");
-});
+		});
+		await rm(native);
+		const restarted = new WorkflowResultStore(root);
+		await restarted.initialize();
+		await restarted.restoreNativeFiles();
+		expect(restarted.list()[0]).toMatchObject({
+			status: "completed",
+			outputs: { "1": { images: [{ filename: "preview.png", type: "temp" }] } },
+		});
+		expect(await readFile(native, "utf8")).toBe("sample");
+	},
+);

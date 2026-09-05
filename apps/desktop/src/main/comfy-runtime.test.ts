@@ -2460,3 +2460,35 @@ class ControlledExitProcess extends FakeProcess {
 		this.emit("exit", 0, null);
 	}
 }
+
+test("cancels result restoration when startup is stopped", async () => {
+	const paths = await fixture();
+	const child = new FakeProcess();
+	let markRestoring = (): void => {};
+	const restoring = new Promise<void>((resolve) => {
+		markRestoring = resolve;
+	});
+	const runtime = new ComfyRuntime({
+		...paths,
+		platform: "darwin",
+		arch: "arm64",
+		allocatePort: async () => 18_188,
+		fetch: vi.fn().mockResolvedValue(new Response(null, { status: 200 })),
+		runCommand: async (_command, args) => createManagedPython(args),
+		startProcess: () => child as unknown as ChildProcess,
+		retryMs: 1,
+		restoreResults: async (signal) => {
+			markRestoring();
+			await new Promise<void>((_resolve, reject) => {
+				signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+			});
+		},
+	});
+	const start = runtime.start();
+	const rejected = expect(start).rejects.toThrow(/abort/iu);
+	await restoring;
+	await runtime.stop();
+	await rejected;
+	expect(child.signalCode).toBe("SIGTERM");
+	expect(runtime.getState()).toEqual({ status: "idle" });
+});

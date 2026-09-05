@@ -82,11 +82,13 @@ export class WorkflowResultStore {
 		return job === undefined ? null : this.visibleJob(job);
 	}
 
-	async restoreNativeFiles(): Promise<void> {
+	async restoreNativeFiles(signal?: AbortSignal): Promise<void> {
 		let failed = false;
 		for (const job of this.jobs.values()) {
-			if (!(await this.restoreJobFiles(job))) failed = true;
+			signal?.throwIfAborted();
+			if (!(await this.restoreJobFiles(job, signal))) failed = true;
 		}
+		signal?.throwIfAborted();
 		if (failed) void this.onRestoreFailure().catch(() => undefined);
 	}
 
@@ -97,9 +99,13 @@ export class WorkflowResultStore {
 			: { ...job, outputs: availableOutputs(job.outputs, unavailable) };
 	}
 
-	private async restoreJobFiles(job: StoredWorkflowJob): Promise<boolean> {
+	private async restoreJobFiles(
+		job: StoredWorkflowJob,
+		signal?: AbortSignal,
+	): Promise<boolean> {
 		const unavailable = new Set<string>();
 		for (const file of job.files) {
+			signal?.throwIfAborted();
 			if (file.type === "output") continue;
 			try {
 				const source = join(this.rootDirectory, job.id, file.id, file.filename);

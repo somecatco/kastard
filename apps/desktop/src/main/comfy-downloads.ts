@@ -11,9 +11,43 @@ export function serializeComfyDownloads(
 		frame: WebFrameMain;
 		webContents: WebContents;
 	}> = [];
+	const navigationCleanups = new Map<WebContents, () => void>();
 	let active: DownloadItem | null = null;
 	let stopped = false;
 	let showingError = false;
+
+	const watchNavigation = (webContents: WebContents): void => {
+		if (navigationCleanups.has(webContents)) return;
+		const navigated = (
+			_event: Event,
+			_url: string,
+			_statusCode: number,
+			_statusText: string,
+			isMainFrame: boolean,
+			processId: number,
+			routingId: number,
+		): void => {
+			for (let index = pending.length - 1; index >= 0; index -= 1) {
+				const request = pending[index];
+				if (
+					request?.webContents === webContents &&
+					(isMainFrame ||
+						request.frame.detached ||
+						(request.frame.processId === processId &&
+							request.frame.routingId === routingId))
+				)
+					pending.splice(index, 1);
+			}
+		};
+		const cleanup = (): void => {
+			webContents.removeListener("did-frame-navigate", navigated);
+			webContents.removeListener("destroyed", cleanup);
+			navigationCleanups.delete(webContents);
+		};
+		navigationCleanups.set(webContents, cleanup);
+		webContents.on("did-frame-navigate", navigated);
+		webContents.once("destroyed", cleanup);
+	};
 
 	const next = (): void => {
 		if (stopped || active !== null || showingError) return;
@@ -24,7 +58,7 @@ export function serializeComfyDownloads(
 				request.webContents.isDestroyed() ||
 				request.frame.detached ||
 				!isComfyFile(request.url, getGatewayUrl()) ||
-				new URL(request.frame.url).origin !== new URL(request.url).origin
+				request.frame.origin !== new URL(request.url).origin
 			) {
 				next();
 				return;
@@ -74,13 +108,15 @@ export function serializeComfyDownloads(
 			const url = item.getURL();
 			const frame = webContents.mainFrame.framesInSubtree.find((frame) => {
 				try {
-					return new URL(frame.url).origin === new URL(url).origin;
+					return frame.origin === new URL(url).origin;
 				} catch {
 					return false;
 				}
 			});
-			if (frame !== undefined)
+			if (frame !== undefined) {
+				watchNavigation(webContents);
 				pending.push({ url, filename: item.getFilename(), frame, webContents });
+			}
 			event.preventDefault();
 			return;
 		}
@@ -100,6 +136,7 @@ export function serializeComfyDownloads(
 	return () => {
 		stopped = true;
 		pending.length = 0;
+		for (const cleanup of navigationCleanups.values()) cleanup();
 		session.removeListener("will-download", willDownload);
 		active?.cancel();
 		active = null;

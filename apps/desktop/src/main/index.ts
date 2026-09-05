@@ -567,7 +567,7 @@ app.whenReady().then(async () => {
 			comfyVersions?.getRuntimeManagerVersion() ?? readManagerVersion(backendDirectory),
 		trashItem: (path) => shell.trashItem(path),
 		registryApiUrl: resources.comfyRegistry.api,
-		restoreResults: () => workflowResults.restoreNativeFiles(),
+		restoreResults: (signal) => workflowResults.restoreNativeFiles(signal),
 	});
 	const backendTargetPath = app.isPackaged
 		? join(resourceRoot("comfyui-runtime"), ".kastard-source.json")
