@@ -123,7 +123,8 @@ async function terminateCommandTree(
 			} catch {}
 		}
 		if (signal === "SIGKILL") {
-			while (commandTreeRunning(child)) await delay(10);
+			const deadline = Date.now() + 2_000;
+			while (commandTreeRunning(child) && Date.now() < deadline) await delay(10);
 		}
 		return;
 	}

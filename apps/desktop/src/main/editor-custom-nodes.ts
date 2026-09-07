@@ -449,53 +449,56 @@ export class EditorCustomNodes {
 		node: InstalledCustomNode,
 		signal?: AbortSignal,
 	): Promise<void> {
+		const timeout = AbortSignal.timeout(MANAGER_OPERATION_TIMEOUT_MS);
 		const requestSignal =
-			signal === undefined
-				? AbortSignal.timeout(MANAGER_OPERATION_TIMEOUT_MS)
-				: AbortSignal.any([signal, AbortSignal.timeout(MANAGER_OPERATION_TIMEOUT_MS)]);
-		const taskId = `kastard-${randomUUID()}`;
-		await expectManagerResponse(
-			await this.requestFetch(new URL("v2/manager/queue/task", url), {
-				method: "POST",
-				signal: requestSignal,
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({
-					ui_id: taskId,
-					client_id: taskId,
-					kind: "uninstall",
-					params: {
-						node_name: node.managerId ?? node.name,
-						is_unknown: node.managerId === null,
-					},
+			signal === undefined ? timeout : AbortSignal.any([signal, timeout]);
+		try {
+			const taskId = `kastard-${randomUUID()}`;
+			await expectManagerResponse(
+				await this.requestFetch(new URL("v2/manager/queue/task", url), {
+					method: "POST",
+					signal: requestSignal,
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({
+						ui_id: taskId,
+						client_id: taskId,
+						kind: "uninstall",
+						params: {
+							node_name: node.managerId ?? node.name,
+							is_unknown: node.managerId === null,
+						},
+					}),
 				}),
-			}),
-			"queue the uninstall",
-		);
-		await expectManagerResponse(
-			await this.requestFetch(new URL("v2/manager/queue/start", url), {
-				method: "POST",
-				signal: requestSignal,
-			}),
-			"start the uninstall",
-			[200, 201],
-		);
-
-		const deadline = Date.now() + MANAGER_OPERATION_TIMEOUT_MS;
-		while (Date.now() < deadline) {
-			requestSignal.throwIfAborted();
-			const history = await this.requestFetch(
-				new URL(`v2/manager/queue/history?ui_id=${encodeURIComponent(taskId)}`, url),
-				{ signal: requestSignal },
+				"queue the uninstall",
 			);
-			await expectManagerResponse(history, "read the uninstall result");
-			const result = managerTaskResult(await history.json(), taskId);
-			if (result?.status === "success") return;
-			if (result !== null && result !== undefined) {
-				throw new Error(
-					`ComfyUI Manager could not uninstall ${node.name}. ${result.message}`,
+			await expectManagerResponse(
+				await this.requestFetch(new URL("v2/manager/queue/start", url), {
+					method: "POST",
+					signal: requestSignal,
+				}),
+				"start the uninstall",
+				[200, 201],
+			);
+
+			const deadline = Date.now() + MANAGER_OPERATION_TIMEOUT_MS;
+			while (Date.now() < deadline) {
+				requestSignal.throwIfAborted();
+				const history = await this.requestFetch(
+					new URL(`v2/manager/queue/history?ui_id=${encodeURIComponent(taskId)}`, url),
+					{ signal: requestSignal },
 				);
+				await expectManagerResponse(history, "read the uninstall result");
+				const result = managerTaskResult(await history.json(), taskId);
+				if (result?.status === "success") return;
+				if (result !== null && result !== undefined) {
+					throw new Error(
+						`ComfyUI Manager could not uninstall ${node.name}. ${result.message}`,
+					);
+				}
+				await delay(MANAGER_OPERATION_POLL_MS);
 			}
-			await delay(MANAGER_OPERATION_POLL_MS);
+		} catch (error) {
+			if (!timeout.aborted || signal?.aborted) throw error;
 		}
 		throw new Error(`ComfyUI Manager timed out while uninstalling ${node.name}.`);
 	}

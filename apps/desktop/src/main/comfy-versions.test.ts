@@ -787,3 +787,46 @@ test("honors a return to the saved source while another selection is being writt
 	await Promise.all([selecting, returning]);
 	expect(versions.getState().selection.backend).toBeNull();
 });
+
+test.each([false, true])(
+	"returns the latest selection when an overlapping restart fails: %s",
+	async (restartFails) => {
+		const { editor, versions, restarts } = await harness();
+		let release = () => {};
+		const restarting = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		restarts.mockImplementationOnce(async () => {
+			await restarting;
+			if (restartFails) throw new Error("ComfyUI failed to start.");
+			return "http://127.0.0.1:18188/";
+		});
+		const backend = editor.selectVersion({ component: "backend", version: "0.34.0" });
+		await vi.waitFor(() => expect(restarts).toHaveBeenCalledOnce());
+		const frontend = editor.selectVersion({
+			component: "frontend",
+			version: "v1.53.0",
+		});
+		await vi.waitFor(() =>
+			expect(versions.getState().selection.frontend).toBe("v1.53.0"),
+		);
+		release();
+		const [backendResult, frontendResult] = await Promise.all([backend, frontend]);
+		expect(backendResult.selection).toEqual(versions.getState().selection);
+		expect(frontendResult.selection).toEqual(versions.getState().selection);
+	},
+);
+
+test("can return to a retained installed release when the catalog is unavailable", async () => {
+	const { editor, restarts, forgetCatalog } = await harness();
+	await editor.selectVersion({ component: "backend", version: "0.34.0" });
+	restarts.mockRejectedValueOnce(new Error("ComfyUI failed to start."));
+	await editor.selectVersion({ component: "backend", version: null });
+	forgetCatalog();
+	await expect(
+		editor.selectVersion({ component: "backend", version: "0.34.0" }),
+	).resolves.toMatchObject({ selection: { backend: "0.34.0" } });
+	await expect(
+		editor.selectVersion({ component: "backend", version: "0.35.0" }),
+	).rejects.toThrow("not a known release");
+});

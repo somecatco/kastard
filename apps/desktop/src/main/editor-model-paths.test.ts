@@ -17,6 +17,7 @@ test("replaces virtual model placeholders and rejects unsafe paths", async () =>
 	const customModel = {
 		...virtualModel,
 		path: "custom_models/example.safetensors",
+		sync: false,
 	};
 
 	await modelPaths.syncModels([]);
@@ -80,6 +81,9 @@ test("replaces virtual model placeholders and rejects unsafe paths", async () =>
 		access(join(paths.dataDirectory, "virtual-models", "diffusion_models")),
 	).resolves.toBeUndefined();
 	await modelPaths.syncModels([customModel]);
+	await expect(
+		access(join(paths.dataDirectory, "virtual-models", customModel.path)),
+	).resolves.toBeUndefined();
 	await modelPaths.syncModels([]);
 	await expect(
 		access(join(paths.dataDirectory, "virtual-models", "custom_models")),

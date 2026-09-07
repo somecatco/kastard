@@ -27,12 +27,9 @@ type ComfyVersionsOptions = {
 	onManagerTargetChange?: () => void;
 };
 
-export type ComfySelection = {
-	state: ComfyVersionState;
-} & (
+export type ComfySelection =
 	| { component: ComfySourceComponent; generation: number; replaced: string | null }
-	| { component: "manager"; version: string | null }
-);
+	| { component: "manager"; version: string | null };
 
 /**
  * Owns which ComfyUI frontend, backend, and Manager the Editor runs. The backend and
@@ -227,7 +224,7 @@ export class ComfyVersions {
 		if (version !== null && version !== this.options.store.get()[component]) {
 			await this.installWithProgress(
 				component,
-				this.release(component, version),
+				await this.installableRelease(component, version),
 				signal,
 			);
 		}
@@ -240,7 +237,7 @@ export class ComfyVersions {
 			signal?.throwIfAborted();
 			if (component === "backend") await this.refreshBackend(signal);
 			this.setInstall({ status: "idle" });
-			return { component, generation, replaced, state: this.getState() };
+			return { component, generation, replaced };
 		});
 	}
 
@@ -261,7 +258,7 @@ export class ComfyVersions {
 			throw new Error(`ComfyUI Manager ${version} is not a known release.`);
 		}
 		this.pendingManagerVersion = version;
-		return { component: "manager", version, state: this.getState() };
+		return { component: "manager", version };
 	}
 
 	async completeSelection(
@@ -284,7 +281,7 @@ export class ComfyVersions {
 			selection.component,
 			selection.replaced,
 		);
-		return selection.state;
+		return this.getState();
 	}
 
 	clearPendingManager(): void {

@@ -622,10 +622,6 @@ function customNodeStartupFailed(output: string): boolean {
 		);
 }
 
-function _isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function dependencyProgressReporter(
 	onProgress: (progress: number) => void,
 ): (text: string) => void {

@@ -153,13 +153,13 @@ export class EditorComfy {
 					} catch {
 						this.assertOpen();
 						// Runtime state reports startup failure; the saved selection remains available for retry.
-						return selection.state;
+						return versions.getState();
 					}
 					this.assertOpen();
 					await versions
 						.completeSelection(selection, this.lifetime.signal)
 						.catch(() => undefined);
-					return selection.state;
+					return versions.getState();
 				}
 				try {
 					await this.enqueueRestart();

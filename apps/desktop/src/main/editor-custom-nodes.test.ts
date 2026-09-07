@@ -1296,3 +1296,51 @@ test("does not treat a repository subdirectory or symlink as a GitHub custom nod
 		},
 	]);
 });
+
+test.each(["timeout", "cancellation"] as const)(
+	"reports Manager uninstall %s without losing its cause",
+	async (reason) => {
+		const paths = await fixture();
+		const timeout = new AbortController();
+		const caller = new AbortController();
+		const originalTimeout = AbortSignal.timeout.bind(AbortSignal);
+		const timeoutSpy = vi
+			.spyOn(AbortSignal, "timeout")
+			.mockImplementation((ms) =>
+				ms === 120_000 ? timeout.signal : originalTimeout(ms),
+			);
+		let queued = false;
+		const nodes = new EditorCustomNodes({
+			...paths,
+			getRuntimeState: () => ({ status: "ready", url: "http://127.0.0.1:18188/" }),
+			fetch: (async (input, init) => {
+				if (String(input).includes("customnode/installed")) {
+					return Response.json({
+						"example-node": { ver: "1.0.0", cnr_id: "example-node" },
+					});
+				}
+				queued = true;
+				return new Promise<Response>((_resolve, reject) => {
+					init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), {
+						once: true,
+					});
+				});
+			}) as typeof fetch,
+		});
+		try {
+			const removal = nodes.removeCustomNode("example-node", caller.signal);
+			const expected = expect(removal).rejects.toThrow(
+				reason === "timeout"
+					? "ComfyUI Manager timed out while uninstalling example-node."
+					: "Removal canceled.",
+			);
+			await vi.waitFor(() => expect(queued).toBe(true));
+			if (reason === "timeout")
+				timeout.abort(new DOMException("Timed out.", "TimeoutError"));
+			else caller.abort(new Error("Removal canceled."));
+			await expected;
+		} finally {
+			timeoutSpy.mockRestore();
+		}
+	},
+);
