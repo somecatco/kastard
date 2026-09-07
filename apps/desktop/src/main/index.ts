@@ -100,6 +100,9 @@ import { ComfyRuntime, readManagerVersion } from "./comfy-runtime";
 import { ComfySourceInstaller } from "./comfy-source-installer";
 import { ComfyVersionStore } from "./comfy-version-store";
 import { ComfyVersions } from "./comfy-versions";
+import { EditorComfy, EditorComfyStartError } from "./editor-comfy";
+import { EditorCustomNodes } from "./editor-custom-nodes";
+import { EditorModelPaths } from "./editor-model-paths";
 import { IpcHandlerRegistry } from "./ipc-handler-registry";
 import { ModelLibrary } from "./model-library";
 import {
@@ -128,8 +131,8 @@ import { WorkflowInputSnapshotStore } from "./worker/workflow-input-snapshot";
 import { WorkflowResultStore } from "./worker/workflow-result-store";
 
 let comfyRuntime: ComfyRuntime | null = null;
-let comfyRestartQueue: Promise<unknown> = Promise.resolve();
-let comfyManualRestartPromise: Promise<string | null> | null = null;
+let editorComfy: EditorComfy | null = null;
+let editorCustomNodes: EditorCustomNodes | null = null;
 let comfyVersions: ComfyVersions | null = null;
 let comfyGateway: ComfyGateway | null = null;
 let comfyGatewayPortError: string | null = null;
@@ -146,43 +149,11 @@ let modelProviderSettingsError: string | null = null;
 let themeSettingsError: string | null = null;
 let syncCompletionNotificationSettingsError: string | null = null;
 let customNodeSyncError: string | null = null;
-let customNodeMutationActive = false;
-let comfyVersionMutationCount = 0;
 const ipcHandlers = new IpcHandlerRegistry(ipcMain);
 
-function enqueueComfyRuntimeRestart(): Promise<string | null> {
-	const restart = comfyRestartQueue
-		.catch(() => undefined)
-		.then(async () => {
-			assertCustomNodeMutationInactive();
-			const runtime = comfyRuntime;
-			const gateway = comfyGateway;
-			if (runtime === null || gateway === null) return null;
-			if (comfyGatewayPortError !== null) throw new Error(comfyGatewayPortError);
-			await gateway.start();
-			if (comfyRuntime !== runtime || comfyGateway !== gateway) return null;
-			assertCustomNodeMutationInactive();
-			return runtime.restart();
-		});
-	comfyRestartQueue = restart;
-	return restart;
-}
-
-function assertCustomNodeMutationInactive(): void {
-	if (customNodeMutationActive) {
-		throw new Error(
-			"ComfyUI cannot start or restart while a custom-node change is in progress.",
-		);
-	}
-}
-
-function restartComfyRuntimeManually(): Promise<string | null> {
-	if (comfyManualRestartPromise !== null) return comfyManualRestartPromise;
-	const restart = enqueueComfyRuntimeRestart().finally(() => {
-		if (comfyManualRestartPromise === restart) comfyManualRestartPromise = null;
-	});
-	comfyManualRestartPromise = restart;
-	return restart;
+function requireEditorComfy(): EditorComfy {
+	if (editorComfy === null) throw new Error("The ComfyUI runtime is unavailable.");
+	return editorComfy;
 }
 let unsubscribeComfy: (() => void) | null = null;
 let stopComfyDownloads: (() => void) | null = null;
@@ -246,7 +217,6 @@ async function initializeComfyVersions(
 			bundledBackendDirectory,
 			bundledManagerVersion: await readManagerVersion(bundledBackendDirectory),
 			bundledBackendTarget,
-			restartRuntime: enqueueComfyRuntimeRestart,
 			onBackendTargetChange: () => workerSession?.refreshEditorComfyVersion(),
 			onManagerTargetChange: () => workerSession?.refreshEditorCustomNodeTarget(),
 		});
@@ -281,34 +251,13 @@ async function readBundledFrontendRelease(): Promise<{
 }
 
 async function buildCustomNodeSyncPlan(): Promise<CustomNodeSyncPlan> {
-	if (customNodeMutationActive) {
-		throw new Error("Custom nodes cannot sync while a local change is in progress.");
-	}
-	if (customNodeSyncError) throw new Error(customNodeSyncError);
-	if (comfyRuntime === null) throw new Error("The ComfyUI runtime is unavailable.");
-	if (customNodeSync === null) {
-		throw new Error("Custom-node sync settings are unavailable.");
-	}
-	const syncStore = customNodeSync;
+	const editor = requireEditorComfy();
 	const managerVersion =
-		comfyVersions?.getManagerVersion() ?? (await comfyRuntime.getManagerVersion());
-	const selected = await customNodeEntriesWithSync(
-		await comfyRuntime.listCustomNodes(),
-		syncStore,
-	);
-	return createCustomNodeSyncPlan(selected, managerVersion);
-}
-
-async function customNodeEntriesWithSync(
-	nodes: Awaited<ReturnType<ComfyRuntime["listCustomNodes"]>>,
-	syncStore: CustomNodeSyncStore,
-) {
-	return Promise.all(
-		nodes.map(async (node) => ({
-			...node,
-			sync: await syncStore.get(node.name),
-		})),
-	);
+		comfyVersions?.getManagerVersion() ??
+		(await editorCustomNodes?.getManagerVersion());
+	if (managerVersion === undefined)
+		throw new Error("The ComfyUI runtime is unavailable.");
+	return createCustomNodeSyncPlan(await editor.nodesForSync(), managerVersion);
 }
 
 async function buildModelSyncPlan() {
@@ -554,19 +503,17 @@ app.whenReady().then(async () => {
 		"custom-nodes": join(comfyDataDirectory, "data", "custom_nodes"),
 		"model-library": join(comfyDataDirectory, "virtual-models"),
 	};
+	const modelPaths = new EditorModelPaths(comfyDataDirectory);
 	comfyRuntime = new ComfyRuntime({
+		modelPaths,
 		resourcesDirectory: resourceRoot("comfyui-runtime"),
 		frontendDirectory: resourceRoot("comfyui-frontend"),
 		dataDirectory: comfyDataDirectory,
 		getModels: () => (modelLibraryError ? [] : (modelLibrary?.list() ?? [])),
-		resolveBackend: async () => comfyVersions?.resolveBackend() ?? null,
-		resolveFrontend: async () => comfyVersions?.resolveFrontend() ?? null,
-		selectedBackendDirectory: async () =>
-			comfyVersions?.selectedBackendDirectory() ?? null,
+		resolveBackend: async (signal) => comfyVersions?.resolveBackend(signal) ?? null,
+		resolveFrontend: async (signal) => comfyVersions?.resolveFrontend(signal) ?? null,
 		resolveManagerVersion: (backendDirectory) =>
 			comfyVersions?.getRuntimeManagerVersion() ?? readManagerVersion(backendDirectory),
-		trashItem: (path) => shell.trashItem(path),
-		registryApiUrl: resources.comfyRegistry.api,
 		restoreResults: (signal) => workflowResults.restoreNativeFiles(signal),
 	});
 	const backendTargetPath = app.isPackaged
@@ -692,44 +639,60 @@ app.whenReady().then(async () => {
 			callback({ requestHeaders });
 		},
 	);
+	editorCustomNodes = new EditorCustomNodes({
+		resourcesDirectory: resourceRoot("comfyui-runtime"),
+		dataDirectory: comfyDataDirectory,
+		getRuntimeState: () => comfyRuntime?.getState() ?? { status: "idle" },
+		selectedBackendDirectory: async () =>
+			comfyVersions?.selectedBackendDirectory() ?? null,
+		resolveManagerVersion: (directory) =>
+			comfyVersions?.getRuntimeManagerVersion() ?? readManagerVersion(directory),
+		trashItem: (path) => shell.trashItem(path),
+		registryApiUrl: resources.comfyRegistry.api,
+	});
+	editorComfy = new EditorComfy({
+		runtime: comfyRuntime,
+		gateway: {
+			start: async () => {
+				if (comfyGatewayPortError !== null) throw new Error(comfyGatewayPortError);
+				if (comfyGateway === null)
+					throw new Error("The ComfyUI runtime is unavailable.");
+				return comfyGateway.start();
+			},
+		},
+		versions: comfyVersions,
+		versionsError: comfyVersionsError,
+		nodes: editorCustomNodes,
+		modelPaths,
+		getSyncStore: () => {
+			if (customNodeSyncError) throw new Error(customNodeSyncError);
+			if (customNodeSync === null)
+				throw new Error("Custom-node sync settings are unavailable.");
+			return customNodeSync;
+		},
+		getWorkerCustomNodeStatus: () => workerSession?.getState().customNodes.status,
+		refreshCustomNodeTarget: () => workerSession?.refreshEditorCustomNodeTarget(),
+	});
 	ipcHandlers.handle(COMFY_START_CHANNEL, async () => {
-		const runtime = comfyRuntime;
-		let runtimeStartAttempted = false;
 		try {
-			assertCustomNodeMutationInactive();
-			if (comfyGatewayPortError !== null) throw new Error(comfyGatewayPortError);
-			const gatewayUrl = await comfyGateway?.start();
-			assertCustomNodeMutationInactive();
-			runtimeStartAttempted = runtime !== null;
-			const runtimeUrl = await runtime?.start();
-			return gatewayUrl === undefined || runtimeUrl === undefined
-				? { ok: false, error: "ComfyUI runtime is unavailable." }
-				: { ok: true, url: gatewayUrl };
+			return { ok: true, url: await requireEditorComfy().start() };
 		} catch (error) {
-			const state = runtimeStartAttempted ? runtime?.getState() : undefined;
 			return {
 				ok: false,
 				error: errorMessage(error),
-				...(state?.status === "error" && state.reason !== undefined
-					? { reason: state.reason }
+				...(error instanceof EditorComfyStartError && error.reason !== undefined
+					? { reason: error.reason }
 					: {}),
 			};
 		}
 	});
-	ipcHandlers.handle(COMFY_RESTART_CHANNEL, () => {
-		if (comfyRuntime === null) {
-			return { ok: false, error: "The ComfyUI runtime is unavailable." };
+	ipcHandlers.handle(COMFY_RESTART_CHANNEL, async (): Promise<ConnectionResult> => {
+		try {
+			await requireEditorComfy().restart();
+			return { ok: true };
+		} catch (error) {
+			return { ok: false, error: errorMessage(error) };
 		}
-		return restartComfyRuntimeManually().then(
-			(url): ConnectionResult =>
-				url === null
-					? { ok: false, error: "The ComfyUI runtime is unavailable." }
-					: { ok: true },
-			(error: unknown): ConnectionResult => ({
-				ok: false,
-				error: errorMessage(error),
-			}),
-		);
 	});
 	unsubscribeComfy = comfyRuntime.subscribe((state) => {
 		const gatewayUrl = comfyGateway?.getUrl();
@@ -771,18 +734,7 @@ app.whenReady().then(async () => {
 			};
 		}
 		try {
-			assertCustomNodeMutationInactive();
-			comfyVersionMutationCount += 1;
-			try {
-				const restartBeforeSelection = comfyRestartQueue;
-				const state = await comfyVersions.select(request);
-				if (comfyRestartQueue !== restartBeforeSelection) {
-					await comfyRestartQueue.catch(() => undefined);
-				}
-				return { ok: true, state };
-			} finally {
-				comfyVersionMutationCount -= 1;
-			}
+			return { ok: true, state: await requireEditorComfy().selectVersion(request) };
 		} catch (error) {
 			return { ok: false, error: errorMessage(error) };
 		}
@@ -795,20 +747,8 @@ app.whenReady().then(async () => {
 			}
 		}) ?? null;
 	ipcHandlers.handle(CUSTOM_NODES_LIST_CHANNEL, async () => {
-		if (customNodeSyncError) return { ok: false, error: customNodeSyncError };
-		if (comfyRuntime === null) {
-			return { ok: false, error: "The ComfyUI runtime is unavailable." };
-		}
-		const syncStore = customNodeSync;
-		if (syncStore === null) {
-			return { ok: false, error: "Custom-node sync settings are unavailable." };
-		}
 		try {
-			const nodes = await customNodeEntriesWithSync(
-				await comfyRuntime.listCustomNodes(),
-				syncStore,
-			);
-			return { ok: true, nodes };
+			return { ok: true, nodes: await requireEditorComfy().listCustomNodes() };
 		} catch (error) {
 			return { ok: false, error: errorMessage(error) };
 		}
@@ -816,16 +756,14 @@ app.whenReady().then(async () => {
 	ipcHandlers.handle(
 		CUSTOM_NODES_INSTALL_OPTIONS_CHANNEL,
 		async (_event, request: unknown) => {
-			if (!isCustomNodeInstallOptionsRequest(request)) {
+			if (!isCustomNodeInstallOptionsRequest(request))
 				return { ok: false, error: "Enter a public GitHub repository URL." };
-			}
-			if (comfyRuntime === null) {
+			if (editorCustomNodes === null)
 				return { ok: false, error: "The ComfyUI runtime is unavailable." };
-			}
 			try {
 				return {
 					ok: true,
-					options: await comfyRuntime.resolveCustomNodeInstallOptions(
+					options: await editorCustomNodes.resolveCustomNodeInstallOptions(
 						request.repository,
 					),
 				};
@@ -834,147 +772,49 @@ app.whenReady().then(async () => {
 			}
 		},
 	);
-	ipcHandlers.handle(CUSTOM_NODES_INSTALL_CHANNEL, async (_event, request: unknown) => {
-		if (!isCustomNodeInstallRequest(request)) {
-			return { ok: false, error: "Enter a public GitHub repository URL." };
-		}
-		if (customNodeMutationActive) {
-			return { ok: false, error: "Another custom-node change is in progress." };
-		}
-		if (comfyVersionMutationCount > 0) {
-			return {
-				ok: false,
-				error: "Custom nodes cannot be installed during a ComfyUI version change.",
-			};
-		}
-		if (customNodeSyncError) return { ok: false, error: customNodeSyncError };
-		const runtime = comfyRuntime;
-		const syncStore = customNodeSync;
-		if (runtime === null) {
-			return { ok: false, error: "The ComfyUI runtime is unavailable." };
-		}
-		if (syncStore === null) {
-			return { ok: false, error: "Custom-node sync settings are unavailable." };
-		}
-		const workerCustomNodes = workerSession?.getState().customNodes;
-		if (
-			workerCustomNodes?.status === "loading" ||
-			workerCustomNodes?.status === "syncing" ||
-			workerCustomNodes?.status === "canceling"
-		) {
-			return {
-				ok: false,
-				error: "Custom nodes cannot be installed during Worker synchronization.",
-			};
-		}
-
-		customNodeMutationActive = true;
-		let response: CustomNodeInstallResult;
-		try {
-			const result = await runtime.installCustomNode(
-				request.repository,
-				request.version,
-			);
-			const nodes = await customNodeEntriesWithSync(result.nodes, syncStore);
-			const node = nodes.find((entry) => entry.name === result.node.name);
-			if (node === undefined) {
-				throw new Error("The installed custom node is missing from the local library.");
+	ipcHandlers.handle(
+		CUSTOM_NODES_INSTALL_CHANNEL,
+		async (_event, request: unknown): Promise<CustomNodeInstallResult> => {
+			if (!isCustomNodeInstallRequest(request))
+				return { ok: false, error: "Enter a public GitHub repository URL." };
+			try {
+				return {
+					ok: true,
+					...(await requireEditorComfy().installCustomNode(
+						request.repository,
+						request.version,
+					)),
+				};
+			} catch (error) {
+				return { ok: false, error: errorMessage(error) };
 			}
-			response = {
-				ok: true,
-				node,
-				nodes,
-				restartRequired: result.restartRequired,
-			};
-		} catch (error) {
-			response = { ok: false, error: errorMessage(error) };
-		} finally {
-			customNodeMutationActive = false;
-		}
-		workerSession?.refreshEditorCustomNodeTarget();
-		return response;
-	});
+		},
+	);
 	ipcHandlers.handle(CUSTOM_NODES_UPDATE_CHANNEL, async (_event, request: unknown) => {
-		if (!isCustomNodeUpdateRequest(request)) {
+		if (!isCustomNodeUpdateRequest(request))
 			return { ok: false, error: "Invalid custom-node sync update." };
-		}
-		if (customNodeMutationActive) {
-			return {
-				ok: false,
-				error:
-					"Custom-node sync settings cannot change during installation or deletion.",
-			};
-		}
-		if (customNodeSyncError) return { ok: false, error: customNodeSyncError };
-		if (customNodeSync === null) {
-			return { ok: false, error: "Custom-node sync settings are unavailable." };
-		}
 		try {
-			await customNodeSync.update(request.name, request.sync);
+			await requireEditorComfy().updateNodeSync(request.name, request.sync);
 			return { ok: true };
 		} catch (error) {
 			return { ok: false, error: errorMessage(error) };
 		}
 	});
-	ipcHandlers.handle(CUSTOM_NODES_REMOVE_CHANNEL, async (_event, request: unknown) => {
-		if (!isCustomNodeRemoveRequest(request)) {
-			return { ok: false, error: "Invalid custom-node removal request." };
-		}
-		if (customNodeMutationActive) {
-			return { ok: false, error: "Another custom-node change is in progress." };
-		}
-		if (comfyVersionMutationCount > 0) {
-			return {
-				ok: false,
-				error: "Custom nodes cannot be removed during a ComfyUI version change.",
-			};
-		}
-		if (customNodeSyncError) return { ok: false, error: customNodeSyncError };
-		const runtime = comfyRuntime;
-		const syncStore = customNodeSync;
-		if (runtime === null) {
-			return { ok: false, error: "The ComfyUI runtime is unavailable." };
-		}
-		if (syncStore === null) {
-			return { ok: false, error: "Custom-node sync settings are unavailable." };
-		}
-		const workerCustomNodes = workerSession?.getState().customNodes;
-		if (
-			workerCustomNodes?.status === "loading" ||
-			workerCustomNodes?.status === "syncing" ||
-			workerCustomNodes?.status === "canceling"
-		) {
-			return {
-				ok: false,
-				error: "Custom nodes cannot be removed during Worker synchronization.",
-			};
-		}
-
-		customNodeMutationActive = true;
-		let response: CustomNodeRemoveResult;
-		let previousSync: boolean | undefined;
-		let selectionRemoved = false;
-		try {
-			previousSync = await syncStore.remove(request.name);
-			selectionRemoved = true;
-			const result = await runtime.removeCustomNode(request.name);
-			response = { ok: true, restartRequired: result.restartRequired };
-		} catch (error) {
-			let message = errorMessage(error);
-			if (selectionRemoved && previousSync !== undefined) {
-				try {
-					await syncStore.update(request.name, previousSync);
-				} catch (restoreError) {
-					message = `Custom-node removal failed and its sync setting could not be restored. Removal: ${message} Restore: ${errorMessage(restoreError)}`;
-				}
+	ipcHandlers.handle(
+		CUSTOM_NODES_REMOVE_CHANNEL,
+		async (_event, request: unknown): Promise<CustomNodeRemoveResult> => {
+			if (!isCustomNodeRemoveRequest(request))
+				return { ok: false, error: "Invalid custom-node removal request." };
+			try {
+				return {
+					ok: true,
+					...(await requireEditorComfy().removeCustomNode(request.name)),
+				};
+			} catch (error) {
+				return { ok: false, error: errorMessage(error) };
 			}
-			response = { ok: false, error: message };
-		} finally {
-			customNodeMutationActive = false;
-		}
-		if (response.ok) workerSession?.refreshEditorCustomNodeTarget();
-		return response;
-	});
+		},
+	);
 	ipcHandlers.handle(EDITOR_DIRECTORY_GET_CHANNEL, (_event, directory: unknown) => {
 		if (!isEditorDirectory(directory)) {
 			return { ok: false, error: "Invalid Editor directory." };
@@ -1035,9 +875,9 @@ app.whenReady().then(async () => {
 				input.artifact,
 				readModelProviderToken,
 			);
-			const model = await modelLibrary?.add(
-				input,
-				(models) => comfyRuntime?.syncModels(models) ?? Promise.resolve(),
+			const library = modelLibrary;
+			const model = await requireEditorComfy().updateModels(async (publish) =>
+				library?.add(input, publish),
 			);
 			if (!model) return unavailableModelLibrary();
 			workerSession?.refreshEditorModelTarget();
@@ -1064,10 +904,9 @@ app.whenReady().then(async () => {
 					readModelProviderToken,
 				);
 			}
-			const model = await modelLibrary?.update(
-				request.id,
-				request.input,
-				(models) => comfyRuntime?.syncModels(models) ?? Promise.resolve(),
+			const library = modelLibrary;
+			const model = await requireEditorComfy().updateModels(async (publish) =>
+				library?.update(request.id, request.input, publish),
 			);
 			if (!model) return unavailableModelLibrary();
 			workerSession?.refreshEditorModelTarget();
@@ -1082,9 +921,9 @@ app.whenReady().then(async () => {
 		}
 		if (modelLibraryError) return { ok: false, error: modelLibraryError };
 		try {
-			const model = await modelLibrary?.remove(
-				request.id,
-				(models) => comfyRuntime?.syncModels(models) ?? Promise.resolve(),
+			const library = modelLibrary;
+			const model = await requireEditorComfy().updateModels(async (publish) =>
+				library?.remove(request.id, publish),
 			);
 			if (!model) return unavailableModelLibrary();
 			workerSession?.refreshEditorModelTarget();
@@ -1298,10 +1137,11 @@ async function stopBeforeQuit(): Promise<void> {
 	stopComfyDownloads?.();
 	stopComfyDownloads = null;
 	nativeTheme.removeListener("updated", syncWindowBackgrounds);
+	const stoppingEditorComfy = editorComfy?.shutdown();
+	editorComfy = null;
+	editorCustomNodes = null;
 	const stoppingComfyGateway = comfyGateway?.stop();
 	comfyGateway = null;
-	const finishingComfyRestarts = comfyRestartQueue;
-	const stoppingComfyRuntime = comfyRuntime?.stop();
 	comfyRuntime = null;
 	session.defaultSession.webRequest.onBeforeSendHeaders(null);
 	unsubscribeComfy?.();
@@ -1315,7 +1155,7 @@ async function stopBeforeQuit(): Promise<void> {
 	unsubscribeWorkerSession = null;
 	const stoppingWorkerSession = workerSession?.stop();
 	workerSession = null;
-	modelLibrary?.close();
+	const closingModelLibrary = modelLibrary;
 	modelLibrary = null;
 	modelLibraryError = null;
 	customNodeSync = null;
@@ -1330,10 +1170,10 @@ async function stopBeforeQuit(): Promise<void> {
 	ipcHandlers.removeAll();
 	await Promise.allSettled([
 		stoppingComfyGateway,
-		finishingComfyRestarts,
-		stoppingComfyRuntime,
+		stoppingEditorComfy,
 		stoppingWorkerSession,
 	]);
+	closingModelLibrary?.close();
 }
 
 function unavailableModelLibrary(): { ok: false; error: string } {

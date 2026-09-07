@@ -93,7 +93,9 @@ export class ComfySourceInstaller {
 		component: ComfySourceComponent,
 		release: ComfyRelease,
 		onProgress: (progress: number) => void = () => {},
+		signal?: AbortSignal,
 	): Promise<string> {
+		signal?.throwIfAborted();
 		const target = this.directoryFor(component, release.version);
 		if (await this.isInstalled(component, release.version)) {
 			onProgress(100);
@@ -103,9 +105,10 @@ export class ComfySourceInstaller {
 		const temporaryRoot = await mkdtemp(`${this.options.rootDirectory}-staging-`);
 		const staging = join(temporaryRoot, release.version);
 		try {
-			const archive = await this.download(release.archiveUrl, onProgress);
+			const archive = await this.download(release.archiveUrl, onProgress, signal);
 			const sha256 = createHash("sha256").update(archive).digest("hex");
-			await extractZip(archive, staging, component === "backend");
+			signal?.throwIfAborted();
+			await extractZip(archive, staging, component === "backend", signal);
 			// Rejecting here keeps a release Kastard cannot start from becoming the
 			// stored selection.
 			const missing = await missingEntry(staging, component);
@@ -124,6 +127,7 @@ export class ComfySourceInstaller {
 				`${JSON.stringify(stamp, null, "\t")}\n`,
 			);
 			await mkdir(dirname(target), { recursive: true });
+			signal?.throwIfAborted();
 			await rm(target, { recursive: true, force: true });
 			await rename(staging, target);
 			onProgress(100);
@@ -136,10 +140,14 @@ export class ComfySourceInstaller {
 	private async download(
 		url: string,
 		onProgress: (progress: number) => void,
+		signal?: AbortSignal,
 	): Promise<Uint8Array> {
 		const response = await this.requestFetch(url, {
 			redirect: "follow",
-			signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
+			signal:
+				signal === undefined
+					? AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS)
+					: AbortSignal.any([signal, AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS)]),
 		});
 		if (!response.ok || response.body === null) {
 			throw new Error(`Download failed with HTTP ${response.status}.`);
@@ -185,12 +193,14 @@ async function extractZip(
 	bytes: Uint8Array,
 	target: string,
 	stripFirstDirectory: boolean,
+	signal?: AbortSignal,
 ): Promise<void> {
 	// Asynchronous so a large release does not block the main process while it inflates.
 	const entries = await new Promise<Unzipped>((resolve, reject) => {
 		unzip(bytes, (error, data) => (error ? reject(error) : resolve(data)));
 	});
 	for (const [entry, contents] of Object.entries(entries)) {
+		signal?.throwIfAborted();
 		if (entry.endsWith("/")) continue;
 		const parts = entry.split("/");
 		const relative = stripFirstDirectory ? parts.slice(1).join("/") : entry;

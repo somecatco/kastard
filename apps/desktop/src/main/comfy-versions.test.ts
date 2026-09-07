@@ -1,3 +1,4 @@
+import { EditorComfy } from "./editor-comfy";
 // @vitest-environment node
 
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -139,7 +140,7 @@ async function harness(
 		hasManager: (version: string) => managerVersions.includes(version),
 	} as unknown as ComfyReleaseCatalog;
 
-	const restarts = vi.fn(async () => null);
+	const restarts = vi.fn(async () => "http://127.0.0.1:18188/");
 	let targetChanges = 0;
 	let managerTargetChanges = 0;
 	const versions = new ComfyVersions({
@@ -150,7 +151,6 @@ async function harness(
 		bundledBackendDirectory,
 		bundledManagerVersion: "4.2.2",
 		bundledBackendTarget: bundledBackend,
-		restartRuntime: restarts,
 		onBackendTargetChange: () => {
 			targetChanges += 1;
 		},
@@ -159,7 +159,33 @@ async function harness(
 		},
 	});
 	await versions.initialize();
+	const editor = new EditorComfy({
+		versions,
+		runtime: {
+			start: restarts,
+			restart: restarts,
+			stop: async () => {},
+			getState: () => ({ status: "ready", url: "http://127.0.0.1:18188/" }),
+		},
+		gateway: { start: async () => "http://127.0.0.1:18188/" },
+		nodes: {
+			installCustomNode: vi.fn(),
+			removeCustomNode: vi.fn(),
+			listCustomNodes: vi.fn(),
+			cancelInstallation: async () => {},
+		},
+		modelPaths: { syncModels: async () => {}, settled: async () => {} },
+		getSyncStore: () => ({
+			get: async () => true,
+			update: async () => {},
+			remove: async () => undefined,
+		}),
+		getWorkerCustomNodeStatus: () => undefined,
+		refreshCustomNodeTarget: () => {},
+	});
 	return {
+		editor,
+		store,
 		versions,
 		install,
 		remove,
@@ -189,11 +215,6 @@ async function harness(
 	};
 }
 
-async function settled(versions: ComfyVersions): Promise<ComfyVersionState> {
-	await new Promise((resolve) => setTimeout(resolve, 0));
-	return versions.getState();
-}
-
 test("starts on the bundled versions and reports the frontend they pin", async () => {
 	const { versions } = await harness();
 
@@ -208,34 +229,34 @@ test("starts on the bundled versions and reports the frontend they pin", async (
 });
 
 test("points the Worker at the selected backend release", async () => {
-	const { versions, restarts } = await harness();
+	const { editor, versions, restarts } = await harness();
 
-	await versions.select({ component: "backend", version: "0.34.0" });
+	await editor.selectVersion({ component: "backend", version: "0.34.0" });
 
 	expect(versions.getBackendTarget()).toEqual({
 		version: "0.34.0",
 		archiveUrl: selectedBackend.archiveUrl,
 		sha256: "b".repeat(64),
 	});
-	expect((await settled(versions)).recommendedFrontend).toBe("v1.50.0");
-	expect((await settled(versions)).recommendedManager).toBe("4.3.0");
+	expect(versions.getState().recommendedFrontend).toBe("v1.50.0");
+	expect(versions.getState().recommendedManager).toBe("4.3.0");
 	expect(restarts).toHaveBeenCalledOnce();
 });
 
 test("returns the Worker to the bundled backend when it is reselected", async () => {
-	const { versions } = await harness();
-	await versions.select({ component: "backend", version: "0.34.0" });
+	const { editor, versions } = await harness();
+	await editor.selectVersion({ component: "backend", version: "0.34.0" });
 
-	await versions.select({ component: "backend", version: "0.33.1" });
+	await editor.selectVersion({ component: "backend", version: "0.33.1" });
 
 	expect(versions.getState().selection.backend).toBeNull();
 	expect(versions.getBackendTarget()).toEqual(bundledBackend);
 });
 
 test("leaves the Worker target alone when only the frontend changes", async () => {
-	const { versions, restarts } = await harness();
+	const { editor, versions, restarts } = await harness();
 
-	await versions.select({ component: "frontend", version: "v1.53.0" });
+	await editor.selectVersion({ component: "frontend", version: "v1.53.0" });
 
 	expect(versions.getState().selection).toEqual({
 		frontend: "v1.53.0",
@@ -247,21 +268,21 @@ test("leaves the Worker target alone when only the frontend changes", async () =
 });
 
 test("does not restart when the selection is unchanged", async () => {
-	const { versions, restarts, install } = await harness();
+	const { editor, restarts, install } = await harness();
 
-	await versions.select({ component: "backend", version: "0.33.1" });
+	await editor.selectVersion({ component: "backend", version: "0.33.1" });
 
 	expect(restarts).not.toHaveBeenCalled();
 	expect(install).not.toHaveBeenCalled();
 });
 
 test("keeps the previous selection when the download fails", async () => {
-	const { versions, restarts } = await harness({ installFails: true });
+	const { editor, versions, restarts } = await harness({ installFails: true });
 	const states: ComfyVersionState[] = [];
 	versions.subscribe((state) => states.push(state));
 
 	await expect(
-		versions.select({ component: "backend", version: "0.34.0" }),
+		editor.selectVersion({ component: "backend", version: "0.34.0" }),
 	).rejects.toThrow("Download failed with HTTP 500.");
 
 	expect(versions.getState().selection.backend).toBeNull();
@@ -271,17 +292,17 @@ test("keeps the previous selection when the download fails", async () => {
 });
 
 test("rejects a version that is not a known release", async () => {
-	const { versions } = await harness();
+	const { editor } = await harness();
 
 	await expect(
-		versions.select({ component: "backend", version: "9.9.9" }),
+		editor.selectVersion({ component: "backend", version: "9.9.9" }),
 	).rejects.toThrow("is not a known release");
 });
 
 test("switches Manager independently and reports it as installed", async () => {
-	const { versions, restarts, managerTargetChanges } = await harness();
+	const { editor, versions, restarts, managerTargetChanges } = await harness();
 
-	await versions.select({ component: "manager", version: "4.3.0" });
+	await editor.selectVersion({ component: "manager", version: "4.3.0" });
 
 	expect(restarts).toHaveBeenCalledOnce();
 	expect(versions.getState().selection.manager).toBe("4.3.0");
@@ -295,56 +316,56 @@ test("switches Manager independently and reports it as installed", async () => {
 });
 
 test("follows the selected backend Manager pin until an override is chosen", async () => {
-	const { versions } = await harness();
+	const { editor, versions } = await harness();
 
-	await versions.select({ component: "backend", version: "0.34.0" });
+	await editor.selectVersion({ component: "backend", version: "0.34.0" });
 	expect(versions.getManagerVersion()).toBe("4.3.0");
 
-	await versions.select({ component: "manager", version: "4.4.0" });
-	await versions.select({ component: "backend", version: "0.33.1" });
+	await editor.selectVersion({ component: "manager", version: "4.4.0" });
+	await editor.selectVersion({ component: "backend", version: "0.33.1" });
 
 	expect(versions.getManagerVersion()).toBe("4.4.0");
 	expect(versions.getState().recommendedManager).toBe("4.2.2");
 });
 
 test("stores an explicit Manager override that equals the current backend pin", async () => {
-	const { versions, restarts } = await harness();
+	const { editor, versions, restarts } = await harness();
 
-	await versions.select({ component: "manager", version: "4.2.2" });
+	await editor.selectVersion({ component: "manager", version: "4.2.2" });
 
 	expect(versions.getState().selection.manager).toBe("4.2.2");
 	expect(restarts).toHaveBeenCalledOnce();
-	await versions.select({ component: "backend", version: "0.34.0" });
+	await editor.selectVersion({ component: "backend", version: "0.34.0" });
 	expect(versions.getManagerVersion()).toBe("4.2.2");
 });
 
 test("stores the current backend Manager pin when the Manager catalog is empty", async () => {
-	const { versions, restarts } = await harness({ managerVersions: [] });
+	const { editor, versions, restarts } = await harness({ managerVersions: [] });
 
-	await versions.select({ component: "backend", version: "0.34.0" });
-	await versions.select({ component: "manager", version: "4.3.0" });
+	await editor.selectVersion({ component: "backend", version: "0.34.0" });
+	await editor.selectVersion({ component: "manager", version: "4.3.0" });
 
 	expect(versions.getState().selection.manager).toBe("4.3.0");
 	expect(restarts).toHaveBeenCalledTimes(2);
 });
 
 test("keeps an explicit Manager override while the selected backend pin is unavailable", async () => {
-	const { versions, forgetInstall } = await harness();
+	const { editor, versions, forgetInstall } = await harness();
 
-	await versions.select({ component: "backend", version: "0.34.0" });
+	await editor.selectVersion({ component: "backend", version: "0.34.0" });
 	forgetInstall("backend", "0.34.0");
 	await versions.initialize();
 
 	expect(versions.getState().recommendedManager).toBeNull();
-	await versions.select({ component: "manager", version: "4.2.2" });
+	await editor.selectVersion({ component: "manager", version: "4.2.2" });
 	expect(versions.getState().selection.manager).toBe("4.2.2");
 });
 
 test("resolves a followed Manager pin after installing the selected backend", async () => {
-	const { versions, restarts, forgetInstall } = await harness();
+	const { editor, versions, restarts, forgetInstall } = await harness();
 
-	await versions.select({ component: "backend", version: "0.34.0" });
-	await versions.select({ component: "manager", version: "4.2.2" });
+	await editor.selectVersion({ component: "backend", version: "0.34.0" });
+	await editor.selectVersion({ component: "manager", version: "4.2.2" });
 	forgetInstall("backend", "0.34.0");
 	await versions.initialize();
 	expect(versions.getState().recommendedManager).toBeNull();
@@ -353,10 +374,10 @@ test("resolves a followed Manager pin after installing the selected backend", as
 		expect(versions.getRuntimeManagerVersion()).toBe("4.2.2");
 		await versions.resolveBackend();
 		expect(versions.getRuntimeManagerVersion()).toBe("4.3.0");
-		return null;
+		return "http://127.0.0.1:18188/";
 	});
 
-	await versions.select({ component: "manager", version: null });
+	await editor.selectVersion({ component: "manager", version: null });
 
 	expect(restarts).toHaveBeenCalledOnce();
 	expect(versions.getState().selection.manager).toBeNull();
@@ -364,7 +385,7 @@ test("resolves a followed Manager pin after installing the selected backend", as
 });
 
 test("restores the previous Manager when the new runtime cannot start", async () => {
-	const { versions, restarts, managerTargetChanges } = await harness();
+	const { editor, versions, restarts, managerTargetChanges } = await harness();
 	restarts.mockImplementationOnce(async () => {
 		expect(versions.getManagerVersion()).toBe("4.2.2");
 		expect(versions.getRuntimeManagerVersion()).toBe("4.3.0");
@@ -372,7 +393,7 @@ test("restores the previous Manager when the new runtime cannot start", async ()
 	});
 
 	await expect(
-		versions.select({ component: "manager", version: "4.3.0" }),
+		editor.selectVersion({ component: "manager", version: "4.3.0" }),
 	).rejects.toThrow("Manager dependencies failed.");
 
 	expect(restarts).toHaveBeenCalledTimes(2);
@@ -381,22 +402,22 @@ test("restores the previous Manager when the new runtime cannot start", async ()
 	expect(versions.getRuntimeManagerVersion()).toBe("4.2.2");
 	expect(managerTargetChanges()).toBe(0);
 
-	await versions.select({ component: "manager", version: "4.4.0" });
+	await editor.selectVersion({ component: "manager", version: "4.4.0" });
 	expect(versions.getManagerVersion()).toBe("4.4.0");
 });
 
 test("rejects a Manager version missing from the PyPI catalog", async () => {
-	const { versions, restarts } = await harness();
+	const { editor, restarts } = await harness();
 
 	await expect(
-		versions.select({ component: "manager", version: "9.9.9" }),
+		editor.selectVersion({ component: "manager", version: "9.9.9" }),
 	).rejects.toThrow("is not a known release");
 	expect(restarts).not.toHaveBeenCalled();
 });
 
 test("installs the selected release before the runtime starts", async () => {
-	const { versions, install } = await harness();
-	await versions.select({ component: "backend", version: "0.34.0" });
+	const { editor, versions, install } = await harness();
+	await editor.selectVersion({ component: "backend", version: "0.34.0" });
 	install.mockClear();
 
 	const resolved = await versions.resolveBackend();
@@ -406,6 +427,7 @@ test("installs the selected release before the runtime starts", async () => {
 		"backend",
 		selectedBackend,
 		expect.any(Function),
+		undefined,
 	);
 });
 
@@ -417,7 +439,7 @@ test("resolves to the bundled sources while nothing is selected", async () => {
 });
 
 test("marks the bundled and downloaded releases as installed", async () => {
-	const { versions } = await harness();
+	const { editor, versions } = await harness();
 
 	expect(await versions.listCatalog()).toEqual({
 		backend: [
@@ -434,7 +456,7 @@ test("marks the bundled and downloaded releases as installed", async () => {
 		error: null,
 	});
 
-	await versions.select({ component: "backend", version: "0.34.0" });
+	await editor.selectVersion({ component: "backend", version: "0.34.0" });
 
 	expect((await versions.listCatalog()).backend).toEqual([
 		{ version: "0.35.0", installed: false },
@@ -444,13 +466,11 @@ test("marks the bundled and downloaded releases as installed", async () => {
 });
 
 test("removes the replaced release once ComfyUI has restarted on the new one", async () => {
-	const { versions, remove } = await harness();
-	await versions.select({ component: "backend", version: "0.34.0" });
-	await settled(versions);
+	const { editor, versions, remove } = await harness();
+	await editor.selectVersion({ component: "backend", version: "0.34.0" });
 	expect(remove).not.toHaveBeenCalled();
 
-	await versions.select({ component: "backend", version: "0.33.1" });
-	await settled(versions);
+	await editor.selectVersion({ component: "backend", version: "0.33.1" });
 
 	expect(remove).toHaveBeenCalledWith("backend", "0.34.0");
 	expect((await versions.listCatalog()).backend).toEqual([
@@ -461,13 +481,11 @@ test("removes the replaced release once ComfyUI has restarted on the new one", a
 });
 
 test("keeps the replaced release when ComfyUI cannot restart on the new one", async () => {
-	const { versions, remove, restarts } = await harness();
-	await versions.select({ component: "backend", version: "0.34.0" });
-	await settled(versions);
+	const { editor, versions, remove, restarts } = await harness();
+	await editor.selectVersion({ component: "backend", version: "0.34.0" });
 	restarts.mockRejectedValueOnce(new Error("ComfyUI failed to start."));
 
-	await versions.select({ component: "backend", version: "0.33.1" });
-	await settled(versions);
+	await editor.selectVersion({ component: "backend", version: "0.33.1" });
 
 	expect(remove).not.toHaveBeenCalled();
 	expect((await versions.listCatalog()).backend).toEqual([
@@ -477,40 +495,33 @@ test("keeps the replaced release when ComfyUI cannot restart on the new one", as
 	]);
 });
 
-test("has nothing to remove when leaving the bundled release", async () => {
-	const { versions, remove } = await harness();
-
-	await versions.select({ component: "frontend", version: "v1.53.0" });
-	await settled(versions);
-
-	expect(remove).not.toHaveBeenCalled();
-});
-
 test("keeps the release the user switched back to before the cleanup settled", async () => {
-	const { versions, remove, restarts } = await harness();
-	await versions.select({ component: "backend", version: "0.34.0" });
+	const { editor, versions, remove, restarts } = await harness();
+	await editor.selectVersion({ component: "backend", version: "0.34.0" });
 	// Hold the restart that would retire 0.34.0 until it has been selected again.
 	let releaseRestart: (() => void) | undefined;
 	restarts.mockImplementationOnce(
 		() =>
 			new Promise((resolve) => {
-				releaseRestart = () => resolve(null);
+				releaseRestart = () => resolve("http://127.0.0.1:18188/");
 			}),
 	);
-	await versions.select({ component: "backend", version: "0.33.1" });
-	await versions.select({ component: "backend", version: "0.34.0" });
+	const switching = editor.selectVersion({ component: "backend", version: "0.33.1" });
+	await vi.waitFor(() => expect(restarts).toHaveBeenCalledTimes(2));
+	const returning = editor.selectVersion({ component: "backend", version: "0.34.0" });
+	await vi.waitFor(() => expect(versions.getState().selection.backend).toBe("0.34.0"));
 
 	releaseRestart?.();
-	await settled(versions);
+	await Promise.all([switching, returning]);
 
 	expect(remove).not.toHaveBeenCalled();
 	expect(versions.getState().selection.backend).toBe("0.34.0");
 });
 
 test("starts an installed release when the release listing is gone", async () => {
-	const { versions, install, forgetCatalog } = await harness();
-	await versions.select({ component: "backend", version: "0.34.0" });
-	await versions.select({ component: "frontend", version: "v1.53.0" });
+	const { editor, versions, install, forgetCatalog } = await harness();
+	await editor.selectVersion({ component: "backend", version: "0.34.0" });
+	await editor.selectVersion({ component: "frontend", version: "v1.53.0" });
 	install.mockClear();
 	forgetCatalog();
 
@@ -521,17 +532,17 @@ test("starts an installed release when the release listing is gone", async () =>
 });
 
 test("reports the selected backend directory without installing it", async () => {
-	const { versions, install } = await harness();
-	await versions.select({ component: "backend", version: "0.34.0" });
+	const { editor, versions, install } = await harness();
+	await editor.selectVersion({ component: "backend", version: "0.34.0" });
 	install.mockClear();
 
 	await expect(versions.selectedBackendDirectory()).resolves.toContain("0.34.0");
 	expect(install).not.toHaveBeenCalled();
 });
 
-test("re-projects the Worker target once a missing release is reinstalled", async () => {
-	const { versions, targetChanges } = await harness();
-	await versions.select({ component: "backend", version: "0.34.0" });
+test("keeps the Worker target stable when resolving an installed release", async () => {
+	const { editor, versions, targetChanges } = await harness();
+	await editor.selectVersion({ component: "backend", version: "0.34.0" });
 	const changesAfterSelect = targetChanges();
 
 	await versions.resolveBackend();
@@ -541,39 +552,40 @@ test("re-projects the Worker target once a missing release is reinstalled", asyn
 });
 
 test("keeps the release a newer switch is already installing", async () => {
-	const { versions, remove, restarts, holdInstall } = await harness();
-	await versions.select({ component: "backend", version: "0.34.0" });
+	const { editor, remove, restarts, holdInstall } = await harness();
+	await editor.selectVersion({ component: "backend", version: "0.34.0" });
 	let releaseRestart = () => {};
 	restarts.mockImplementationOnce(
 		() =>
 			new Promise((resolve) => {
-				releaseRestart = () => resolve(null);
+				releaseRestart = () => resolve("http://127.0.0.1:18188/");
 			}),
 	);
-	await versions.select({ component: "backend", version: "0.35.0" });
+	const switching = editor.selectVersion({ component: "backend", version: "0.35.0" });
+	await vi.waitFor(() => expect(restarts).toHaveBeenCalledTimes(2));
 
 	// The user switches back while the first restart has not settled yet.
 	const releaseInstall = holdInstall("backend", "0.34.0");
-	const back = versions.select({ component: "backend", version: "0.34.0" });
+	const back = editor.selectVersion({ component: "backend", version: "0.34.0" });
 	releaseRestart();
-	await settled(versions);
+	await switching;
 	releaseInstall();
-	await back;
+	await Promise.all([back, switching]);
 
 	expect(remove).not.toHaveBeenCalledWith("backend", "0.34.0");
 });
 
 test("reports no selected backend directory when the release is gone from disk", async () => {
-	const { versions, forgetInstall } = await harness();
-	await versions.select({ component: "backend", version: "0.34.0" });
+	const { editor, versions, forgetInstall } = await harness();
+	await editor.selectVersion({ component: "backend", version: "0.34.0" });
 	forgetInstall("backend", "0.34.0");
 
 	await expect(versions.selectedBackendDirectory()).resolves.toBeNull();
 });
 
 test("reports install progress while the runtime resolves a selection", async () => {
-	const { versions, forgetInstall } = await harness();
-	await versions.select({ component: "backend", version: "0.34.0" });
+	const { editor, versions, forgetInstall } = await harness();
+	await editor.selectVersion({ component: "backend", version: "0.34.0" });
 	forgetInstall("backend", "0.34.0");
 	const states: ComfyVersionState[] = [];
 	versions.subscribe((state) => states.push(state));
@@ -589,36 +601,189 @@ test("reports install progress while the runtime resolves a selection", async ()
 });
 
 test("leaves the newest selection in place when an older switch finishes late", async () => {
-	const { versions, restarts, holdInstall } = await harness();
+	const { editor, versions, restarts, holdInstall } = await harness();
 	const releaseSlowInstall = holdInstall("backend", "0.34.0");
-	const slow = versions.select({ component: "backend", version: "0.34.0" });
-	await settled(versions);
+	const slow = editor.selectVersion({ component: "backend", version: "0.34.0" });
 
-	await versions.select({ component: "backend", version: "0.35.0" });
+	await editor.selectVersion({ component: "backend", version: "0.35.0" });
 	releaseSlowInstall();
 	await slow;
-	await settled(versions);
 
 	expect(versions.getState().selection.backend).toBe("0.35.0");
 	expect(restarts).toHaveBeenCalledTimes(1);
 });
 
 test("removes the replaced backend even when the frontend switches next", async () => {
-	const { versions, remove, restarts } = await harness();
-	await versions.select({ component: "backend", version: "0.34.0" });
+	const { editor, remove, restarts } = await harness();
+	await editor.selectVersion({ component: "backend", version: "0.34.0" });
 	let releaseRestart = () => {};
 	restarts.mockImplementationOnce(
 		() =>
 			new Promise((resolve) => {
-				releaseRestart = () => resolve(null);
+				releaseRestart = () => resolve("http://127.0.0.1:18188/");
 			}),
 	);
-	await versions.select({ component: "backend", version: "0.35.0" });
+	const switching = editor.selectVersion({ component: "backend", version: "0.35.0" });
+	await vi.waitFor(() => expect(restarts).toHaveBeenCalledTimes(2));
 
 	// The frontend switch must not look like a newer switch to the backend cleanup.
-	await versions.select({ component: "frontend", version: "v1.53.0" });
+	const frontend = editor.selectVersion({ component: "frontend", version: "v1.53.0" });
 	releaseRestart();
-	await settled(versions);
+	await Promise.all([switching, frontend]);
 
 	expect(remove).toHaveBeenCalledWith("backend", "0.34.0");
+});
+
+test("waits for the version restart before completing the selection", async () => {
+	const { editor, versions, restarts } = await harness();
+	let release = () => {};
+	restarts.mockImplementationOnce(
+		() =>
+			new Promise((resolve) => {
+				release = () => resolve("http://127.0.0.1:18188/");
+			}),
+	);
+	let completed = false;
+	const selecting = editor
+		.selectVersion({ component: "backend", version: "0.34.0" })
+		.then(() => {
+			completed = true;
+		});
+	await vi.waitFor(() => expect(restarts).toHaveBeenCalledOnce());
+	expect(versions.getState().selection.backend).toBe("0.34.0");
+	expect(completed).toBe(false);
+	await expect(
+		editor.installCustomNode("https://github.com/example/example-node.git"),
+	).rejects.toThrow("version change");
+	release();
+	await selecting;
+	expect(completed).toBe(true);
+});
+
+test("keeps the current source when it is reselected during another download", async () => {
+	const { editor, versions, holdInstall, restarts } = await harness();
+	const release = holdInstall("backend", "0.34.0");
+	const downloading = editor.selectVersion({ component: "backend", version: "0.34.0" });
+	await editor.selectVersion({ component: "backend", version: null });
+	release();
+	await downloading;
+	expect(versions.getState().selection.backend).toBeNull();
+	expect(restarts).not.toHaveBeenCalled();
+});
+
+test("recovers the Manager when saving the selection fails after startup", async () => {
+	const { editor, versions, store, restarts, managerTargetChanges } = await harness();
+	vi.spyOn(store, "update").mockRejectedValueOnce(
+		new Error("Selection could not be saved."),
+	);
+	await expect(
+		editor.selectVersion({ component: "manager", version: "4.3.0" }),
+	).rejects.toThrow("Selection could not be saved.");
+	expect(restarts).toHaveBeenCalledTimes(2);
+	expect(versions.getState().selection.manager).toBeNull();
+	expect(versions.getRuntimeManagerVersion()).toBe("4.2.2");
+	expect(managerTargetChanges()).toBe(0);
+	await editor.selectVersion({ component: "manager", version: "4.4.0" });
+	expect(versions.getState().selection.manager).toBe("4.4.0");
+});
+
+test("preserves both Manager startup and recovery errors", async () => {
+	const { editor, versions, restarts } = await harness();
+	const startup = new Error("New Manager failed.");
+	const recovery = new Error("Previous Manager failed.");
+	restarts.mockRejectedValueOnce(startup).mockRejectedValueOnce(recovery);
+	await expect(
+		editor.selectVersion({ component: "manager", version: "4.3.0" }),
+	).rejects.toMatchObject({
+		message: "ComfyUI Manager switch and recovery failed.",
+		errors: [startup, recovery],
+	});
+	expect(versions.getState().selection.manager).toBeNull();
+	expect(versions.getRuntimeManagerVersion()).toBe("4.2.2");
+});
+
+test("rejects another Manager transition until startup and persistence complete", async () => {
+	const { editor, store, restarts } = await harness();
+	let release = () => {};
+	const saving = new Promise<void>((resolve) => {
+		release = resolve;
+	});
+	const update = vi.spyOn(store, "update").mockImplementationOnce(async () => {
+		await saving;
+		return store.get();
+	});
+	const selecting = editor.selectVersion({ component: "manager", version: "4.3.0" });
+	await vi.waitFor(() => expect(update).toHaveBeenCalled());
+	await expect(
+		editor.selectVersion({ component: "manager", version: "4.4.0" }),
+	).rejects.toThrow("already in progress");
+	release();
+	await selecting;
+	expect(restarts).toHaveBeenCalledOnce();
+});
+
+test("does not select or restart a source whose download completes after shutdown", async () => {
+	const { editor, versions, holdInstall, restarts, install } = await harness();
+	const release = holdInstall("backend", "0.34.0");
+	const selecting = editor.selectVersion({ component: "backend", version: "0.34.0" });
+	const rejected = expect(selecting).rejects.toThrow();
+	await vi.waitFor(() => expect(install).toHaveBeenCalled());
+	const shutdown = editor.shutdown();
+	release();
+	await Promise.all([shutdown, rejected]);
+	expect(versions.getState().selection.backend).toBeNull();
+	expect(restarts).not.toHaveBeenCalled();
+});
+
+test("retains the previous release when shutdown interrupts a version restart", async () => {
+	const { editor, versions, restarts, remove } = await harness();
+	await editor.selectVersion({ component: "backend", version: "0.34.0" });
+	let release = () => {};
+	restarts.mockImplementationOnce(
+		() =>
+			new Promise((resolve) => {
+				release = () => resolve("http://127.0.0.1:18188/");
+			}),
+	);
+	const selecting = editor.selectVersion({ component: "backend", version: "0.35.0" });
+	const rejected = expect(selecting).rejects.toThrow("shutting down");
+	await vi.waitFor(() => expect(restarts).toHaveBeenCalledTimes(2));
+	const shutdown = editor.shutdown();
+	release();
+	await Promise.all([shutdown, rejected]);
+	expect(versions.getState().selection.backend).toBe("0.35.0");
+	expect(remove).not.toHaveBeenCalled();
+});
+
+test("persists concurrent frontend and backend selections together", async () => {
+	const { editor, versions } = await harness();
+	await Promise.all([
+		editor.selectVersion({ component: "frontend", version: "v1.53.0" }),
+		editor.selectVersion({ component: "backend", version: "0.34.0" }),
+	]);
+	expect(versions.getState().selection).toMatchObject({
+		frontend: "v1.53.0",
+		backend: "0.34.0",
+	});
+});
+
+test("honors a return to the saved source while another selection is being written", async () => {
+	const { editor, versions, store } = await harness();
+	const update = store.update.bind(store);
+	let release = () => {};
+	const writing = new Promise<void>((resolve) => {
+		release = resolve;
+	});
+	const write = vi
+		.spyOn(store, "update")
+		.mockImplementationOnce(async (component, version) => {
+			await writing;
+			return update(component, version);
+		});
+	const selecting = editor.selectVersion({ component: "backend", version: "0.34.0" });
+	await vi.waitFor(() => expect(write).toHaveBeenCalled());
+	const returning = editor.selectVersion({ component: "backend", version: null });
+	release();
+	await Promise.all([selecting, returning]);
+	expect(versions.getState().selection.backend).toBeNull();
 });

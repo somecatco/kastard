@@ -21,12 +21,18 @@ type ComfyVersionsOptions = {
 	bundledManagerVersion: string;
 	/** The packaged Worker target, used while the bundled backend is selected. */
 	bundledBackendTarget: BackendTarget;
-	restartRuntime: () => Promise<unknown>;
 	/** Re-projects the Worker sync state against the newly selected backend. */
 	onBackendTargetChange?: () => void;
 	/** Invalidates verification that used a different Manager target. */
 	onManagerTargetChange?: () => void;
 };
+
+export type ComfySelection = {
+	state: ComfyVersionState;
+} & (
+	| { component: ComfySourceComponent; generation: number; replaced: string | null }
+	| { component: "manager"; version: string | null }
+);
 
 /**
  * Owns which ComfyUI frontend, backend, and Manager the Editor runs. The backend and
@@ -39,8 +45,8 @@ export class ComfyVersions {
 		frontend: 0,
 		backend: 0,
 	};
-	private managerSwitching = false;
 	private pendingManagerVersion: string | null | undefined;
+	private selectionWrites: Promise<unknown> = Promise.resolve();
 	private backendTarget: BackendTarget | null;
 	private backendTargetError: string | undefined;
 	private recommendedFrontend: string | null = null;
@@ -122,7 +128,7 @@ export class ComfyVersions {
 	}
 
 	/** Resolves the ComfyUI source for the runtime, installing the selection when needed. */
-	async resolveBackend(): Promise<{
+	async resolveBackend(signal?: AbortSignal): Promise<{
 		directory: string;
 		version: string;
 		sha256: string;
@@ -130,21 +136,23 @@ export class ComfyVersions {
 		const version = this.options.store.get().backend;
 		if (version === null) return null;
 		const release = await this.installableRelease("backend", version);
-		const directory = await this.installWithProgress("backend", release);
-		// The refresh reads the stamp this needs, so the target it leaves behind is it.
-		await this.refreshBackend();
-		if (this.backendTarget === null) {
+		const directory = await this.installWithProgress("backend", release, signal);
+		signal?.throwIfAborted();
+		const stamp = await this.options.installer.readStamp("backend", version);
+		await this.refreshBackend(signal);
+		if (stamp === null) {
 			throw new Error(`ComfyUI ${version} is not installed correctly.`);
 		}
-		return { directory, version, sha256: this.backendTarget.sha256 };
+		return { directory, version, sha256: stamp.sha256 };
 	}
 
-	async resolveFrontend(): Promise<string | null> {
+	async resolveFrontend(signal?: AbortSignal): Promise<string | null> {
 		const version = this.options.store.get().frontend;
 		if (version === null) return null;
 		return this.installWithProgress(
 			"frontend",
 			await this.installableRelease("frontend", version),
+			signal,
 		);
 	}
 
@@ -152,18 +160,25 @@ export class ComfyVersions {
 	private async installWithProgress(
 		component: ComfySourceComponent,
 		release: ComfyRelease,
+		signal?: AbortSignal,
 	): Promise<string> {
 		const version = release.version;
 		this.setInstall({ status: "installing", component, version, progress: 0 });
 		try {
-			return await this.options.installer.install(component, release, (progress) => {
-				this.setInstall({
-					status: "installing",
-					component,
-					version,
-					progress: Math.round(progress),
-				});
-			});
+			return await this.options.installer.install(
+				component,
+				release,
+				(progress) => {
+					if (signal?.aborted) return;
+					this.setInstall({
+						status: "installing",
+						component,
+						version,
+						progress: Math.round(progress),
+					});
+				},
+				signal,
+			);
 		} finally {
 			// A newer switch may already be reporting its own download.
 			if (
@@ -188,59 +203,55 @@ export class ComfyVersions {
 			: null;
 	}
 
-	async select(update: ComfyVersionUpdate): Promise<ComfyVersionState> {
-		if (update.component === "manager") return this.selectManager(update.version);
-		return this.selectSource(update.component, update.version);
+	async prepareSelection(
+		update: ComfyVersionUpdate,
+		signal?: AbortSignal,
+	): Promise<ComfySelection | null> {
+		signal?.throwIfAborted();
+		if (update.component === "manager")
+			return this.prepareManagerSelection(update.version);
+		return this.prepareSourceSelection(update.component, update.version, signal);
 	}
 
-	private async selectSource(
+	private async prepareSourceSelection(
 		component: ComfySourceComponent,
 		requestedVersion: string | null,
-	): Promise<ComfyVersionState> {
+		signal?: AbortSignal,
+	): Promise<ComfySelection | null> {
 		const bundledVersion = this.options.bundled[component].version;
 		const version =
 			requestedVersion === null || requestedVersion === bundledVersion
 				? null
 				: requestedVersion;
-		const replaced = this.options.store.get()[component];
-		if (version === replaced) return this.getState();
 		const generation = ++this.selectGeneration[component];
-
-		if (version !== null) {
-			try {
-				await this.installWithProgress(component, this.release(component, version));
-			} catch (error) {
-				throw new Error(errorMessage(error), { cause: error });
-			}
+		if (version !== null && version !== this.options.store.get()[component]) {
+			await this.installWithProgress(
+				component,
+				this.release(component, version),
+				signal,
+			);
 		}
-
-		// A newer switch started while this one was downloading, and it owns both the
-		// selection and the cleanup of whatever it replaces.
-		if (generation !== this.selectGeneration[component]) return this.getState();
-
-		await this.options.store.update(component, version);
-		// After the refresh so subscribers never see the new selection paired with the
-		// frontend the previous backend recommended.
-		if (component === "backend") await this.refreshBackend();
-		this.setInstall({ status: "idle" });
-		// The replaced release stays on disk until ComfyUI has released its files, and
-		// stays for good if the restart fails so the user can switch back to it.
-		void this.options
-			.restartRuntime()
-			.then(() => this.removeReplaced(generation, component, replaced))
-			.catch(() => undefined);
-		return this.getState();
+		return this.writeSelection(async () => {
+			signal?.throwIfAborted();
+			if (generation !== this.selectGeneration[component]) return null;
+			const replaced = this.options.store.get()[component];
+			if (version === replaced) return null;
+			await this.options.store.update(component, version);
+			signal?.throwIfAborted();
+			if (component === "backend") await this.refreshBackend(signal);
+			this.setInstall({ status: "idle" });
+			return { component, generation, replaced, state: this.getState() };
+		});
 	}
 
-	private async selectManager(
-		requestedVersion: string | null,
-	): Promise<ComfyVersionState> {
-		const version = requestedVersion;
-		const replaced = this.options.store.get().manager;
-		if (version === replaced) return this.getState();
-		if (this.managerSwitching) {
-			throw new Error("A ComfyUI Manager version switch is already in progress.");
-		}
+	private writeSelection<T>(write: () => Promise<T>): Promise<T> {
+		const pending = this.selectionWrites.catch(() => undefined).then(write);
+		this.selectionWrites = pending;
+		return pending;
+	}
+
+	private prepareManagerSelection(version: string | null): ComfySelection | null {
+		if (version === this.options.store.get().manager) return null;
 		if (
 			version !== null &&
 			version !== this.recommendedManager &&
@@ -249,33 +260,35 @@ export class ComfyVersions {
 		) {
 			throw new Error(`ComfyUI Manager ${version} is not a known release.`);
 		}
-
-		this.managerSwitching = true;
 		this.pendingManagerVersion = version;
-		try {
-			try {
-				await this.options.restartRuntime();
-				await this.options.store.update("manager", version);
-			} catch (error) {
-				this.pendingManagerVersion = undefined;
-				try {
-					await this.options.restartRuntime();
-				} catch (rollbackError) {
-					throw new AggregateError(
-						[error, rollbackError],
-						"ComfyUI Manager switch and recovery failed.",
-					);
-				}
-				throw new Error(errorMessage(error), { cause: error });
-			}
-			this.pendingManagerVersion = undefined;
-			this.emit();
-			this.options.onManagerTargetChange?.();
-			return this.getState();
-		} finally {
-			this.pendingManagerVersion = undefined;
-			this.managerSwitching = false;
+		return { component: "manager", version, state: this.getState() };
+	}
+
+	async completeSelection(
+		selection: ComfySelection,
+		signal?: AbortSignal,
+	): Promise<ComfyVersionState> {
+		if (selection.component === "manager") {
+			return this.writeSelection(async () => {
+				signal?.throwIfAborted();
+				await this.options.store.update("manager", selection.version);
+				signal?.throwIfAborted();
+				this.clearPendingManager();
+				this.emit();
+				this.options.onManagerTargetChange?.();
+				return this.getState();
+			});
 		}
+		await this.removeReplaced(
+			selection.generation,
+			selection.component,
+			selection.replaced,
+		);
+		return selection.state;
+	}
+
+	clearPendingManager(): void {
+		this.pendingManagerVersion = undefined;
 	}
 
 	/** The bundled release ships with Kastard, so it never needs downloading. */
@@ -329,45 +342,37 @@ export class ComfyVersions {
 		return release;
 	}
 
-	private async refreshBackend(): Promise<void> {
+	private async refreshBackend(signal?: AbortSignal): Promise<void> {
+		const version = this.options.store.get().backend;
+		const directory =
+			version === null
+				? this.options.bundledBackendDirectory
+				: this.options.installer.directoryFor("backend", version);
+		const target =
+			version === null
+				? this.options.bundledBackendTarget
+				: await this.options.installer.readStamp("backend", version);
+		const [frontend, manager] = await Promise.all([
+			readPinnedFrontendVersion(directory),
+			version === null
+				? this.options.bundledManagerVersion
+				: target === null
+					? null
+					: readManagerVersion(directory),
+		]);
+		signal?.throwIfAborted();
+		if (this.options.store.get().backend !== version) return;
 		const previous = this.backendTarget;
 		const previousManager = this.getManagerVersion();
-		await this.readBackendTarget();
-		if (
-			previous?.version !== this.backendTarget?.version ||
-			previous?.sha256 !== this.backendTarget?.sha256
-		) {
-			this.options.onBackendTargetChange?.();
-		}
-		if (previousManager !== this.getManagerVersion()) {
-			this.options.onManagerTargetChange?.();
-		}
-	}
-
-	private async readBackendTarget(): Promise<void> {
-		const version = this.options.store.get().backend;
-		if (version === null) {
-			this.backendTarget = this.options.bundledBackendTarget;
-			this.backendTargetError = undefined;
-			this.recommendedFrontend = await readPinnedFrontendVersion(
-				this.options.bundledBackendDirectory,
-			);
-			this.recommendedManager = this.options.bundledManagerVersion;
-			return;
-		}
-		const stamp = await this.options.installer.readStamp("backend", version);
-		this.backendTarget = stamp;
+		this.backendTarget = target;
 		this.backendTargetError =
-			stamp === null ? `ComfyUI ${version} is not installed yet.` : undefined;
-		this.recommendedFrontend = await readPinnedFrontendVersion(
-			this.options.installer.directoryFor("backend", version),
-		);
-		this.recommendedManager =
-			stamp === null
-				? null
-				: await readManagerVersion(
-						this.options.installer.directoryFor("backend", version),
-					);
+			target === null ? `ComfyUI ${version} is not installed yet.` : undefined;
+		this.recommendedFrontend = frontend;
+		this.recommendedManager = manager;
+		if (previous?.version !== target?.version || previous?.sha256 !== target?.sha256)
+			this.options.onBackendTargetChange?.();
+		if (previousManager !== this.getManagerVersion())
+			this.options.onManagerTargetChange?.();
 	}
 
 	private setInstall(install: ComfyInstallState): void {
@@ -379,8 +384,4 @@ export class ComfyVersions {
 		const state = this.getState();
 		for (const listener of this.listeners) listener(state);
 	}
-}
-
-function errorMessage(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
 }
