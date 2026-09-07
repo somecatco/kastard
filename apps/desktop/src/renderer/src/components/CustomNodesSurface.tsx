@@ -2,12 +2,12 @@ import { normalizeGitHubRepository } from "@kastard/common";
 import { PlusIcon, PuzzleIcon, TrashIcon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { AppFormDialog } from "@/components/AppFormDialog";
-import { useWorkerCustomNodeSyncState } from "@/components/ConnectionControl";
 import { Input } from "@/components/common/input";
 import { Select } from "@/components/common/select";
 import { Switch } from "@/components/common/switch";
 import { LibrarySurface } from "@/components/LibrarySurface";
 import { Button } from "@/components/ui/button";
+import { useWorkerSessionSelector } from "@/hooks/use-worker-session";
 import { useOptimisticUpdateQueue } from "@/hooks/useOptimisticUpdateQueue";
 import {
 	type ComfyRuntimeState,
@@ -67,7 +67,9 @@ export function CustomNodesSurface({
 		forget: forgetNodeSync,
 		pendingKeys: pendingNodeNames,
 	} = useOptimisticUpdateQueue<string, boolean>();
-	const workerCustomNodesBusy = isCustomNodeSyncBusy(useWorkerCustomNodeSyncState());
+	const workerCustomNodesBusy = useWorkerSessionSelector((session) =>
+		isCustomNodeSyncBusy(session.customNodes),
+	);
 
 	useEffect(() => {
 		let active = true;

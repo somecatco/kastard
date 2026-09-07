@@ -164,7 +164,7 @@ test("hides Worker system metrics optimistically without locking other settings"
 			systemMetrics: { status: "available", metrics: workerSystemStatus },
 		});
 	});
-	expect(screen.getByRole("list", { name: "Worker status" })).toBeVisible();
+	expect(await screen.findByRole("list", { name: "Worker status" })).toBeVisible();
 
 	fireEvent.click(screen.getByRole("button", { name: "Settings" }));
 	openSettingsSection("Connection");

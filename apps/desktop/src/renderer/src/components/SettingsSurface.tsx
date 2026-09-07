@@ -15,13 +15,13 @@ import {
 } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AppFormDialog } from "@/components/AppFormDialog";
-import { useConnectionSettings } from "@/components/ConnectionControl";
 import { Input } from "@/components/common/input";
 import { ProgressBar } from "@/components/common/progress-bar";
 import { Select } from "@/components/common/select";
 import { Switch } from "@/components/common/switch";
 import { EditorDirectoryLocation } from "@/components/EditorDirectoryLocation";
 import { Button } from "@/components/ui/button";
+import { useConnectionSettings } from "@/hooks/use-connection-settings";
 import type { DesktopSettings, ProviderFeedback } from "@/hooks/useDesktopSettings";
 import { collectDebugInfo } from "@/lib/debug-info";
 import { resources } from "@/lib/resources";
