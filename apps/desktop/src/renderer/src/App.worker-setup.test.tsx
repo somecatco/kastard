@@ -2719,3 +2719,29 @@ test("restores titlebar dragging when an open synchronization popover unmounts",
 	expect(backendPopover).not.toBeInTheDocument();
 	await waitFor(() => expect(titlebar).toHaveClass("[-webkit-app-region:drag]"));
 });
+
+test("keeps a submitted setup pending across closing and reopening connection details", async () => {
+	let finish!: (result: { ok: false; error: string }) => void;
+	vi.mocked(window.kastard.workerSession.startSetup).mockReturnValue(
+		new Promise((resolve) => {
+			finish = resolve;
+		}),
+	);
+	render(<App />);
+	await act(async () => {
+		emitConnection(connectedState());
+		emitWorkerComfy({ status: "ready" });
+		emitWorkerSetup({ status: "idle" });
+	});
+	let details = await openConnectionDetails();
+	fireEvent.click(within(details).getByRole("button", { name: "Resync" }));
+	expect(within(details).getByRole("button", { name: "Syncing…" })).toBeDisabled();
+	await closePopover(details);
+	details = await openConnectionDetails();
+	expect(within(details).getByRole("button", { name: "Syncing…" })).toBeDisabled();
+	await closePopover(details);
+	await act(async () => finish({ ok: false, error: "Setup could not start" }));
+	details = await openConnectionDetails();
+	expect(within(details).getByText("Setup could not start")).toBeVisible();
+	expect(within(details).getByRole("button", { name: "Resync" })).toBeEnabled();
+});

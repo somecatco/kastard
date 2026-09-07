@@ -3,8 +3,8 @@ import { useCallback, useState } from "react";
 import {
 	ConnectionControl,
 	type ConnectionPopoverId,
-	ConnectionWorkerStatus,
 } from "@/components/ConnectionControl";
+import { ConnectionWorkerStatus } from "@/components/connection/ConnectionWorkerStatus";
 import {
 	Tooltip,
 	TooltipContent,

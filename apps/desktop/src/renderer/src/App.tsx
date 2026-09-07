@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppHeader, type AppSurface } from "@/components/AppHeader";
 import { ComfyUiSurface } from "@/components/ComfyUiSurface";
-import { ConnectionProvider } from "@/components/ConnectionControl";
 import { CustomNodesSurface } from "@/components/CustomNodesSurface";
+import { ConnectionProvider } from "@/components/connection/ConnectionProvider";
 import { ModelLibrarySurface } from "@/components/ModelLibrarySurface";
 import { SettingsSurface } from "@/components/SettingsSurface";
 import {

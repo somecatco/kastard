@@ -16,10 +16,11 @@ import {
 	WorkerSyncListRow,
 } from "@/components/WorkerSyncList";
 import { cn } from "@/lib/utils";
+import { verifiedModelTargets } from "@/lib/worker-model-targets";
+import { modelsActions } from "@/lib/worker-models-presentation";
 import type {
 	CollectionVerification,
 	ModelSyncTarget,
-	VerificationProblem,
 	WorkerModelSyncState,
 	WorkerModelTargetState,
 	WorkerModelTargetStatus,
@@ -30,6 +31,7 @@ const MAX_ETA_MS = 24 * 60 * 60 * 1_000;
 export function WorkerModelSyncStatus({
 	state,
 	verification,
+	visibleTargets,
 	rate,
 	starting,
 	preparingRedownloadPath,
@@ -42,6 +44,7 @@ export function WorkerModelSyncStatus({
 }: {
 	state: WorkerModelSyncState;
 	verification?: CollectionVerification | undefined;
+	visibleTargets?: WorkerModelTargetState[] | undefined;
 	rate: number | null;
 	starting: boolean;
 	preparingRedownloadPath: string | null;
@@ -52,21 +55,13 @@ export function WorkerModelSyncStatus({
 	onRedownload: (path: string) => void;
 	onCancel: () => void;
 }): React.JSX.Element {
-	const canStart =
-		state.status !== "disconnected" &&
-		state.status !== "loading" &&
-		state.status !== "checking" &&
-		state.status !== "syncing" &&
-		state.status !== "canceling" &&
-		!disabled &&
-		!starting &&
-		preparingRedownloadPath === null &&
-		!canceling;
-	const canForceRedownload =
-		"capabilities" in state &&
-		state.capabilities?.forceRedownload === true &&
-		"targetStatus" in state &&
-		state.targetStatus === "current";
+	const { canStart, canForceRedownload } = modelsActions({
+		state,
+		disabled,
+		starting,
+		preparingRedownloadPath,
+		canceling,
+	});
 	const targetModels = "targetModels" in state ? state.targetModels : undefined;
 	if (targetModels !== undefined) {
 		return (
@@ -74,6 +69,7 @@ export function WorkerModelSyncStatus({
 				state={state}
 				targetModels={targetModels}
 				verification={verification}
+				visibleTargets={visibleTargets}
 				rate={rate}
 				canStart={canStart}
 				canForceRedownload={canForceRedownload}
@@ -105,6 +101,7 @@ function WorkerModelFullListStatus({
 	state,
 	targetModels,
 	verification,
+	visibleTargets,
 	rate,
 	canStart,
 	canForceRedownload,
@@ -119,6 +116,7 @@ function WorkerModelFullListStatus({
 	state: WorkerModelSyncState;
 	targetModels: WorkerModelTargetState[];
 	verification?: CollectionVerification | undefined;
+	visibleTargets?: WorkerModelTargetState[] | undefined;
 	rate: number | null;
 	canStart: boolean;
 	canForceRedownload: boolean;
@@ -131,7 +129,8 @@ function WorkerModelFullListStatus({
 	onCancel: () => void;
 }): React.JSX.Element {
 	const [openPath, setOpenPath] = useState<string | null>(null);
-	const visibleModels = verifiedModelTargets(state, targetModels, verification);
+	const visibleModels =
+		visibleTargets ?? verifiedModelTargets(state, targetModels, verification);
 	const ready = visibleModels.filter((model) => model.status === "ready").length;
 	const totalBytes = visibleModels.reduce(
 		(total, model) => total + model.target.artifact.sizeBytes,
@@ -429,49 +428,6 @@ function WorkerModelAggregateStatus({
 			) : null}
 		</div>
 	);
-}
-
-function verifiedModelTargets(
-	state: WorkerModelSyncState,
-	targetModels: WorkerModelTargetState[],
-	verification: CollectionVerification | undefined,
-): WorkerModelTargetState[] {
-	if (
-		("operationKind" in state && state.operationKind === "redownload") ||
-		!("targetStatus" in state) ||
-		state.targetStatus !== "current"
-	) {
-		return targetModels;
-	}
-	if (verification?.status === "synced") {
-		return targetModels.map((model) => ({
-			target: model.target,
-			status: "ready",
-			downloadedBytes: model.target.artifact.sizeBytes,
-		}));
-	}
-	if (verification?.status !== "out-of-sync") return targetModels;
-	const problemsByPath = new Map<string, VerificationProblem[]>();
-	for (const problem of verification.problems) {
-		if (problem.expected === null) continue;
-		const problems = problemsByPath.get(problem.name) ?? [];
-		problems.push(problem);
-		problemsByPath.set(problem.name, problems);
-	}
-	return targetModels.map((model) => {
-		const problems = problemsByPath.get(model.target.path);
-		if (problems === undefined) {
-			return {
-				target: model.target,
-				status: "ready",
-				downloadedBytes: model.target.artifact.sizeBytes,
-			};
-		}
-		if (problems.some((problem) => problem.reason === "missing")) {
-			return { ...model, status: "not-downloaded", downloadedBytes: 0 };
-		}
-		return { ...model, status: "needs-redownload", downloadedBytes: 0 };
-	});
 }
 
 function redownloadOperationModel(

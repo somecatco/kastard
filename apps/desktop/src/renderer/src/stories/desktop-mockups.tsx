@@ -4,8 +4,8 @@ import { AppHeader, type AppSurface } from "@/components/AppHeader";
 import {
 	ConnectionControl,
 	type ConnectionPopoverId,
-	ConnectionProvider,
 } from "@/components/ConnectionControl";
+import { ConnectionProvider } from "@/components/connection/ConnectionProvider";
 import { SettingsSurface } from "@/components/SettingsSurface";
 import { WorkerCustomNodeSyncStatus } from "@/components/WorkerCustomNodeSyncStatus";
 import { useDesktopSettings } from "@/hooks/useDesktopSettings";

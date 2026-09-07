@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
 import { userEvent, within } from "storybook/test";
-import { ConnectionProvider } from "@/components/ConnectionControl";
+import { ConnectionProvider } from "@/components/connection/ConnectionProvider";
 import { ModelRedownloadDialog } from "@/components/ModelRedownloadDialog";
 import { WorkerModelSyncStatus } from "@/components/WorkerModelSyncStatus";
 import type {

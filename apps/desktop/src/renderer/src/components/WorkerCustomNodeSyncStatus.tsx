@@ -18,10 +18,11 @@ import {
 	WorkerSyncTargetNotice,
 } from "@/components/WorkerSyncList";
 import { cn } from "@/lib/utils";
+import { verifiedCustomNodeTargets } from "@/lib/worker-custom-node-targets";
+import { nodesActions } from "@/lib/worker-nodes-presentation";
 import type {
 	CollectionVerification,
 	CustomNodeInventoryEntry,
-	VerificationProblem,
 	WorkerBackendState,
 	WorkerCustomNodeSyncState,
 	WorkerCustomNodeTargetState,
@@ -33,56 +34,10 @@ type CustomNodeReinstallProgress = {
 	message: string;
 };
 
-export function verifiedCustomNodeTargets(
-	targetNodes: WorkerCustomNodeTargetState[],
-	verification: CollectionVerification | undefined,
-): WorkerCustomNodeTargetState[] | null {
-	if (verification?.status === "synced") {
-		return targetNodes.map((node) => ({
-			...node,
-			status: "installed",
-			workerVersion: node.editorVersion,
-		}));
-	}
-	if (verification?.status !== "out-of-sync") return null;
-	const problemsByName = new Map<string, VerificationProblem[]>();
-	for (const problem of verification.problems) {
-		if (problem.expected === null) continue;
-		const problems = problemsByName.get(problem.name) ?? [];
-		problems.push(problem);
-		problemsByName.set(problem.name, problems);
-	}
-	return targetNodes.map((node) => {
-		const problems = problemsByName.get(node.id);
-		if (problems === undefined) {
-			return {
-				...node,
-				status: "installed",
-				workerVersion: node.editorVersion,
-			};
-		}
-		if (problems.some((problem) => problem.reason === "missing")) {
-			return {
-				...node,
-				status: node.error === undefined ? "not-installed" : "failed",
-				workerVersion: null,
-			};
-		}
-		const mismatch = problems.find((problem) => problem.reason === "version-mismatch");
-		if (mismatch !== undefined) {
-			return {
-				...node,
-				status: node.error === undefined ? "version-mismatch" : "failed",
-				workerVersion: mismatch.actual,
-			};
-		}
-		return { ...node, status: "failed" };
-	});
-}
-
 export function WorkerCustomNodeSyncStatus({
 	state,
 	verification,
+	visibleTargets,
 	backendState,
 	starting,
 	preparingReinstallNodeId,
@@ -97,6 +52,7 @@ export function WorkerCustomNodeSyncStatus({
 }: {
 	state: WorkerCustomNodeSyncState;
 	verification?: CollectionVerification | undefined;
+	visibleTargets?: WorkerCustomNodeTargetState[] | undefined;
 	backendState: WorkerBackendState;
 	starting: boolean;
 	preparingReinstallNodeId: string | null;
@@ -109,31 +65,16 @@ export function WorkerCustomNodeSyncStatus({
 	onRemove: (node: CustomNodeInventoryEntry) => void;
 	onCancel: () => void;
 }): React.JSX.Element {
-	const backendMatches =
-		backendState.status === "ready" &&
-		backendState.version === backendState.editorComfyVersion;
-	const unsupportedNodes = "unsupportedNodes" in state ? state.unsupportedNodes : [];
-	const canStart =
-		backendMatches &&
-		state.status !== "disconnected" &&
-		state.status !== "loading" &&
-		state.status !== "syncing" &&
-		state.status !== "canceling" &&
-		!disabled &&
-		!starting &&
-		preparingReinstallNodeId === null &&
-		preparingRemovalNodeName === null &&
-		!canceling;
-	const canForceReinstall =
-		"capabilities" in state &&
-		state.capabilities?.forceReinstall === true &&
-		"targetStatus" in state &&
-		state.targetStatus === "current";
-	const canRemove =
-		"capabilities" in state &&
-		state.capabilities?.remove === true &&
-		"targetStatus" in state &&
-		state.targetStatus === "current";
+	const { backendMatches, unsupportedNodes, canStart, canForceReinstall, canRemove } =
+		nodesActions({
+			state,
+			backendState,
+			disabled,
+			starting,
+			preparingReinstallNodeId,
+			preparingRemovalNodeName,
+			canceling,
+		});
 	const syncingAgain =
 		state.status === "ready" ||
 		state.status === "failed" ||
@@ -149,6 +90,7 @@ export function WorkerCustomNodeSyncStatus({
 				state={state}
 				targetNodes={targetNodes}
 				verification={verification}
+				visibleTargets={visibleTargets}
 				backendMatches={backendMatches}
 				canStart={canStart}
 				starting={starting}
@@ -287,6 +229,7 @@ function WorkerCustomNodeFullListStatus({
 	state,
 	targetNodes,
 	verification,
+	visibleTargets,
 	backendMatches,
 	canStart,
 	starting,
@@ -305,6 +248,7 @@ function WorkerCustomNodeFullListStatus({
 	state: WorkerCustomNodeSyncState;
 	targetNodes: WorkerCustomNodeTargetState[];
 	verification?: CollectionVerification | undefined;
+	visibleTargets?: WorkerCustomNodeTargetState[] | undefined;
 	backendMatches: boolean;
 	canStart: boolean;
 	starting: boolean;
@@ -328,9 +272,10 @@ function WorkerCustomNodeFullListStatus({
 	}, [canForceReinstall, canRemove, canStart]);
 	const unsupportedNodes = "unsupportedNodes" in state ? state.unsupportedNodes : [];
 	const visibleTargetNodes =
-		"targetStatus" in state && state.targetStatus === "current"
+		visibleTargets ??
+		("targetStatus" in state && state.targetStatus === "current"
 			? (verifiedCustomNodeTargets(targetNodes, verification) ?? targetNodes)
-			: targetNodes;
+			: targetNodes);
 	const installed = visibleTargetNodes.filter(
 		(node) => node.status === "installed",
 	).length;
