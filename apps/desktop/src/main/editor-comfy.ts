@@ -272,11 +272,8 @@ export class EditorComfy {
 					);
 				return { node, nodes, restartRequired: result.restartRequired };
 			} finally {
-				try {
-					if (!this.lifetime.signal.aborted) this.options.refreshCustomNodeTarget();
-				} finally {
-					this.nodeMutation = false;
-				}
+				this.nodeMutation = false;
+				if (!this.lifetime.signal.aborted) this.options.refreshCustomNodeTarget();
 			}
 		});
 	}
@@ -288,16 +285,12 @@ export class EditorComfy {
 			this.nodeMutation = true;
 			let previousSync: boolean | undefined;
 			let selectionRemoved = false;
+			let result: { restartRequired: boolean };
 			try {
 				previousSync = await store.remove(name);
 				selectionRemoved = true;
 				this.assertOpen();
-				const result = await this.options.nodes.removeCustomNode(
-					name,
-					this.lifetime.signal,
-				);
-				if (!this.lifetime.signal.aborted) this.options.refreshCustomNodeTarget();
-				return result;
+				result = await this.options.nodes.removeCustomNode(name, this.lifetime.signal);
 			} catch (error) {
 				if (selectionRemoved && previousSync !== undefined) {
 					try {
@@ -312,6 +305,8 @@ export class EditorComfy {
 			} finally {
 				this.nodeMutation = false;
 			}
+			if (!this.lifetime.signal.aborted) this.options.refreshCustomNodeTarget();
+			return result;
 		});
 	}
 

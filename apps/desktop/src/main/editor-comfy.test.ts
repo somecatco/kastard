@@ -300,3 +300,23 @@ test("attaches the recovery reason only when a runtime start was attempted", asy
 		reason: "custom-node",
 	});
 });
+
+test.each(["install", "remove"] as const)(
+	"refreshes the Worker target with readable inventory after a local node %s",
+	async (operation) => {
+		const { editor, nodes, refresh } = harness();
+		const target = deferred<Awaited<ReturnType<EditorComfy["nodesForSync"]>>>();
+		refresh.mockImplementation(() => {
+			void editor.nodesForSync().then(target.resolve, target.reject);
+		});
+		const expected = expect(target.promise).resolves.toEqual(
+			operation === "install" ? [{ ...node, sync: true }] : [],
+		);
+		if (operation === "install") await editor.installCustomNode(node.repository);
+		else {
+			nodes.listCustomNodes.mockResolvedValueOnce([]);
+			await editor.removeCustomNode(node.name);
+		}
+		await expected;
+	},
+);
