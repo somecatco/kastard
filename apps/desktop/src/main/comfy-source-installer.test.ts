@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { access, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { zipSync } from "fflate";
@@ -204,4 +204,36 @@ test("clears staging directories an interrupted install left behind", async () =
 	await expect(access(abandoned)).rejects.toThrow();
 	await expect(access(unrelated)).resolves.toBeUndefined();
 	expect(await installer.isInstalled("backend", "0.34.0")).toBe(true);
+});
+
+test("cancels a release download and cleans staging before returning", async () => {
+	const root = await rootDirectory();
+	let requestStarted = () => {};
+	const started = new Promise<void>((resolve) => {
+		requestStarted = resolve;
+	});
+	const request = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+		requestStarted();
+		return new Promise<Response>((_resolve, reject) => {
+			init?.signal?.addEventListener(
+				"abort",
+				() => reject(new Error("Download canceled.")),
+				{ once: true },
+			);
+		});
+	});
+	const installer = new ComfySourceInstaller({ rootDirectory: root, fetch: request });
+	const controller = new AbortController();
+	const installing = installer.install(
+		"backend",
+		backendRelease,
+		undefined,
+		controller.signal,
+	);
+	const rejected = expect(installing).rejects.toThrow("Download canceled.");
+	await started;
+	controller.abort();
+	await rejected;
+	expect(await installer.isInstalled("backend", backendRelease.version)).toBe(false);
+	expect(await readdir(dirname(root))).toEqual([]);
 });
