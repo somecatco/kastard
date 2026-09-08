@@ -2,7 +2,7 @@ import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { expect, test, vi } from "vitest";
 
-import { fixture, virtualModel } from "./comfy-test-fixture";
+import { fixture, virtualModel } from "./test-fixture";
 
 test("replaces virtual model placeholders and rejects unsafe paths", async () => {
 	const paths = await fixture();

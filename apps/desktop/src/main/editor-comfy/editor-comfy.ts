@@ -2,12 +2,12 @@ import type {
 	ComfyVersionUpdate,
 	CustomNodeEntry,
 	ModelLibraryEntry,
-} from "../shared/api";
-import type { ComfyRuntime } from "./comfy-runtime";
-import type { ComfyVersions } from "./comfy-versions";
-import type { EditorCustomNodes, InstalledCustomNode } from "./editor-custom-nodes";
-import type { EditorModelPaths } from "./editor-model-paths";
-import type { CustomNodeSyncStore } from "./worker/custom-node-sync-store";
+} from "../../shared/api";
+import type { CustomNodeSyncStore } from "../worker/custom-node-sync-store";
+import type { EditorCustomNodes, InstalledCustomNode } from "./custom-nodes";
+import type { EditorModelPaths } from "./model-paths";
+import type { ComfyRuntime } from "./runtime";
+import type { ComfyVersions } from "./versions";
 
 type EditorComfyOptions = {
 	runtime: Pick<ComfyRuntime, "start" | "stop" | "restart" | "getState">;

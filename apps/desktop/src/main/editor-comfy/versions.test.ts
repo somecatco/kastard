@@ -5,11 +5,11 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
-import type { ComfyVersionState } from "../shared/api";
-import type { ComfyRelease, ComfyReleaseCatalog } from "./comfy-release-catalog";
-import type { ComfySourceInstaller } from "./comfy-source-installer";
-import { ComfyVersionStore } from "./comfy-version-store";
-import { ComfyVersions } from "./comfy-versions";
+import type { ComfyVersionState } from "../../shared/api";
+import type { ComfyRelease, ComfyReleaseCatalog } from "./release-catalog";
+import type { ComfySourceInstaller } from "./source-installer";
+import { ComfyVersionStore } from "./version-store";
+import { ComfyVersions } from "./versions";
 
 const temporaryDirectories: string[] = [];
 const bundledBackend = {

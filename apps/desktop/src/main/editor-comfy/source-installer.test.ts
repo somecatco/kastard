@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { zipSync } from "fflate";
 import { afterEach, expect, test, vi } from "vitest";
-import { ComfySourceInstaller } from "./comfy-source-installer";
+import { ComfySourceInstaller } from "./source-installer";
 
 const temporaryDirectories: string[] = [];
 const encoder = new TextEncoder();

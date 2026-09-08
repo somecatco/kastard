@@ -5,8 +5,8 @@ import { access, chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/prom
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { expect, test, vi } from "vitest";
-import type { ComfyRuntimeState } from "../shared/api";
-import { ComfyRuntime } from "./comfy-runtime";
+import type { ComfyRuntimeState } from "../../shared/api";
+import { ComfyRuntime } from "./runtime";
 
 import {
 	createManagedPython,
@@ -16,7 +16,7 @@ import {
 	temporaryDirectories,
 	virtualModel,
 	writeRuntimeManifest,
-} from "./comfy-test-fixture";
+} from "./test-fixture";
 
 test("prepares a managed CPU environment and starts ComfyUI with Manager", async () => {
 	const paths = await fixture();

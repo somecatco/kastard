@@ -1,6 +1,6 @@
 import { isCustomNodeManagerVersion } from "@kastard/common";
-import type { ComfyComponent, ComfyVersionSelection } from "../shared/api";
-import { readJsonFile, writeJsonFile } from "./json-file";
+import type { ComfyComponent, ComfyVersionSelection } from "../../shared/api";
+import { readJsonFile, writeJsonFile } from "../json-file";
 
 type StoredSelection = ComfyVersionSelection & { version: 2 };
 

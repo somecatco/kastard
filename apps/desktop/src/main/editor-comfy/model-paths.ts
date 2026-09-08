@@ -11,8 +11,8 @@ import {
 	writeFile,
 } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import type { ModelLibraryEntry } from "../shared/api";
-import { MODEL_PATH_CATEGORIES } from "../shared/model-path";
+import type { ModelLibraryEntry } from "../../shared/api";
+import { MODEL_PATH_CATEGORIES } from "../../shared/model-path";
 
 const RESERVED_MODEL_PATH_KEYS = new Set(["base_path", "is_default"]);
 export class EditorModelPaths {

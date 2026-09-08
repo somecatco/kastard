@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
-import { ComfyReleaseCatalog } from "./comfy-release-catalog";
+import { ComfyReleaseCatalog } from "./release-catalog";
 
 const temporaryDirectories: string[] = [];
 const bundled = {

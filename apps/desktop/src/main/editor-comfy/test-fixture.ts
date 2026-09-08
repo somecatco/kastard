@@ -6,9 +6,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import { afterEach, vi } from "vitest";
-import type { ModelLibraryEntry } from "../shared/api";
+import type { ModelLibraryEntry } from "../../shared/api";
 
-import { EditorModelPaths } from "./editor-model-paths";
+import { EditorModelPaths } from "./model-paths";
 export const temporaryDirectories: string[] = [];
 export const runtimeManifest = {
 	version: "0.33.1",
