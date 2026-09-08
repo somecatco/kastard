@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 import { expect, test, vi } from "vitest";
-import { runCommand } from "./comfy-process";
+import { runCommand } from "./process";
 
 test.skipIf(process.platform === "win32")(
 	"settles cancellation when the terminated process group cannot be inspected",

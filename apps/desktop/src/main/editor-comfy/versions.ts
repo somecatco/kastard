@@ -6,11 +6,11 @@ import type {
 	ComfyVersionCatalog,
 	ComfyVersionState,
 	ComfyVersionUpdate,
-} from "../shared/api";
-import type { ComfyRelease, ComfyReleaseCatalog } from "./comfy-release-catalog";
-import { readManagerVersion, readPinnedFrontendVersion } from "./comfy-runtime";
-import type { ComfySourceInstaller } from "./comfy-source-installer";
-import type { ComfyVersionStore } from "./comfy-version-store";
+} from "../../shared/api";
+import type { ComfyRelease, ComfyReleaseCatalog } from "./release-catalog";
+import { readManagerVersion, readPinnedFrontendVersion } from "./runtime";
+import type { ComfySourceInstaller } from "./source-installer";
+import type { ComfyVersionStore } from "./version-store";
 
 type ComfyVersionsOptions = {
 	store: ComfyVersionStore;

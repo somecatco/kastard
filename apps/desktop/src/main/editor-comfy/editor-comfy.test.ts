@@ -1,9 +1,9 @@
 // @vitest-environment node
 
 import { expect, test, vi } from "vitest";
-import type { ComfyRuntimeState } from "../shared/api";
+import type { ComfyRuntimeState } from "../../shared/api";
+import type { InstalledCustomNode } from "./custom-nodes";
 import { EditorComfy } from "./editor-comfy";
-import type { InstalledCustomNode } from "./editor-custom-nodes";
 
 const url = "http://127.0.0.1:18188/";
 const node = {

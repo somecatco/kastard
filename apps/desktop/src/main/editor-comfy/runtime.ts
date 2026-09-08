@@ -4,7 +4,8 @@ import { access, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promise
 import { createServer } from "node:net";
 import { join } from "node:path";
 import { isCustomNodeManagerVersion } from "@kastard/common";
-import type { ComfyRuntimeState, ModelLibraryEntry } from "../shared/api";
+import type { ComfyRuntimeState, ModelLibraryEntry } from "../../shared/api";
+import type { EditorModelPaths } from "./model-paths";
 import {
 	type CommandOptions,
 	environmentPython,
@@ -12,8 +13,7 @@ import {
 	type RunCommand,
 	runCommand,
 	type StartProcess,
-} from "./comfy-process";
-import type { EditorModelPaths } from "./editor-model-paths";
+} from "./process";
 
 type RuntimeManifest = {
 	version: string;

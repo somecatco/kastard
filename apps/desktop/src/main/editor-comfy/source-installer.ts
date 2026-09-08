@@ -11,8 +11,8 @@ import {
 } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { type Unzipped, unzip } from "fflate";
-import type { ComfySourceComponent } from "../shared/api";
-import type { ComfyRelease } from "./comfy-release-catalog";
+import type { ComfySourceComponent } from "../../shared/api";
+import type { ComfyRelease } from "./release-catalog";
 
 export type ComfySourceStamp = {
 	version: string;

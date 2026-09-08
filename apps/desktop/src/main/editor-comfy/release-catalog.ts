@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import type { ComfySourceComponent } from "../shared/api";
-import { isVersion } from "./comfy-version-store";
+import type { ComfySourceComponent } from "../../shared/api";
+import { isVersion } from "./version-store";
 
 export type ComfyRelease = {
 	version: string;

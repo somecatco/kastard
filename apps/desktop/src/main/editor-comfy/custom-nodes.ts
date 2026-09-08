@@ -26,10 +26,10 @@ import {
 	type CustomNodeInstallOptions,
 	isComfyUiManagerNode,
 	isCustomNodeRepositoryUrl,
-} from "../shared/api";
+} from "../../shared/api";
 
-import { environmentPython, type RunCommand, runCommand } from "./comfy-process";
-import { readManagerVersion } from "./comfy-runtime";
+import { environmentPython, type RunCommand, runCommand } from "./process";
+import { readManagerVersion } from "./runtime";
 
 const LOG_TAIL_LENGTH = 12_000;
 export type InstalledCustomNode = Omit<CustomNodeEntry, "sync">;

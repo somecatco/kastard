@@ -4,10 +4,9 @@ import { type ChildProcess, execFileSync } from "node:child_process";
 import { access, mkdir, readFile, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, test, vi } from "vitest";
-import { ComfyRuntime } from "./comfy-runtime";
-
-import { createManagedPython, FakeProcess, fixture } from "./comfy-test-fixture";
-import { EditorCustomNodes } from "./editor-custom-nodes";
+import { EditorCustomNodes } from "./custom-nodes";
+import { ComfyRuntime } from "./runtime";
+import { createManagedPython, FakeProcess, fixture } from "./test-fixture";
 
 function createNodes(
 	options: ConstructorParameters<typeof ComfyRuntime>[0] &
