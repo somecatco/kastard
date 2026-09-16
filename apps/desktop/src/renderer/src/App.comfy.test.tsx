@@ -1,5 +1,13 @@
-import { act, render, screen } from "@testing-library/react";
+import {
+	act,
+	fireEvent,
+	render,
+	screen,
+	waitFor,
+	within,
+} from "@testing-library/react";
 import { expect, test, vi } from "vitest";
+import type { ComfyStartResult } from "../../shared/api";
 import { App } from "./App";
 import { comfyVersionState, emitComfyRuntime } from "./App.test-harness";
 
@@ -88,4 +96,159 @@ test("shows ComfyUI runtime errors as alerts", async () => {
 		"ENOENT: ComfyUI runtime file was not found.",
 	);
 	expect(screen.getByRole("button", { name: "Try again" })).toBeVisible();
+});
+
+const startupFailure = {
+	message: "ComfyUI exited with code 1.",
+	logs: "Loading example-node.\nInitialization failed.\n",
+	truncated: false,
+};
+
+test("opens startup details from a failed start and copies the error and output", async () => {
+	vi.mocked(window.kastard.comfy.start).mockResolvedValue({
+		ok: false,
+		error: startupFailure.message,
+		startupFailure,
+	});
+	render(<App />);
+	expect(
+		await screen.findByRole("heading", { name: "ComfyUI failed to start" }),
+	).toBeVisible();
+	fireEvent.click(screen.getByRole("button", { name: "View logs" }));
+	const dialog = screen.getByRole("dialog", { name: "ComfyUI startup logs" });
+	expect(within(dialog).getByText(startupFailure.message)).toBeVisible();
+	expect(
+		within(dialog).getByRole("textbox", { name: "Startup log output" }),
+	).toHaveValue(startupFailure.logs);
+	fireEvent.click(within(dialog).getByRole("button", { name: "Copy all" }));
+	expect(await within(dialog).findByRole("button", { name: "Copied" })).toBeVisible();
+	expect(window.kastard.comfy.copyLogs).toHaveBeenCalledWith(
+		`${startupFailure.message}\n\n${startupFailure.logs}`,
+	);
+	const close = within(dialog).getAllByRole("button", { name: "Close" })[0];
+	if (!close) throw new Error("Missing Close button.");
+	fireEvent.click(close);
+	await waitFor(() =>
+		expect(screen.getByRole("button", { name: "View logs" })).toHaveFocus(),
+	);
+});
+
+test("shows an actionable error and copyable details before any process output exists", async () => {
+	vi.mocked(window.kastard.comfy.start).mockRejectedValue(
+		new Error("Gateway could not listen."),
+	);
+	render(<App />);
+	fireEvent.click(await screen.findByRole("button", { name: "View logs" }));
+	const dialog = screen.getByRole("dialog", { name: "ComfyUI startup logs" });
+	expect(within(dialog).getByText("Gateway could not listen.")).toBeVisible();
+	expect(
+		within(dialog).getByRole("textbox", { name: "Startup log output" }),
+	).toHaveValue("No output was recorded for this startup attempt.");
+	fireEvent.click(within(dialog).getByRole("button", { name: "Copy all" }));
+	await waitFor(() =>
+		expect(window.kastard.comfy.copyLogs).toHaveBeenCalledWith(
+			"Gateway could not listen.",
+		),
+	);
+});
+
+test("reports truncated output and a failed clipboard write", async () => {
+	vi.mocked(window.kastard.comfy.start).mockResolvedValue({
+		ok: false,
+		error: startupFailure.message,
+		startupFailure: { ...startupFailure, truncated: true },
+	});
+	vi.mocked(window.kastard.comfy.copyLogs).mockResolvedValue({
+		ok: false,
+		error: "Clipboard unavailable.",
+	});
+	render(<App />);
+	fireEvent.click(await screen.findByRole("button", { name: "View logs" }));
+	const dialog = screen.getByRole("dialog", { name: "ComfyUI startup logs" });
+	expect(within(dialog).getByText("Some startup output is unavailable.")).toBeVisible();
+	fireEvent.click(within(dialog).getByRole("button", { name: "Copy all" }));
+	expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+		"Couldn't copy logs. Select the text to copy it manually.",
+	);
+});
+
+test("keeps the newest attempt visible when an earlier start reply arrives late", async () => {
+	const requests: Array<(result: ComfyStartResult) => void> = [];
+	vi.mocked(window.kastard.comfy.start).mockImplementation(
+		() => new Promise((resolve) => requests.push(resolve)),
+	);
+	render(<App />);
+	act(() =>
+		emitComfyRuntime({
+			status: "error",
+			message: startupFailure.message,
+			startupFailure,
+		}),
+	);
+	fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+	expect(screen.getByText("Starting ComfyUI…")).toBeVisible();
+	await act(async () => requests[0]?.({ ok: false, error: "Earlier failure." }));
+	expect(screen.getByText("Starting ComfyUI…")).toBeVisible();
+	await act(async () =>
+		requests[1]?.({
+			ok: false,
+			error: "Latest failure.",
+			startupFailure: {
+				message: "Latest failure.",
+				logs: "Latest output.",
+				truncated: false,
+			},
+		}),
+	);
+	fireEvent.click(screen.getByRole("button", { name: "View logs" }));
+	expect(screen.getByRole("textbox", { name: "Startup log output" })).toHaveValue(
+		"Latest output.",
+	);
+});
+
+test("preserves a newer runtime event when the initial start request completes", async () => {
+	const requests: Array<(result: ComfyStartResult) => void> = [];
+	vi.mocked(window.kastard.comfy.start).mockImplementation(
+		() => new Promise((resolve) => requests.push(resolve)),
+	);
+	render(<App />);
+	act(() =>
+		emitComfyRuntime({
+			status: "error",
+			message: startupFailure.message,
+			startupFailure,
+		}),
+	);
+	await act(async () => requests[0]?.({ ok: true, url: "about:blank" }));
+	fireEvent.click(screen.getByRole("button", { name: "View logs" }));
+	expect(screen.getByRole("textbox", { name: "Startup log output" })).toHaveValue(
+		startupFailure.logs,
+	);
+	act(() => emitComfyRuntime({ status: "starting" }));
+	expect(screen.getByText("Starting ComfyUI…")).toBeVisible();
+	act(() => emitComfyRuntime({ status: "ready", url: "about:blank" }));
+	expect(screen.getByTitle("ComfyUI")).toBeVisible();
+});
+
+test("keeps a reopened log dialog independent of an earlier copy operation", async () => {
+	vi.mocked(window.kastard.comfy.start).mockResolvedValue({
+		ok: false,
+		error: startupFailure.message,
+		startupFailure,
+	});
+	const copies: Array<(result: { ok: true }) => void> = [];
+	vi.mocked(window.kastard.comfy.copyLogs).mockImplementation(
+		() => new Promise((resolve) => copies.push(resolve)),
+	);
+	render(<App />);
+	fireEvent.click(await screen.findByRole("button", { name: "View logs" }));
+	const dialog = screen.getByRole("dialog", { name: "ComfyUI startup logs" });
+	fireEvent.click(within(dialog).getByRole("button", { name: "Copy all" }));
+	expect(within(dialog).getByRole("button", { name: "Copying…" })).toBeDisabled();
+	const close = within(dialog).getAllByRole("button", { name: "Close" })[0];
+	if (!close) throw new Error("Missing Close button.");
+	fireEvent.click(close);
+	fireEvent.click(screen.getByRole("button", { name: "View logs" }));
+	await act(async () => copies[0]?.({ ok: true }));
+	expect(screen.getByRole("button", { name: "Copy all" })).toBeEnabled();
 });

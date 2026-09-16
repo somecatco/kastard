@@ -651,3 +651,41 @@ test("validates backend result retryability when present", () => {
 	expect(isWorkerBackendResult({ ...failure, retryable: true })).toBe(true);
 	expect(isWorkerBackendResult({ ...failure, retryable: "yes" })).toBe(false);
 });
+
+test("validates startup diagnostic payloads on states and start replies", () => {
+	const failure = {
+		message: "Startup failed.",
+		logs: "Backend output.\n",
+		truncated: true,
+	};
+	for (const startupFailure of [failure, undefined]) {
+		expect(
+			isComfyRuntimeState({
+				status: "error",
+				message: "Startup failed.",
+				startupFailure,
+			}),
+		).toBe(true);
+		expect(
+			isComfyStartResult({ ok: false, error: "Startup failed.", startupFailure }),
+		).toBe(true);
+	}
+	for (const startupFailure of [
+		null,
+		{},
+		{ ...failure, logs: null },
+		{ ...failure, truncated: "true" },
+		{ ...failure, message: 1 },
+	]) {
+		expect(
+			isComfyRuntimeState({
+				status: "error",
+				message: "Startup failed.",
+				startupFailure,
+			}),
+		).toBe(false);
+		expect(
+			isComfyStartResult({ ok: false, error: "Startup failed.", startupFailure }),
+		).toBe(false);
+	}
+});

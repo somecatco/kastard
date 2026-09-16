@@ -4,6 +4,7 @@ import { expect, test, vi } from "vitest";
 import type { ComfyRuntimeState } from "../../shared/api";
 import type { InstalledCustomNode } from "./custom-nodes";
 import { EditorComfy } from "./editor-comfy";
+import { ComfyStartupError } from "./startup-log";
 
 const url = "http://127.0.0.1:18188/";
 const node = {
@@ -320,3 +321,21 @@ test.each(["install", "remove"] as const)(
 		await expected;
 	},
 );
+
+test("forwards the failed attempt diagnostics without reusing them for gateway errors", async () => {
+	const { editor, runtime, gateway, setState } = harness();
+	const startupFailure = {
+		message: "Backend exited.",
+		logs: "Initialization failed.\n",
+		truncated: false,
+	};
+	setState({ status: "error", message: startupFailure.message, startupFailure });
+	runtime.start.mockRejectedValueOnce(
+		new ComfyStartupError(startupFailure, new Error("Backend exited.")),
+	);
+	await expect(editor.start()).rejects.toMatchObject({ startupFailure });
+	gateway.start.mockRejectedValueOnce(new Error("Gateway unavailable."));
+	await expect(editor.start()).rejects.toMatchObject({
+		message: "Gateway unavailable.",
+	});
+});

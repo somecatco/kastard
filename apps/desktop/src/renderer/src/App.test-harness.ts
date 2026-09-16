@@ -100,6 +100,7 @@ function addVitestSpies(api: KastardApi): void {
 	vi.mocked(api.workerSession.cancelSetup).mockResolvedValue({ ok: true });
 	vi.mocked(api.workerSession.restartComfy).mockResolvedValue({ ok: true });
 	vi.mocked(api.connection.copyWorkerLogs).mockResolvedValue({ ok: true });
+	vi.mocked(api.comfy.copyLogs).mockResolvedValue({ ok: true });
 	vi.mocked(api.editorDirectories.open).mockResolvedValue({ ok: true });
 }
 

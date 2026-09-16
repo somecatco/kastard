@@ -1,4 +1,5 @@
 import type {
+	ComfyStartupFailure,
 	ComfyVersionUpdate,
 	CustomNodeEntry,
 	ModelLibraryEntry,
@@ -7,6 +8,7 @@ import type { CustomNodeSyncStore } from "../worker/custom-node-sync-store";
 import type { EditorCustomNodes, InstalledCustomNode } from "./custom-nodes";
 import type { EditorModelPaths } from "./model-paths";
 import type { ComfyRuntime } from "./runtime";
+import { ComfyStartupError } from "./startup-log";
 import type { ComfyVersions } from "./versions";
 
 type EditorComfyOptions = {
@@ -29,6 +31,7 @@ export class EditorComfyStartError extends Error {
 		message: string,
 		readonly reason: "custom-node" | undefined,
 		cause: unknown,
+		readonly startupFailure?: ComfyStartupFailure,
 	) {
 		super(message, { cause });
 	}
@@ -84,6 +87,7 @@ export class EditorComfy {
 						errorMessage(error),
 						state.status === "error" ? state.reason : undefined,
 						error,
+						error instanceof ComfyStartupError ? error.failure : undefined,
 					);
 				}
 				this.assertOpen();

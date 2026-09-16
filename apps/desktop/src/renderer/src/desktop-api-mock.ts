@@ -206,6 +206,7 @@ export function createDesktopApiMock() {
 			},
 		},
 		comfy: {
+			copyLogs: async () => unexpected("Unexpected ComfyUI log copy."),
 			restart: async () => ({ ok: true as const }),
 			start: async () => ({ ok: true as const, url: "about:blank" }),
 			onStateChange: (listener) => {
