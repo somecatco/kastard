@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from "electron";
 import {
 	APP_INFO_GET_CHANNEL,
+	COMFY_COPY_LOGS_CHANNEL,
 	COMFY_RESTART_CHANNEL,
 	COMFY_START_CHANNEL,
 	COMFY_STATE_CHANNEL,
@@ -123,6 +124,8 @@ const api: KastardApi = {
 		copy: (text) => invokeConnection(DEBUG_INFO_COPY_CHANNEL, "debug-info copy", text),
 	},
 	comfy: {
+		copyLogs: (text) =>
+			invokeConnection(COMFY_COPY_LOGS_CHANNEL, "ComfyUI startup log copy", text),
 		restart: () => invokeConnection(COMFY_RESTART_CHANNEL, "ComfyUI restart"),
 		start: async () => {
 			const result: unknown = await ipcRenderer.invoke(COMFY_START_CHANNEL);

@@ -81,6 +81,7 @@ export const DEBUG_INFO_COPY_CHANNEL = "debug-info:copy";
 export const COMFY_RESTART_CHANNEL = "comfy:restart";
 export const COMFY_START_CHANNEL = "comfy:start";
 export const COMFY_STATE_CHANNEL = "comfy:state";
+export const COMFY_COPY_LOGS_CHANNEL = "comfy:copy-logs";
 export const COMFY_VERSION_GET_CHANNEL = "comfy-version:get";
 export const COMFY_VERSION_CATALOG_CHANNEL = "comfy-version:catalog";
 export const COMFY_VERSION_UPDATE_CHANNEL = "comfy-version:update";
@@ -533,6 +534,12 @@ export type ModelProviderTokenUpdate = {
 	token: string | null;
 };
 
+export type ComfyStartupFailure = {
+	message: string;
+	logs: string;
+	truncated: boolean;
+};
+
 export type ComfyRuntimeState =
 	| { status: "idle" | "starting" }
 	| {
@@ -542,11 +549,21 @@ export type ComfyRuntimeState =
 			firstRun: boolean;
 	  }
 	| { status: "ready"; url: string }
-	| { status: "error"; message: string; reason?: "custom-node" };
+	| {
+			status: "error";
+			message: string;
+			reason?: "custom-node";
+			startupFailure?: ComfyStartupFailure;
+	  };
 
 export type ComfyStartResult =
 	| { ok: true; url: string }
-	| { ok: false; error: string; reason?: "custom-node" };
+	| {
+			ok: false;
+			error: string;
+			reason?: "custom-node";
+			startupFailure?: ComfyStartupFailure;
+	  };
 
 export type ComfyComponent = "frontend" | "backend" | "manager";
 
@@ -610,6 +627,7 @@ export type KastardApi = {
 		copy: (text: string) => Promise<ConnectionResult>;
 	};
 	comfy: {
+		copyLogs: (text: string) => Promise<ConnectionResult>;
 		restart: () => Promise<ConnectionResult>;
 		start: () => Promise<ComfyStartResult>;
 		onStateChange: (listener: (state: ComfyRuntimeState) => void) => () => void;
@@ -752,7 +770,9 @@ export function isComfyRuntimeState(value: unknown): value is ComfyRuntimeState 
 	return (
 		candidate.status === "error" &&
 		typeof candidate.message === "string" &&
-		(candidate.reason === undefined || candidate.reason === "custom-node")
+		(candidate.reason === undefined || candidate.reason === "custom-node") &&
+		(candidate.startupFailure === undefined ||
+			isComfyStartupFailure(candidate.startupFailure))
 	);
 }
 
@@ -773,7 +793,18 @@ export function isComfyStartResult(value: unknown): value is ComfyStartResult {
 		(candidate.ok === true && typeof candidate.url === "string") ||
 		(candidate.ok === false &&
 			typeof candidate.error === "string" &&
-			(candidate.reason === undefined || candidate.reason === "custom-node"))
+			(candidate.reason === undefined || candidate.reason === "custom-node") &&
+			(candidate.startupFailure === undefined ||
+				isComfyStartupFailure(candidate.startupFailure)))
+	);
+}
+
+function isComfyStartupFailure(value: unknown): value is ComfyStartupFailure {
+	return (
+		isRecord(value) &&
+		typeof value.message === "string" &&
+		typeof value.logs === "string" &&
+		typeof value.truncated === "boolean"
 	);
 }
 

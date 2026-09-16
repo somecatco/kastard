@@ -3,10 +3,12 @@ import type { Dirent } from "node:fs";
 import { access, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { join } from "node:path";
+import { StringDecoder } from "node:string_decoder";
 import { isCustomNodeManagerVersion } from "@kastard/common";
 import type { ComfyRuntimeState, ModelLibraryEntry } from "../../shared/api";
 import type { EditorModelPaths } from "./model-paths";
 import {
+	CommandExitError,
 	type CommandOptions,
 	environmentPython,
 	exitMessage,
@@ -14,6 +16,7 @@ import {
 	runCommand,
 	type StartProcess,
 } from "./process";
+import { ComfyStartupError, StartupLog } from "./startup-log";
 
 type RuntimeManifest = {
 	version: string;
@@ -59,6 +62,13 @@ type RuntimeOptions = {
 	restoreResults?: (signal: AbortSignal) => Promise<void>;
 };
 
+type StartupAttempt = {
+	logs: StartupLog;
+	child: ChildProcess | null;
+	closed: Promise<void> | null;
+	processFailed: boolean;
+};
+
 const STAMP_NAME = ".kastard-runtime.json";
 const LOG_TAIL_LENGTH = 12_000;
 const FRONTEND_SETTINGS_TIMEOUT_MS = 5_000;
@@ -81,6 +91,7 @@ export class ComfyRuntime {
 	private process: ChildProcess | null = null;
 	private stopping = false;
 	private logTail = "";
+	private attempt: StartupAttempt | null = null;
 	private customNodeStartupFailureDetected = false;
 
 	constructor(private readonly options: RuntimeOptions) {
@@ -150,6 +161,13 @@ export class ComfyRuntime {
 	}
 
 	private async startOnce(signal: AbortSignal): Promise<string> {
+		const attempt: StartupAttempt = {
+			logs: new StartupLog(),
+			child: null,
+			closed: null,
+			processFailed: false,
+		};
+		this.attempt = attempt;
 		this.resetOutput();
 		try {
 			const manifest = await this.readManifest();
@@ -158,29 +176,61 @@ export class ComfyRuntime {
 				(await this.options.resolveFrontend?.(signal)) ??
 				this.options.frontendDirectory;
 			signal.throwIfAborted();
-			const { python } = await this.prepareEnvironment(manifest, backend, signal);
+			const { python } = await this.prepareEnvironment(
+				manifest,
+				backend,
+				signal,
+				attempt,
+			);
 			signal.throwIfAborted();
 			this.resetOutput();
 			this.update({ status: "starting" });
 			const port = await this.allocatePort();
 			signal.throwIfAborted();
 			const url = `http://127.0.0.1:${port}/`;
-			await this.startBackend(python, backend, frontendDirectory, port, url, signal);
+			await this.startBackend(
+				python,
+				backend,
+				frontendDirectory,
+				port,
+				url,
+				signal,
+				attempt,
+			);
 			signal.throwIfAborted();
 			this.update({ status: "ready", url });
 			return url;
 		} catch (error) {
-			const message = errorMessage(error);
+			const child = attempt.child;
+			if (
+				child !== null &&
+				!attempt.processFailed &&
+				child.exitCode === null &&
+				child.signalCode === null
+			) {
+				child.kill("SIGTERM");
+				await processExit(child, this.terminationTimeoutMs);
+			}
+			const outputComplete =
+				attempt.closed === null || (await waitForOutput(attempt.closed));
+			if (this.process === child) this.process = null;
+			const startupFailure = attempt.logs.failure(
+				error instanceof CommandExitError ? error.summary : errorMessage(error),
+				!outputComplete,
+			);
 			if (!this.stopping) {
 				this.update({
 					status: "error",
-					message,
+					message: startupFailure.message,
+					startupFailure,
 					...(this.customNodeStartupFailureDetected
 						? { reason: "custom-node" as const }
 						: {}),
 				});
 			}
-			throw new Error(message, { cause: error });
+			throw new ComfyStartupError(startupFailure, error);
+		} finally {
+			attempt.logs.clear();
 		}
 	}
 
@@ -226,6 +276,7 @@ export class ComfyRuntime {
 		manifest: RuntimeManifest,
 		backend: BackendSource,
 		signal: AbortSignal,
+		attempt: StartupAttempt,
 	): Promise<{ python: string; firstRun: boolean }> {
 		const root = this.options.dataDirectory;
 		const environmentDirectory = join(root, "environment");
@@ -294,7 +345,7 @@ export class ComfyRuntime {
 				{
 					cwd: root,
 					env: commandEnvironment,
-					onOutput: (text) => this.recordOutput(text),
+					onOutput: (text) => this.recordOutput(text, attempt),
 					signal,
 					terminationTimeoutMs: this.terminationTimeoutMs,
 				},
@@ -353,7 +404,7 @@ export class ComfyRuntime {
 				cwd: root,
 				env: commandEnvironment,
 				onOutput: (text) => {
-					this.recordOutput(text);
+					this.recordOutput(text, attempt);
 					reportDependencyProgress(text);
 				},
 				signal,
@@ -376,7 +427,7 @@ export class ComfyRuntime {
 					cwd: root,
 					env: commandEnvironment,
 					onOutput: (text) => {
-						this.recordOutput(text);
+						this.recordOutput(text, attempt);
 						reportDependencyProgress(text);
 					},
 					signal,
@@ -402,7 +453,7 @@ export class ComfyRuntime {
 					{
 						cwd: root,
 						env: commandEnvironment,
-						onOutput: (text) => this.recordOutput(text),
+						onOutput: (text) => this.recordOutput(text, attempt),
 						signal,
 						terminationTimeoutMs: this.terminationTimeoutMs,
 					},
@@ -430,6 +481,7 @@ export class ComfyRuntime {
 		port: number,
 		url: string,
 		signal: AbortSignal,
+		attempt: StartupAttempt,
 	): Promise<void> {
 		await this.options.modelPaths.syncModels(this.options.getModels?.() ?? []);
 		signal.throwIfAborted();
@@ -481,9 +533,11 @@ export class ComfyRuntime {
 				},
 			);
 			this.process = child;
-			this.captureProcessOutput(child);
+			attempt.child = child;
+			attempt.closed = this.captureProcessOutput(child, attempt);
 			child.once("error", (error) => {
 				childError = error;
+				attempt.processFailed = true;
 				if (this.process !== child) return;
 				this.process = null;
 				if (!this.stopping && this.state.status === "ready") {
@@ -524,9 +578,7 @@ export class ComfyRuntime {
 		) {
 			return;
 		}
-		throw new Error(
-			exitMessage("ComfyUI", child.exitCode, child.signalCode, this.logTail),
-		);
+		throw new Error(exitMessage("ComfyUI", child.exitCode, child.signalCode, ""));
 	}
 
 	private async enableNamedValuesRestore(
@@ -559,13 +611,21 @@ export class ComfyRuntime {
 		}
 	}
 
-	private captureProcessOutput(child: ChildProcess): void {
-		child.stdout?.on("data", (chunk: Buffer | string) => {
-			this.recordOutput(chunk.toString());
-		});
-		child.stderr?.on("data", (chunk: Buffer | string) => {
-			this.recordOutput(chunk.toString());
-		});
+	private captureProcessOutput(
+		child: ChildProcess,
+		attempt: StartupAttempt,
+	): Promise<void> {
+		for (const stream of [child.stdout, child.stderr]) {
+			const decoder = new StringDecoder("utf8");
+			stream?.on("data", (chunk: Buffer | string) => {
+				this.recordOutput(
+					typeof chunk === "string" ? chunk : decoder.write(chunk),
+					attempt,
+				);
+			});
+			stream?.once("end", () => this.recordOutput(decoder.end(), attempt));
+		}
+		return new Promise((resolve) => child.once("close", resolve));
 	}
 
 	private async waitUntilReady(
@@ -578,9 +638,7 @@ export class ComfyRuntime {
 			const childError = getChildError();
 			if (childError !== null) throw new Error(processErrorMessage(childError));
 			if (child.exitCode !== null || child.signalCode !== null) {
-				throw new Error(
-					exitMessage("ComfyUI", child.exitCode, child.signalCode, this.logTail),
-				);
+				throw new Error(exitMessage("ComfyUI", child.exitCode, child.signalCode, ""));
 			}
 			try {
 				const response = await this.requestFetch(new URL("system_stats", url), {
@@ -594,7 +652,9 @@ export class ComfyRuntime {
 		throw new Error(`ComfyUI did not start within ${this.startupTimeoutMs}ms.`);
 	}
 
-	private recordOutput(text: string): void {
+	private recordOutput(text: string, attempt: StartupAttempt): void {
+		if (this.attempt !== attempt) return;
+		attempt.logs.append(text);
 		const output = `${this.logTail}${text}`;
 		if (!this.customNodeStartupFailureDetected && customNodeStartupFailed(output)) {
 			this.customNodeStartupFailureDetected = true;
@@ -838,4 +898,18 @@ function errorMessage(error: unknown): string {
 
 function delay(milliseconds: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+async function waitForOutput(closed: Promise<void>): Promise<boolean> {
+	let timer: NodeJS.Timeout | undefined;
+	try {
+		return await Promise.race([
+			closed.then(() => true),
+			new Promise<boolean>((resolve) => {
+				timer = setTimeout(() => resolve(false), 1_000);
+			}),
+		]);
+	} finally {
+		if (timer !== undefined) clearTimeout(timer);
+	}
 }

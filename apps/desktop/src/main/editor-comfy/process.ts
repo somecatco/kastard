@@ -1,7 +1,21 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { basename, join } from "node:path";
+import { StringDecoder } from "node:string_decoder";
 
 const LOG_TAIL_LENGTH = 12_000;
+
+export class CommandExitError extends Error {
+	readonly summary: string;
+	constructor(
+		name: string,
+		code: number | null,
+		signal: NodeJS.Signals | null,
+		output: string,
+	) {
+		super(exitMessage(name, code, signal, output));
+		this.summary = exitMessage(name, code, signal, "");
+	}
+}
 export type CommandOptions = {
 	cwd: string;
 	env: NodeJS.ProcessEnv;
@@ -54,13 +68,11 @@ export function runCommand(
 			else if (closeResult.code === 0) resolve();
 			else {
 				reject(
-					new Error(
-						exitMessage(
-							basename(command),
-							closeResult.code,
-							closeResult.signal,
-							output,
-						),
+					new CommandExitError(
+						basename(command),
+						closeResult.code,
+						closeResult.signal,
+						output,
 					),
 				);
 			}
@@ -90,12 +102,13 @@ export function runCommand(
 			output = `${output}${text}`.slice(-LOG_TAIL_LENGTH);
 			options.onOutput(text);
 		};
-		child.stdout?.on("data", (chunk: Buffer | string) => {
-			record(chunk.toString());
-		});
-		child.stderr?.on("data", (chunk: Buffer | string) => {
-			record(chunk.toString());
-		});
+		for (const stream of [child.stdout, child.stderr]) {
+			const decoder = new StringDecoder("utf8");
+			stream?.on("data", (chunk: Buffer | string) => {
+				record(typeof chunk === "string" ? chunk : decoder.write(chunk));
+			});
+			stream?.once("end", () => record(decoder.end()));
+		}
 		child.once("error", (error) => {
 			processError ??= error;
 		});

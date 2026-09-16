@@ -55,16 +55,24 @@ export class FakeProcess extends EventEmitter {
 	kill(signal: NodeJS.Signals = "SIGTERM"): boolean {
 		this.signalCode = signal;
 		this.emit("exit", null, signal);
+		this.close();
 		return true;
 	}
 
 	exit(code: number): void {
 		this.exitCode = code;
 		this.emit("exit", code, null);
+		this.close();
 	}
 
 	fail(error: Error): void {
 		this.emit("error", error);
+		this.close();
+	}
+	private close(): void {
+		this.stdout.end();
+		this.stderr.end();
+		queueMicrotask(() => this.emit("close", this.exitCode, this.signalCode));
 	}
 }
 

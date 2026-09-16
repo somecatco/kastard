@@ -1,5 +1,6 @@
 import { AlertTriangleIcon, LoaderCircleIcon, RotateCwIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ComfyStartupFailure } from "@/components/ComfyStartupFailure";
 import { ProgressBar } from "@/components/common/progress-bar";
 import { Button } from "@/components/ui/button";
 import type { ComfyRuntimeState, ComfyVersionState } from "../../../shared/api";
@@ -37,20 +38,31 @@ export function ComfyUiSurface({
 					: {
 							status: "error",
 							message: result.error,
+							startupFailure: result.startupFailure ?? {
+								message: result.error,
+								logs: "",
+								truncated: false,
+							},
 							...(result.reason === undefined ? {} : { reason: result.reason }),
 						},
 			);
 		} catch (error) {
 			if (requestId.current !== currentRequest) return;
+			const message =
+				error instanceof Error ? error.message : "ComfyUI failed to start.";
 			updateRuntime({
 				status: "error",
-				message: error instanceof Error ? error.message : "ComfyUI failed to start.",
+				message,
+				startupFailure: { message, logs: "", truncated: false },
 			});
 		}
 	}, [updateRuntime]);
 
 	useEffect(() => {
-		const unsubscribe = window.kastard.comfy.onStateChange(updateRuntime);
+		const unsubscribe = window.kastard.comfy.onStateChange((state) => {
+			requestId.current += 1;
+			updateRuntime(state);
+		});
 		void startRuntime();
 		return () => {
 			requestId.current += 1;
@@ -118,6 +130,9 @@ export function ComfyUiSurface({
 	}
 
 	if (runtime.status === "error") {
+		if (runtime.startupFailure) {
+			return <ComfyStartupFailure failure={runtime.startupFailure} onRetry={retry} />;
+		}
 		return (
 			<div className="flex min-h-0 flex-1 items-center justify-center bg-background px-6">
 				<div className="flex max-w-md flex-col items-center gap-3 text-center">

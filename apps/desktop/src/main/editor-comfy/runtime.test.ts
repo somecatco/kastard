@@ -332,7 +332,7 @@ test("does not expose ComfyUI as ready when frontend settings fail", async () =>
 	await expect(runtime.start()).rejects.toThrow(
 		"ComfyUI frontend settings returned HTTP 503.",
 	);
-	expect(runtime.getState()).toEqual({
+	expect(runtime.getState()).toMatchObject({
 		status: "error",
 		message: "ComfyUI frontend settings returned HTTP 503.",
 	});
@@ -392,7 +392,7 @@ test("does not expose ComfyUI as ready when it exits after applying frontend set
 	});
 
 	await expect(runtime.start()).rejects.toThrow("ComfyUI exited with code 1.");
-	expect(runtime.getState()).toEqual({
+	expect(runtime.getState()).toMatchObject({
 		status: "error",
 		message: "ComfyUI exited with code 1.",
 	});
@@ -416,7 +416,7 @@ test("reports a backend process spawn error", async () => {
 	});
 
 	await expect(runtime.start()).rejects.toThrow("ComfyUI process failed. spawn EACCES");
-	expect(runtime.getState()).toEqual({
+	expect(runtime.getState()).toMatchObject({
 		status: "error",
 		message: "ComfyUI process failed. spawn EACCES",
 	});

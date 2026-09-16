@@ -16,6 +16,7 @@ import {
 import {
 	APP_INFO_GET_CHANNEL,
 	type BackendTarget,
+	COMFY_COPY_LOGS_CHANNEL,
 	COMFY_RESTART_CHANNEL,
 	COMFY_START_CHANNEL,
 	COMFY_STATE_CHANNEL,
@@ -680,6 +681,10 @@ app.whenReady().then(async () => {
 			return {
 				ok: false,
 				error: errorMessage(error),
+				startupFailure:
+					error instanceof EditorComfyStartError && error.startupFailure
+						? error.startupFailure
+						: { message: errorMessage(error), logs: "", truncated: false },
 				...(error instanceof EditorComfyStartError && error.reason !== undefined
 					? { reason: error.reason }
 					: {}),
@@ -692,6 +697,20 @@ app.whenReady().then(async () => {
 			return { ok: true };
 		} catch (error) {
 			return { ok: false, error: errorMessage(error) };
+		}
+	});
+	ipcHandlers.handle(COMFY_COPY_LOGS_CHANNEL, (_event, text: unknown) => {
+		if (typeof text !== "string" || text.length === 0) {
+			return { ok: false, error: "No ComfyUI startup details are available to copy." };
+		}
+		try {
+			clipboard.writeText(text);
+			return { ok: true };
+		} catch (error) {
+			return {
+				ok: false,
+				error: `Could not copy ComfyUI startup details. ${errorMessage(error)}`,
+			};
 		}
 	});
 	unsubscribeComfy = comfyRuntime.subscribe((state) => {
