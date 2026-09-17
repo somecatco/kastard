@@ -178,7 +178,7 @@ jobs:
             apps/desktop/${{ steps.release.outputs.output_directory }}/${{ steps.release.outputs.artifact_name }}.sha256
 
   release:
-    name: Create Draft Release
+    name: Create Editor release
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -191,7 +191,7 @@ jobs:
           name: editor-release-${{ github.ref_name }}
           path: release-assets
 
-      - name: Create Draft Release
+      - name: Create Editor release
         working-directory: release-assets
         env:
           ARTIFACT_NAME: ${{ needs.build.outputs.artifact_name }}
@@ -207,15 +207,24 @@ jobs:
           args=(
             --repo "$GITHUB_REPOSITORY"
             --verify-tag
-            --draft
             --title "$RELEASE_NAME"
             --generate-notes
           )
           if [[ "$PRERELEASE" == "true" ]]; then
-            args+=(--prerelease --latest=false)
+            args+=(--draft --prerelease --latest=false)
           fi
 
           gh release create "$GITHUB_REF_NAME" \
             "${args[@]}" \
             "$ARTIFACT_NAME" \
             "${ARTIFACT_NAME}.sha256"
+
+  download:
+    name: Publish Editor download
+    needs: [build, release]
+    if: ${{ needs.build.outputs.prerelease == 'false' }}
+    permissions:
+      contents: write
+    uses: ./.github/workflows/editor-download.yml
+    with:
+      source_tag: ${{ github.ref_name }}

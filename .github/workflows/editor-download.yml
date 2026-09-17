@@ -3,6 +3,12 @@ name: Publish Editor Download
 on:
   release:
     types: [published]
+  workflow_call:
+    inputs:
+      source_tag:
+        description: Published Production Editor release tag
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -14,7 +20,7 @@ concurrency:
 jobs:
   publish:
     name: Update Editor download
-    if: ${{ !github.event.release.prerelease && startsWith(github.event.release.tag_name, 'editor-v') }}
+    if: ${{ !github.event.release.prerelease && startsWith(inputs.source_tag || github.event.release.tag_name, 'editor-v') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -23,10 +29,20 @@ jobs:
       DOWNLOAD_ARTIFACT_NAME: Kastard-arm64.dmg
       DOWNLOAD_TAG: editor-download
       GH_TOKEN: ${{ github.token }}
-      SOURCE_RELEASE_ID: ${{ github.event.release.id }}
-      SOURCE_TAG: ${{ github.event.release.tag_name }}
-      TARGET_COMMITISH: ${{ github.event.release.target_commitish }}
+      SOURCE_TAG: ${{ inputs.source_tag || github.event.release.tag_name }}
     steps:
+      - name: Resolve published Editor release
+        run: |
+          release=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${SOURCE_TAG}")
+          if ! jq -e '.draft == false and .prerelease == false' <<< "$release" >/dev/null; then
+            echo "::error::The Editor download requires a published Production release."
+            exit 1
+          fi
+          {
+            echo "SOURCE_RELEASE_ID=$(jq -r '.id' <<< "$release")"
+            echo "TARGET_COMMITISH=$(jq -r '.target_commitish' <<< "$release")"
+          } >> "$GITHUB_ENV"
+
       - name: Download published Editor DMG
         run: |
           mkdir -p source-assets download-assets
