@@ -34,13 +34,17 @@ test("shows a custom node's Git failure through the desktop error log", async ({
 		const dialog = page.getByRole("dialog", { name: "Custom node error log" });
 		await expect(dialog.getByText("example-node", { exact: true })).toBeVisible();
 		const output = dialog.getByRole("textbox", { name: "Error log output" });
-		await expect(output).toHaveValue(
+		expect(await output.inputValue()).toContain(
 			[
 				"Command: git rev-parse --show-toplevel",
 				"Exit code: 69",
 				`stderr:\n${stderr}\n`,
 			].join("\n\n"),
 		);
+		expect(await output.inputValue()).toContain(
+			"Command: Python (pygit2 repository inspection)",
+		);
+		expect(await output.inputValue()).toContain("Error code: ENOENT");
 		await dialog.getByRole("button", { name: "Copy all" }).click();
 		await expect(dialog.getByRole("button", { name: "Copied" })).toBeVisible();
 		expect(await desktop.evaluate(({ clipboard }) => clipboard.readText())).toBe(

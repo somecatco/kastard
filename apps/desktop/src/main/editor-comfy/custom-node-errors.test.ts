@@ -43,13 +43,17 @@ test.each([false, true])(
 			workerSyncIssue: "The Git repository metadata could not be read.",
 			workerSyncErrorLog: { truncated: false },
 		});
-		expect(node?.workerSyncErrorLog?.text).toBe(
+		expect(node?.workerSyncErrorLog?.text).toContain(
 			[
 				"Command: git rev-parse --show-toplevel",
 				"Exit code: 69",
 				"stdout:\nChecking repository\n\n\nstderr:\nGit cannot run until the developer tools license is accepted.\n",
 			].join("\n\n"),
 		);
+		expect(node?.workerSyncErrorLog?.text).toContain(
+			"Command: Python (pygit2 repository inspection)",
+		);
+		expect(node?.workerSyncErrorLog?.text).toContain("Error code: ENOENT");
 	},
 );
 
