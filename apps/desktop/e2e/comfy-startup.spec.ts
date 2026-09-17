@@ -44,10 +44,9 @@ test("shows failed startup output and copies it through the OS clipboard", async
 		{ mode: 0o755 },
 	);
 	const desktop = await launchDesktop(dataRoot, join(testRoot, "desktop"));
-	const previousClipboard = await desktop.evaluate(({ clipboard }) =>
-		clipboard.readText(),
-	);
+	let previousClipboard: string | undefined;
 	try {
+		previousClipboard = await desktop.evaluate(({ clipboard }) => clipboard.readText());
 		const page = await desktop.firstWindow();
 		await expect(
 			page.getByRole("heading", { name: "ComfyUI failed to start" }),
@@ -92,14 +91,19 @@ test("shows failed startup output and copies it through the OS clipboard", async
 			page.getByRole("button", { name: "View logs", exact: true }),
 		).toBeFocused();
 	} finally {
-		await desktop.evaluate(
-			({ clipboard }, text) => clipboard.writeText(text),
-			previousClipboard,
-		);
-		const closed = desktop.waitForEvent("close");
-		await desktop.evaluate(({ app }) => {
-			setImmediate(() => app.exit(0));
-		});
-		await closed;
+		try {
+			if (previousClipboard !== undefined) {
+				await desktop.evaluate(
+					({ clipboard }, text) => clipboard.writeText(text),
+					previousClipboard,
+				);
+			}
+		} finally {
+			const closed = desktop.waitForEvent("close");
+			await desktop.evaluate(({ app }) => {
+				setImmediate(() => app.exit(0));
+			});
+			await closed;
+		}
 	}
 });
