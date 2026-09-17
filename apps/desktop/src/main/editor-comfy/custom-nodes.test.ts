@@ -1256,6 +1256,23 @@ test("uses the local GitHub origin and HEAD without checking remote reachability
 	]);
 });
 
+test("reports a missing origin as a custom-node eligibility restriction", async () => {
+	const paths = await fixture();
+	const directory = join(paths.dataDirectory, "data", "custom_nodes", "local-node");
+	await createGitHubNode(directory);
+	git(directory, "remote", "remove", "origin");
+	const { nodes } = createNodes({ ...paths, platform: "darwin", arch: "arm64" });
+
+	await expect(nodes.listCustomNodes()).resolves.toEqual([
+		{
+			name: "local-node",
+			version: "unknown",
+			managerId: null,
+			workerSyncIssue: "The Git repository does not have a supported GitHub origin.",
+		},
+	]);
+});
+
 test("does not treat a repository subdirectory or symlink as a GitHub custom node", async () => {
 	const paths = await fixture();
 	const customNodes = join(paths.dataDirectory, "data", "custom_nodes");
