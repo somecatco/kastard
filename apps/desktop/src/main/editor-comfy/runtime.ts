@@ -23,6 +23,7 @@ type RuntimeManifest = {
 	sha256: string;
 	pythonVersion: string;
 	managerVersion: string;
+	pygit2Version: string;
 	dependencyLock: { sha256: string };
 	platform: string;
 	uv: { version: string };
@@ -296,6 +297,7 @@ export class ComfyRuntime {
 			sha256: backend.sha256,
 			pythonVersion: manifest.pythonVersion,
 			managerVersion,
+			pygit2Version: manifest.pygit2Version,
 			dependencyLockSha256: backend.dependencyLock?.sha256 ?? null,
 			uvVersion: manifest.uv.version,
 			platform: manifest.platform,
@@ -387,8 +389,11 @@ export class ComfyRuntime {
 				python,
 				...(this.platform === "darwin" ? [] : ["--torch-backend", "cpu"]),
 				"--no-config",
+				"--only-binary",
+				"pygit2",
 				...(backend.dependencyLock === null
 					? [
+							`pygit2==${manifest.pygit2Version}`,
 							"--requirements",
 							join(backend.directory, "requirements.txt"),
 							...(managerVersion === pinnedManagerVersion
@@ -825,6 +830,7 @@ function isRuntimeManifest(value: unknown): value is RuntimeManifest {
 		typeof candidate.sha256 === "string" &&
 		typeof candidate.pythonVersion === "string" &&
 		typeof candidate.managerVersion === "string" &&
+		typeof candidate.pygit2Version === "string" &&
 		typeof candidate.platform === "string" &&
 		typeof candidate.uv === "object" &&
 		candidate.uv !== null &&

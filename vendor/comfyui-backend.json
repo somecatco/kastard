@@ -5,9 +5,10 @@
 	"license": "GPL-3.0-only",
 	"pythonVersion": "3.12.13",
 	"managerVersion": "4.2.2",
+	"pygit2Version": "1.20.1",
 	"dependencyLock": {
 		"path": "comfyui-runtime-lock.txt",
-		"sha256": "cdbd08199c34f6dc34d9acc8cc22282fcb10cef1575377be9011b580365fcde8"
+		"sha256": "6c1af3f0472eb5beb2ab93700ce8f8b30e1363bd2b22745c1a0d3f8a54be0377"
 	},
 	"uv": {
 		"version": "0.12.4",

@@ -67,6 +67,8 @@ test("prepares a managed CPU environment and starts ComfyUI with Manager", async
 	expect(commands[1]).not.toContain("--torch-backend");
 	expect(commands[1]).toEqual(
 		expect.arrayContaining([
+			"--only-binary",
+			"pygit2",
 			"--require-hashes",
 			"--requirements",
 			join(paths.resourcesDirectory, "backend", "runtime-lock.txt"),
@@ -236,6 +238,124 @@ test("updates a compatible environment without deleting custom dependencies", as
 	expect(commands[0]?.slice(0, 2)).toEqual(["pip", "install"]);
 	await expect(access(preservedPackage)).resolves.toBeUndefined();
 	await updated.stop();
+});
+
+test.each([
+	{ source: "bundled", pygit2Version: undefined },
+	{ source: "selected", pygit2Version: undefined },
+	{ source: "bundled", pygit2Version: "1.18.0" },
+	{ source: "selected", pygit2Version: "1.18.0" },
+])(
+	"prepares required dependencies in a $source environment with pygit2 $pygit2Version",
+	async ({ source, pygit2Version }) => {
+		const paths = await fixture();
+		const selected = source === "selected" ? await selectedBackend() : null;
+		const environment = join(paths.dataDirectory, "environment");
+		await createManagedPython(["venv", environment]);
+		const packageMarker = join(environment, "custom-package.txt");
+		const dataMarker = join(paths.dataDirectory, "workflow.json");
+		await writeFile(packageMarker, "installed");
+		await writeFile(dataMarker, "{}");
+		const stampPath = join(environment, ".kastard-runtime.json");
+		await writeFile(
+			stampPath,
+			JSON.stringify({
+				version: selected?.version ?? runtimeManifest.version,
+				sha256: selected?.sha256 ?? runtimeManifest.sha256,
+				pythonVersion: runtimeManifest.pythonVersion,
+				managerVersion: selected ? "4.3.0" : runtimeManifest.managerVersion,
+				pygit2Version,
+				dependencyLockSha256: selected ? null : runtimeManifest.dependencyLock.sha256,
+				uvVersion: runtimeManifest.uv.version,
+				platform: runtimeManifest.platform,
+			}),
+		);
+		const install = vi.fn(async (_command: string, _args: string[]) => {});
+		const runtime = new ComfyRuntime({
+			...paths,
+			platform: "darwin",
+			arch: "arm64",
+			allocatePort: async () => 18_188,
+			fetch: vi.fn().mockResolvedValue(new Response(null, { status: 200 })),
+			runCommand: install,
+			startProcess: () => new FakeProcess() as unknown as ChildProcess,
+			resolveBackend: async () => selected,
+		});
+
+		await runtime.start();
+		expect(install).toHaveBeenCalledOnce();
+		const args = install.mock.calls[0]?.[1];
+		expect(args).toEqual(
+			expect.arrayContaining([
+				"pip",
+				"install",
+				"--python",
+				join(environment, "bin", "python"),
+				"--only-binary",
+				"pygit2",
+			]),
+		);
+		if (selected) {
+			expect(args).toContain(`pygit2==${runtimeManifest.pygit2Version}`);
+		} else {
+			expect(args).toContain(
+				join(paths.resourcesDirectory, "backend", "runtime-lock.txt"),
+			);
+		}
+		expect(JSON.parse(await readFile(stampPath, "utf8"))).toMatchObject({
+			pygit2Version: runtimeManifest.pygit2Version,
+		});
+		expect(await readFile(packageMarker, "utf8")).toBe("installed");
+		expect(await readFile(dataMarker, "utf8")).toBe("{}");
+
+		await runtime.stop();
+		install.mockClear();
+		await runtime.start();
+		expect(install).not.toHaveBeenCalled();
+		await runtime.stop();
+	},
+);
+
+test("retries required dependency installation before starting ComfyUI", async () => {
+	const paths = await fixture();
+	const selected = await selectedBackend();
+	let failInstall = true;
+	const install = vi.fn(async (_command: string, args: string[]) => {
+		await createManagedPython(args);
+		if (failInstall && args[0] === "pip")
+			throw new Error("Dependency download failed.");
+	});
+	const startProcess = vi.fn(() => new FakeProcess() as unknown as ChildProcess);
+	const runtime = new ComfyRuntime({
+		...paths,
+		platform: "darwin",
+		arch: "arm64",
+		allocatePort: async () => 18_188,
+		fetch: vi.fn().mockResolvedValue(new Response(null, { status: 200 })),
+		runCommand: install,
+		startProcess,
+		resolveBackend: async () => selected,
+	});
+
+	await expect(runtime.start()).rejects.toThrow("Dependency download failed.");
+	expect(startProcess).not.toHaveBeenCalled();
+	expect(runtime.getState()).toMatchObject({
+		status: "error",
+		startupFailure: { message: "Dependency download failed." },
+	});
+	const marker = join(paths.dataDirectory, "environment", "custom-package.txt");
+	await writeFile(marker, "installed");
+	failInstall = false;
+	install.mockClear();
+	await runtime.start();
+	expect(install).toHaveBeenCalledOnce();
+	expect(install.mock.calls[0]?.[1]).toContain(
+		`pygit2==${runtimeManifest.pygit2Version}`,
+	);
+	expect(startProcess).toHaveBeenCalledOnce();
+	expect(await readFile(marker, "utf8")).toBe("installed");
+	expect(runtime.getState()).toMatchObject({ status: "ready" });
+	await runtime.stop();
 });
 
 test("restores custom node requirements after a Python upgrade", async () => {
@@ -613,6 +733,9 @@ test("starts a selected ComfyUI release from its own requirements", async () => 
 	expect(commands[1]).not.toContain("--require-hashes");
 	expect(commands[1]).toEqual(
 		expect.arrayContaining([
+			"--only-binary",
+			"pygit2",
+			`pygit2==${runtimeManifest.pygit2Version}`,
 			"--requirements",
 			join(selected.directory, "requirements.txt"),
 			"--requirements",
@@ -693,6 +816,7 @@ test("replaces a selected backend Manager requirement with the override", async 
 
 	expect(commands[1]).toEqual(
 		expect.arrayContaining([
+			`pygit2==${runtimeManifest.pygit2Version}`,
 			"--requirements",
 			join(selected.directory, "requirements.txt"),
 		]),
