@@ -23,10 +23,9 @@ test("shows a custom node's Git failure through the desktop error log", async ({
 	const desktop = await launchDesktop(comfyDataRoot, join(testRoot, "desktop"), {
 		PATH: bin,
 	});
-	const previousClipboard = await desktop.evaluate(({ clipboard }) =>
-		clipboard.readText(),
-	);
+	let previousClipboard: string | undefined;
 	try {
+		previousClipboard = await desktop.evaluate(({ clipboard }) => clipboard.readText());
 		const page = await desktop.firstWindow();
 		await page.getByRole("button", { name: "Custom Nodes", exact: true }).click();
 		await expect(page.getByRole("heading", { name: "example-node" })).toBeVisible();
@@ -51,10 +50,12 @@ test("shows a custom node's Git failure through the desktop error log", async ({
 		await expect(page.getByRole("button", { name: "View error log" })).toBeFocused();
 	} finally {
 		try {
-			await desktop.evaluate(
-				({ clipboard }, text) => clipboard.writeText(text),
-				previousClipboard,
-			);
+			if (previousClipboard !== undefined) {
+				await desktop.evaluate(
+					({ clipboard }, text) => clipboard.writeText(text),
+					previousClipboard,
+				);
+			}
 		} finally {
 			await closeDesktop(desktop);
 		}
