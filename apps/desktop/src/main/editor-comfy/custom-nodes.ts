@@ -927,7 +927,7 @@ async function inspectGitHubRepository(
 	}
 	const [originResult, commitResult, statusResult] = await Promise.allSettled([
 		gitOutput(directory, ["config", "--get", "--default=", "remote.origin.url"]),
-		gitOutput(directory, ["rev-parse", "--verify", "HEAD"]),
+		gitOutput(directory, ["rev-parse", "--revs-only", "HEAD"]),
 		gitOutput(directory, [...ROOT_GIT_STATUS_ARGS]),
 	]);
 	if (

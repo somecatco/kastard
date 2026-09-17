@@ -80,7 +80,7 @@ test("keeps every failed metadata command in the node's error log", async () => 
 			'case "$4 $5" in',
 			'"rev-parse --show-toplevel") printf "%s\\n" "$3"; exit 0 ;;',
 			'"config --get") printf "Origin could not be read\\n" >&2; exit 2 ;;',
-			'"rev-parse --verify") printf "HEAD could not be read\\n" >&2; exit 3 ;;',
+			'"rev-parse --revs-only") printf "HEAD could not be read\\n" >&2; exit 3 ;;',
 			'*) printf "Status could not be read\\n" >&2; exit 4 ;;',
 			"esac",
 		].join("\n"),

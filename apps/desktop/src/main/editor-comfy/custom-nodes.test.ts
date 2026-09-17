@@ -1273,6 +1273,31 @@ test("reports a missing origin as a custom-node eligibility restriction", async 
 	]);
 });
 
+test("reports an unborn HEAD as a custom-node eligibility restriction", async () => {
+	const paths = await fixture();
+	const directory = join(paths.dataDirectory, "data", "custom_nodes", "empty-node");
+	await mkdir(directory, { recursive: true });
+	git(directory, "init", "--quiet");
+	git(
+		directory,
+		"remote",
+		"add",
+		"origin",
+		"https://github.com/example/empty-node.git",
+	);
+	const { nodes } = createNodes({ ...paths, platform: "darwin", arch: "arm64" });
+
+	await expect(nodes.listCustomNodes()).resolves.toEqual([
+		{
+			name: "empty-node",
+			version: "unknown",
+			managerId: null,
+			repository: "https://github.com/example/empty-node.git",
+			workerSyncIssue: "The Git repository does not have a valid HEAD commit.",
+		},
+	]);
+});
+
 test("does not treat a repository subdirectory or symlink as a GitHub custom node", async () => {
 	const paths = await fixture();
 	const customNodes = join(paths.dataDirectory, "data", "custom_nodes");
