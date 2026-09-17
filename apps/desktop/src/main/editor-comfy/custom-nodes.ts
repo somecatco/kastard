@@ -1,35 +1,25 @@
-import { type ExecFileException, execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import type { Dirent, Stats } from "node:fs";
-import {
-	access,
-	lstat,
-	mkdir,
-	readdir,
-	readFile,
-	realpath,
-	writeFile,
-} from "node:fs/promises";
+import type { Dirent } from "node:fs";
+import { access, lstat, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { stripVTControlCharacters } from "node:util";
 import {
-	gitCustomNodeState,
 	isCustomNodeManagerId,
 	isCustomNodeManagerVersion,
 	isCustomNodeName,
-	isGitCommit,
 	normalizeGitHubRepository,
-	ROOT_GIT_STATUS_ARGS,
 } from "@kastard/common";
 import {
 	type ComfyRuntimeState,
 	type CustomNodeEntry,
-	type CustomNodeErrorLog,
 	type CustomNodeInstallOptions,
 	isComfyUiManagerNode,
 	isCustomNodeRepositoryUrl,
 } from "../../shared/api";
 
+import {
+	inspectGitHubRepository,
+	NO_SUPPORTED_CUSTOM_NODE_SOURCE,
+} from "./custom-node-git";
 import { environmentPython, type RunCommand, runCommand } from "./process";
 import { readManagerVersion } from "./runtime";
 
@@ -47,23 +37,9 @@ const MANAGER_OPERATION_POLL_MS = 250;
 const CUSTOM_NODE_INVENTORY_TIMEOUT_MS = 10_000;
 const REGISTRY_REQUEST_TIMEOUT_MS = 10_000;
 const CUSTOM_NODE_INSTALL_TIMEOUT_MS = 15 * 60 * 1_000;
-const NO_SUPPORTED_CUSTOM_NODE_SOURCE =
-	"No Registry package or supported GitHub repository was found.";
-const SYMLINK_CUSTOM_NODE_ISSUE =
-	"Symbolic-link custom node directories cannot be reproduced on the Worker.";
-const REPOSITORY_ROOT_ISSUE =
-	"The custom node directory is not the root of its Git repository.";
-const GITHUB_ORIGIN_ISSUE =
-	"The Git repository does not have a supported GitHub origin.";
-const HEAD_COMMIT_ISSUE = "The Git repository does not have a valid HEAD commit.";
-const LOCAL_CHANGES_ISSUE =
-	"Tracked or untracked local changes are not included in the Git commit.";
-const GIT_METADATA_ISSUE = "The Git repository metadata could not be read.";
-
-type GitCustomNodeInspection = Pick<
-	InstalledCustomNode,
-	"version" | "repository" | "workerSyncIssue" | "workerSyncErrorLog"
->;
+type InspectRepository = (
+	directory: string,
+) => ReturnType<typeof inspectGitHubRepository>;
 
 type CustomNodesOptions = {
 	dataDirectory: string;
@@ -102,12 +78,20 @@ export class EditorCustomNodes {
 	private bundledBackendDirectory(): string {
 		return join(this.options.resourcesDirectory, "backend");
 	}
+	private inspectRepository(directory: string, signal?: AbortSignal) {
+		const python = environmentPython(
+			join(this.options.dataDirectory, "environment"),
+			this.platform,
+		);
+		return inspectGitHubRepository(directory, python, signal);
+	}
 	async listCustomNodes(signal?: AbortSignal): Promise<InstalledCustomNode[]> {
 		const directory = join(this.options.dataDirectory, "data", "custom_nodes");
+		const inspect = (path: string) => this.inspectRepository(path, signal);
 		const state = this.options.getRuntimeState();
 		const url = state.status === "ready" ? state.url : null;
 		if (url === null) {
-			return localInstalledCustomNodes(directory);
+			return localInstalledCustomNodes(directory, inspect);
 		}
 		const timeout = AbortSignal.timeout(this.customNodeInventoryTimeoutMs);
 		const requestSignal =
@@ -123,6 +107,7 @@ export class EditorCustomNodes {
 			return addRepositoryMetadata(
 				directory,
 				installedCustomNodes(await response.json()),
+				inspect,
 			);
 		} catch (error) {
 			if (timeout.aborted && !signal?.aborted) {
@@ -324,6 +309,7 @@ export class EditorCustomNodes {
 						repository.id,
 						managerId,
 						this.options.trashItem,
+						(path) => this.inspectRepository(path),
 					).catch((cause: unknown) => errorMessage(cause));
 			if (controller.signal.aborted) {
 				throw new Error(
@@ -561,6 +547,7 @@ async function trashNewCustomNode(
 	repositoryId: string,
 	managerId: string | null,
 	trashItem: CustomNodesOptions["trashItem"],
+	inspect: InspectRepository,
 ): Promise<void> {
 	if (trashItem === undefined) return;
 	const entries = await readdir(directory, { withFileTypes: true });
@@ -579,7 +566,12 @@ async function trashNewCustomNode(
 		await Promise.all(
 			candidates.map(async (candidate) => {
 				const path = join(directory, candidate.name);
-				return (await customNodePathMatchesInstall(path, repositoryId, managerId))
+				return (await customNodePathMatchesInstall(
+					path,
+					repositoryId,
+					managerId,
+					inspect,
+				))
 					? path
 					: null;
 			}),
@@ -592,6 +584,7 @@ async function customNodePathMatchesInstall(
 	path: string,
 	repositoryId: string,
 	managerId: string | null,
+	inspect: InspectRepository,
 ): Promise<boolean> {
 	const metadata = await inspectCnrPackage(path);
 	if (metadata !== null) {
@@ -601,7 +594,7 @@ async function customNodePathMatchesInstall(
 			normalizeGitHubRepository(metadata.repository)?.id === repositoryId
 		);
 	}
-	const github = await inspectGitHubRepository(path);
+	const github = await inspect(path);
 	return (
 		github?.repository !== undefined &&
 		normalizeGitHubRepository(github.repository)?.id === repositoryId
@@ -769,6 +762,7 @@ function installedCustomNodes(value: unknown): InstalledCustomNode[] {
 
 async function localInstalledCustomNodes(
 	directory: string,
+	inspect: InspectRepository,
 ): Promise<InstalledCustomNode[]> {
 	let entries: Dirent[];
 	try {
@@ -808,13 +802,13 @@ async function localInstalledCustomNodes(
 		if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
 	}
 	const nodes = await Promise.all([
-		...active.map((entry) => localInstalledCustomNode(directory, entry.name)),
+		...active.map((entry) => localInstalledCustomNode(directory, entry.name, inspect)),
 		...suffixedDisabled.map(async (entry) => ({
-			...(await localInstalledCustomNode(directory, entry.name)),
+			...(await localInstalledCustomNode(directory, entry.name, inspect)),
 			name: entry.name.slice(0, -".disabled".length),
 		})),
 		...nestedDisabled.map((entry) =>
-			localInstalledCustomNode(disabledDirectory, entry.name),
+			localInstalledCustomNode(disabledDirectory, entry.name, inspect),
 		),
 	]);
 	return nodes.sort((left, right) =>
@@ -825,6 +819,7 @@ async function localInstalledCustomNodes(
 async function localInstalledCustomNode(
 	directory: string,
 	name: string,
+	inspect: InspectRepository,
 ): Promise<InstalledCustomNode> {
 	const path = join(directory, name);
 	const metadata = await inspectCnrPackage(path);
@@ -836,7 +831,7 @@ async function localInstalledCustomNode(
 			...(metadata.repository === undefined ? {} : { repository: metadata.repository }),
 		};
 	}
-	const github = await inspectGitHubRepository(path);
+	const github = await inspect(path);
 	return github === null
 		? {
 				name,
@@ -850,6 +845,7 @@ async function localInstalledCustomNode(
 async function addRepositoryMetadata(
 	directory: string,
 	nodes: InstalledCustomNode[],
+	inspect: InspectRepository,
 ): Promise<InstalledCustomNode[]> {
 	return Promise.all(
 		nodes.map(async (node) => {
@@ -865,7 +861,7 @@ async function addRepositoryMetadata(
 					}
 					continue;
 				}
-				const github = await inspectGitHubRepository(path);
+				const github = await inspect(path);
 				if (github !== null) {
 					return { name: node.name, managerId: null, ...github };
 				}
@@ -887,185 +883,6 @@ async function inspectCnrPackage(
 		if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
 		throw error;
 	}
-}
-
-async function inspectGitHubRepository(
-	directory: string,
-): Promise<GitCustomNodeInspection | null> {
-	let entry: Stats;
-	try {
-		entry = await lstat(directory);
-	} catch (error) {
-		return (error as NodeJS.ErrnoException).code === "ENOENT"
-			? null
-			: { version: "unknown", ...metadataFailure([error]) };
-	}
-	if (entry.isSymbolicLink()) {
-		return { version: "unknown", workerSyncIssue: SYMLINK_CUSTOM_NODE_ISSUE };
-	}
-	if (!entry.isDirectory()) {
-		return { version: "unknown", workerSyncIssue: NO_SUPPORTED_CUSTOM_NODE_SOURCE };
-	}
-	let topLevel: string;
-	try {
-		topLevel = await gitOutput(directory, ["rev-parse", "--show-toplevel"]);
-	} catch (error) {
-		return { version: "unknown", ...metadataFailure([error]) };
-	}
-	let actualDirectory: string;
-	let repositoryRoot: string;
-	try {
-		[actualDirectory, repositoryRoot] = await Promise.all([
-			realpath(directory),
-			realpath(topLevel.trim()),
-		]);
-	} catch (error) {
-		return { version: "unknown", ...metadataFailure([error]) };
-	}
-	if (actualDirectory !== repositoryRoot) {
-		return { version: "unknown", workerSyncIssue: REPOSITORY_ROOT_ISSUE };
-	}
-	const [originResult, commitResult, statusResult] = await Promise.allSettled([
-		gitOutput(directory, ["config", "--get", "--default=", "remote.origin.url"]),
-		gitOutput(directory, ["rev-parse", "--revs-only", "HEAD"]),
-		gitOutput(directory, [...ROOT_GIT_STATUS_ARGS]),
-	]);
-	if (
-		originResult.status === "rejected" ||
-		commitResult.status === "rejected" ||
-		statusResult.status === "rejected"
-	) {
-		const failures = [originResult, commitResult, statusResult].filter(
-			(result) => result.status === "rejected",
-		);
-		const repository =
-			originResult.status === "fulfilled"
-				? normalizeGitHubRepository(originResult.value.trim())
-				: null;
-		return {
-			version:
-				commitResult.status === "fulfilled" && isGitCommit(commitResult.value.trim())
-					? commitResult.value.trim().toLowerCase()
-					: "unknown",
-			...(repository === null ? {} : { repository: repository.url }),
-			...metadataFailure(failures.map((result) => result.reason)),
-		};
-	}
-	const repository = normalizeGitHubRepository(originResult.value.trim());
-	if (repository === null) {
-		return { version: "unknown", workerSyncIssue: GITHUB_ORIGIN_ISSUE };
-	}
-	if (!isGitCommit(commitResult.value.trim())) {
-		return {
-			version: "unknown",
-			repository: repository.url,
-			workerSyncIssue: HEAD_COMMIT_ISSUE,
-		};
-	}
-	const state = gitCustomNodeState({
-		origin: originResult.value,
-		commit: commitResult.value,
-		status: statusResult.value,
-		directory: actualDirectory,
-		repositoryRoot,
-	});
-	if (state === null) {
-		return { version: "unknown", workerSyncIssue: GIT_METADATA_ISSUE };
-	}
-	return {
-		version: state.commit,
-		repository: state.repository,
-		...(state.hasRootChanges ? { workerSyncIssue: LOCAL_CHANGES_ISSUE } : {}),
-	};
-}
-
-function gitOutput(directory: string, args: string[]): Promise<string> {
-	return new Promise((resolve, reject) => {
-		execFile(
-			"git",
-			["--no-optional-locks", "-C", directory, ...args],
-			{
-				env: gitEnvironment(process.env),
-				encoding: "utf8",
-				maxBuffer: 4 * 1024 * 1024,
-				timeout: 5_000,
-			},
-			(error, stdout, stderr) => {
-				if (error === null) resolve(stdout);
-				else reject(new GitInspectionError(args, error, stdout, stderr));
-			},
-		);
-	});
-}
-
-class GitInspectionError extends Error {
-	readonly log: CustomNodeErrorLog;
-	constructor(
-		args: string[],
-		error: ExecFileException,
-		stdout: string,
-		stderr: string,
-	) {
-		super(GIT_METADATA_ISSUE, { cause: error });
-		const output = boundedErrorLog(
-			[stdout ? `stdout:\n${stdout}` : "", stderr ? `stderr:\n${stderr}` : ""]
-				.filter(Boolean)
-				.join("\n\n"),
-		);
-		this.log = {
-			text: [
-				`Command: git ${args.join(" ")}`,
-				typeof error.code === "number"
-					? `Exit code: ${error.code}`
-					: error.code
-						? `Error code: ${error.code}`
-						: "",
-				error.signal ? `Signal: ${error.signal}` : "",
-				error.killed ? "The process was terminated before completion." : "",
-				output.text || stripVTControlCharacters(error.message),
-			]
-				.filter(Boolean)
-				.join("\n\n"),
-			truncated: output.truncated,
-		};
-	}
-}
-
-function boundedErrorLog(text: string): CustomNodeErrorLog {
-	const clean = stripVTControlCharacters(text);
-	let start = Math.max(0, clean.length - LOG_TAIL_LENGTH);
-	if (start > 0 && /[\uDC00-\uDFFF]/u.test(clean[start] ?? "")) start += 1;
-	return { text: clean.slice(start), truncated: start > 0 };
-}
-
-function metadataFailure(
-	errors: unknown[],
-): Pick<InstalledCustomNode, "workerSyncIssue" | "workerSyncErrorLog"> {
-	const logs = errors.map((error) =>
-		error instanceof GitInspectionError
-			? error.log
-			: boundedErrorLog(error instanceof Error ? error.message : String(error)),
-	);
-	return {
-		workerSyncIssue: GIT_METADATA_ISSUE,
-		workerSyncErrorLog: {
-			text: logs.map((log) => log.text).join("\n\n"),
-			truncated: logs.some((log) => log.truncated),
-		},
-	};
-}
-
-function gitEnvironment(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-	const environment: NodeJS.ProcessEnv = {
-		GIT_CONFIG_NOSYSTEM: "1",
-		GIT_OPTIONAL_LOCKS: "0",
-		GIT_TERMINAL_PROMPT: "0",
-	};
-	for (const key of ["PATH", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR", "TMP", "TEMP"]) {
-		const value = source[key];
-		if (value !== undefined) environment[key] = value;
-	}
-	return environment;
 }
 
 function cnrProjectMetadata(
