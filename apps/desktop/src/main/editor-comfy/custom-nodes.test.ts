@@ -345,7 +345,11 @@ test("lists local custom nodes without starting ComfyUI", async () => {
 			name: "manual-node",
 			version: "unknown",
 			managerId: null,
-			workerSyncIssue: "No Registry package or supported GitHub repository was found.",
+			workerSyncIssue: "The Git repository metadata could not be read.",
+			workerSyncErrorLog: {
+				text: expect.stringContaining("Exit code: 128"),
+				truncated: false,
+			},
 		},
 		{
 			name: "manual.py",
@@ -1277,7 +1281,11 @@ test("does not treat a repository subdirectory or symlink as a GitHub custom nod
 			name: ".git",
 			version: "unknown",
 			managerId: null,
-			workerSyncIssue: "No Registry package or supported GitHub repository was found.",
+			workerSyncIssue: "The Git repository metadata could not be read.",
+			workerSyncErrorLog: {
+				text: expect.stringContaining("Exit code: 128"),
+				truncated: false,
+			},
 		},
 		{
 			name: "nested-node",

@@ -2,6 +2,7 @@ import { normalizeGitHubRepository } from "@kastard/common";
 import { PlusIcon, PuzzleIcon, TrashIcon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { AppFormDialog } from "@/components/AppFormDialog";
+import { CustomNodeSyncIssue } from "@/components/CustomNodeSyncIssue";
 import { Input } from "@/components/common/input";
 import { Select } from "@/components/common/select";
 import { Switch } from "@/components/common/switch";
@@ -402,9 +403,11 @@ export function CustomNodesSurface({
 										</a>
 									) : null}
 									{node.workerSyncIssue !== undefined ? (
-										<p className="mt-1 select-text text-xs text-warning">
-											Worker sync unsupported · {node.workerSyncIssue}
-										</p>
+										<CustomNodeSyncIssue
+											name={node.name}
+											issue={node.workerSyncIssue}
+											errorLog={node.workerSyncErrorLog}
+										/>
 									) : null}
 								</div>
 								<div className="flex items-center gap-2">

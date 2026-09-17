@@ -452,6 +452,31 @@ test("validates Manager custom nodes with repository metadata", () => {
 	).toBe(false);
 });
 
+test("validates custom-node error logs associated with an inspection failure", () => {
+	const node = {
+		name: "example-node",
+		version: "unknown",
+		managerId: null,
+		sync: true,
+		workerSyncIssue: "The Git repository metadata could not be read.",
+		workerSyncErrorLog: {
+			text: "Exit code: 69\n\nGit could not run.",
+			truncated: false,
+		},
+	};
+	expect(isCustomNodeEntry(node)).toBe(true);
+	for (const log of [
+		null,
+		{},
+		{ text: "", truncated: false },
+		{ text: "Error" },
+		{ text: 12, truncated: false },
+	]) {
+		expect(isCustomNodeEntry({ ...node, workerSyncErrorLog: log })).toBe(false);
+	}
+	expect(isCustomNodeEntry({ ...node, workerSyncIssue: undefined })).toBe(false);
+});
+
 test("validates canonical public GitHub custom nodes", () => {
 	const commit = "a".repeat(40);
 	const node = {

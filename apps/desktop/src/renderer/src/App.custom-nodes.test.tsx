@@ -1,4 +1,11 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+	act,
+	fireEvent,
+	render,
+	screen,
+	waitFor,
+	within,
+} from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 import type {
 	ConnectionResult,
@@ -106,16 +113,7 @@ test("lists custom nodes installed in local ComfyUI", async () => {
 			name: "https://github.com/owner/dirty-git-node.git",
 		}),
 	).toHaveAttribute("target", "_blank");
-	expect(
-		screen.getByText(
-			"Worker sync unsupported · Tracked or untracked local changes are not included in the Git commit.",
-		),
-	).toBeVisible();
-	expect(
-		screen.getByText(
-			"Worker sync unsupported · No Registry package or supported GitHub repository was found.",
-		),
-	).toBeVisible();
+	expect(screen.getAllByText("Worker sync unavailable")).toHaveLength(2);
 	const dasiwaSync = screen.getByRole("switch", {
 		name: "Sync ComfyUI-DaSiWa-Nodes",
 	});
@@ -136,6 +134,113 @@ test("lists custom nodes installed in local ComfyUI", async () => {
 	);
 	await waitFor(() => expect(dasiwaSync).not.toBeChecked());
 	expect(screen.getByLabelText("Custom nodes summary")).toHaveTextContent("All5Sync3");
+});
+
+test("opens and copies each node's recorded error without repeating the inspection", async () => {
+	const nodes = ["first-node", "second-node"].map((name, index) => ({
+		name,
+		version: "unknown",
+		managerId: null,
+		sync: true,
+		workerSyncIssue: "The Git repository metadata could not be read.",
+		workerSyncErrorLog: {
+			text: `Exit code: ${index + 1}\n\nstderr:\nCannot read ${name}.`,
+			truncated: false,
+		},
+	}));
+	vi.mocked(window.kastard.customNodes.list).mockResolvedValue({ ok: true, nodes });
+	render(<App />);
+	fireEvent.click(screen.getByRole("button", { name: "Custom Nodes" }));
+	await screen.findByText("first-node");
+	for (const [index, node] of nodes.entries()) {
+		const trigger = screen.getAllByRole("button", { name: "View error log" })[index];
+		if (!trigger) throw new Error("Missing node error log button.");
+		fireEvent.click(trigger);
+		const dialog = screen.getByRole("dialog", { name: "Custom node error log" });
+		expect(within(dialog).getByText(node.name)).toBeVisible();
+		expect(
+			within(dialog).getByRole("textbox", { name: "Error log output" }),
+		).toHaveValue(node.workerSyncErrorLog.text);
+		fireEvent.click(within(dialog).getByRole("button", { name: "Copy all" }));
+		await within(dialog).findByRole("button", { name: "Copied" });
+		expect(window.kastard.comfy.copyLogs).toHaveBeenLastCalledWith(
+			node.workerSyncErrorLog.text,
+		);
+		fireEvent.click(within(dialog).getByText("Close", { selector: "button" }));
+		await waitFor(() => expect(trigger).toHaveFocus());
+	}
+	expect(window.kastard.customNodes.list).toHaveBeenCalledTimes(1);
+	vi.mocked(window.kastard.customNodes.list).mockResolvedValue({
+		ok: true,
+		nodes: [
+			{ name: "first-node", version: "1.2.3", managerId: "first-node", sync: true },
+		],
+	});
+	fireEvent.click(screen.getByRole("button", { name: "Model Library" }));
+	fireEvent.click(screen.getByRole("button", { name: "Custom Nodes" }));
+	expect(await screen.findByText("Version 1.2.3")).toBeVisible();
+	expect(
+		screen.queryByRole("button", { name: "View error log" }),
+	).not.toBeInTheDocument();
+});
+
+test("keeps truncated error details selectable when copying fails", async () => {
+	vi.mocked(window.kastard.customNodes.list).mockResolvedValue({
+		ok: true,
+		nodes: [
+			{
+				name: "example-node",
+				version: "unknown",
+				managerId: null,
+				sync: true,
+				workerSyncIssue: "The Git repository metadata could not be read.",
+				workerSyncErrorLog: {
+					text: "stderr:\nRepository read failed.",
+					truncated: true,
+				},
+			},
+		],
+	});
+	vi.mocked(window.kastard.comfy.copyLogs).mockResolvedValue({
+		ok: false,
+		error: "Clipboard is unavailable.",
+	});
+	render(<App />);
+	fireEvent.click(screen.getByRole("button", { name: "Custom Nodes" }));
+	fireEvent.click(await screen.findByRole("button", { name: "View error log" }));
+	expect(screen.getByText("Some error output is unavailable.")).toBeVisible();
+	fireEvent.click(screen.getByRole("button", { name: "Copy all" }));
+	expect(await screen.findByRole("alert")).toHaveTextContent(
+		"Select the text to copy it manually.",
+	);
+	expect(screen.getByRole("textbox", { name: "Error log output" })).toHaveValue(
+		"stderr:\nRepository read failed.",
+	);
+	expect(window.kastard.comfy.copyLogs).toHaveBeenCalledWith(
+		"Some error output is unavailable.\n\nstderr:\nRepository read failed.",
+	);
+});
+
+test("shows the inspection reason when there is no command error output", async () => {
+	const reason =
+		"Tracked or untracked local changes are not included in the Git commit.";
+	vi.mocked(window.kastard.customNodes.list).mockResolvedValue({
+		ok: true,
+		nodes: [
+			{
+				name: "example-node",
+				version: "a".repeat(40),
+				repository: "https://github.com/example/example-node.git",
+				managerId: null,
+				sync: true,
+				workerSyncIssue: reason,
+			},
+		],
+	});
+	render(<App />);
+	fireEvent.click(screen.getByRole("button", { name: "Custom Nodes" }));
+	fireEvent.click(await screen.findByRole("button", { name: "View error log" }));
+	expect(screen.getByRole("textbox", { name: "Error log output" })).toHaveValue(reason);
 });
 
 test("installs a trusted GitHub custom node and refreshes the local list", async () => {

@@ -235,12 +235,18 @@ export type WorkerSystemMetricsState =
 	| { status: "unavailable"; error: string }
 	| { status: "available"; metrics: WorkerSystemStatus };
 
+export type CustomNodeErrorLog = {
+	text: string;
+	truncated: boolean;
+};
+
 export type CustomNodeEntry = {
 	name: string;
 	version: string;
 	managerId: string | null;
 	repository?: string;
 	workerSyncIssue?: string;
+	workerSyncErrorLog?: CustomNodeErrorLog;
 	sync: boolean;
 };
 
@@ -1348,6 +1354,12 @@ export function isCustomNodeEntry(value: unknown): value is CustomNodeEntry {
 		(candidate.managerId !== null && !isCustomNodeManagerId(candidate.managerId)) ||
 		(candidate.workerSyncIssue !== undefined &&
 			!validIssue(candidate.workerSyncIssue)) ||
+		(candidate.workerSyncErrorLog !== undefined &&
+			(candidate.workerSyncIssue === undefined ||
+				!isRecord(candidate.workerSyncErrorLog) ||
+				typeof candidate.workerSyncErrorLog.text !== "string" ||
+				candidate.workerSyncErrorLog.text.trim().length === 0 ||
+				typeof candidate.workerSyncErrorLog.truncated !== "boolean")) ||
 		typeof candidate.sync !== "boolean"
 	) {
 		return false;

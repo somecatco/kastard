@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { type ExecFileException, execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import type { Dirent, Stats } from "node:fs";
 import {
@@ -11,6 +11,7 @@ import {
 	writeFile,
 } from "node:fs/promises";
 import { join } from "node:path";
+import { stripVTControlCharacters } from "node:util";
 import {
 	gitCustomNodeState,
 	isCustomNodeManagerId,
@@ -23,6 +24,7 @@ import {
 import {
 	type ComfyRuntimeState,
 	type CustomNodeEntry,
+	type CustomNodeErrorLog,
 	type CustomNodeInstallOptions,
 	isComfyUiManagerNode,
 	isCustomNodeRepositoryUrl,
@@ -58,8 +60,10 @@ const LOCAL_CHANGES_ISSUE =
 	"Tracked or untracked local changes are not included in the Git commit.";
 const GIT_METADATA_ISSUE = "The Git repository metadata could not be read.";
 
-type GitCustomNodeInspection = Pick<InstalledCustomNode, "version"> &
-	Partial<Pick<InstalledCustomNode, "repository" | "workerSyncIssue">>;
+type GitCustomNodeInspection = Pick<
+	InstalledCustomNode,
+	"version" | "repository" | "workerSyncIssue" | "workerSyncErrorLog"
+>;
 
 type CustomNodesOptions = {
 	dataDirectory: string;
@@ -894,7 +898,7 @@ async function inspectGitHubRepository(
 	} catch (error) {
 		return (error as NodeJS.ErrnoException).code === "ENOENT"
 			? null
-			: { version: "unknown", workerSyncIssue: GIT_METADATA_ISSUE };
+			: { version: "unknown", ...metadataFailure([error]) };
 	}
 	if (entry.isSymbolicLink()) {
 		return { version: "unknown", workerSyncIssue: SYMLINK_CUSTOM_NODE_ISSUE };
@@ -905,13 +909,19 @@ async function inspectGitHubRepository(
 	let topLevel: string;
 	try {
 		topLevel = await gitOutput(directory, ["rev-parse", "--show-toplevel"]);
-	} catch {
-		return { version: "unknown", workerSyncIssue: NO_SUPPORTED_CUSTOM_NODE_SOURCE };
+	} catch (error) {
+		return { version: "unknown", ...metadataFailure([error]) };
 	}
-	const [actualDirectory, repositoryRoot] = await Promise.all([
-		realpath(directory),
-		realpath(topLevel.trim()),
-	]);
+	let actualDirectory: string;
+	let repositoryRoot: string;
+	try {
+		[actualDirectory, repositoryRoot] = await Promise.all([
+			realpath(directory),
+			realpath(topLevel.trim()),
+		]);
+	} catch (error) {
+		return { version: "unknown", ...metadataFailure([error]) };
+	}
 	if (actualDirectory !== repositoryRoot) {
 		return { version: "unknown", workerSyncIssue: REPOSITORY_ROOT_ISSUE };
 	}
@@ -920,25 +930,36 @@ async function inspectGitHubRepository(
 		gitOutput(directory, ["rev-parse", "--verify", "HEAD"]),
 		gitOutput(directory, [...ROOT_GIT_STATUS_ARGS]),
 	]);
-	if (originResult.status === "rejected") {
-		return { version: "unknown", workerSyncIssue: GITHUB_ORIGIN_ISSUE };
+	if (
+		originResult.status === "rejected" ||
+		commitResult.status === "rejected" ||
+		statusResult.status === "rejected"
+	) {
+		const failures = [originResult, commitResult, statusResult].filter(
+			(result) => result.status === "rejected",
+		);
+		const repository =
+			originResult.status === "fulfilled"
+				? normalizeGitHubRepository(originResult.value.trim())
+				: null;
+		return {
+			version:
+				commitResult.status === "fulfilled" && isGitCommit(commitResult.value.trim())
+					? commitResult.value.trim().toLowerCase()
+					: "unknown",
+			...(repository === null ? {} : { repository: repository.url }),
+			...metadataFailure(failures.map((result) => result.reason)),
+		};
 	}
 	const repository = normalizeGitHubRepository(originResult.value.trim());
 	if (repository === null) {
 		return { version: "unknown", workerSyncIssue: GITHUB_ORIGIN_ISSUE };
 	}
-	if (commitResult.status === "rejected" || !isGitCommit(commitResult.value.trim())) {
+	if (!isGitCommit(commitResult.value.trim())) {
 		return {
 			version: "unknown",
 			repository: repository.url,
 			workerSyncIssue: HEAD_COMMIT_ISSUE,
-		};
-	}
-	if (statusResult.status === "rejected") {
-		return {
-			version: commitResult.value.trim().toLowerCase(),
-			repository: repository.url,
-			workerSyncIssue: GIT_METADATA_ISSUE,
 		};
 	}
 	const state = gitCustomNodeState({
@@ -958,11 +979,7 @@ async function inspectGitHubRepository(
 	};
 }
 
-function gitOutput(
-	directory: string,
-	args: string[],
-	timeoutMs = 5_000,
-): Promise<string> {
+function gitOutput(directory: string, args: string[]): Promise<string> {
 	return new Promise((resolve, reject) => {
 		execFile(
 			"git",
@@ -971,14 +988,71 @@ function gitOutput(
 				env: gitEnvironment(process.env),
 				encoding: "utf8",
 				maxBuffer: 4 * 1024 * 1024,
-				timeout: timeoutMs,
+				timeout: 5_000,
 			},
-			(error, stdout) => {
+			(error, stdout, stderr) => {
 				if (error === null) resolve(stdout);
-				else reject(error);
+				else reject(new GitInspectionError(args, error, stdout, stderr));
 			},
 		);
 	});
+}
+
+class GitInspectionError extends Error {
+	readonly log: CustomNodeErrorLog;
+	constructor(
+		args: string[],
+		error: ExecFileException,
+		stdout: string,
+		stderr: string,
+	) {
+		super(GIT_METADATA_ISSUE, { cause: error });
+		const output = boundedErrorLog(
+			[stdout ? `stdout:\n${stdout}` : "", stderr ? `stderr:\n${stderr}` : ""]
+				.filter(Boolean)
+				.join("\n\n"),
+		);
+		this.log = {
+			text: [
+				`Command: git ${args.join(" ")}`,
+				typeof error.code === "number"
+					? `Exit code: ${error.code}`
+					: error.code
+						? `Error code: ${error.code}`
+						: "",
+				error.signal ? `Signal: ${error.signal}` : "",
+				error.killed ? "The process was terminated before completion." : "",
+				output.text || stripVTControlCharacters(error.message),
+			]
+				.filter(Boolean)
+				.join("\n\n"),
+			truncated: output.truncated,
+		};
+	}
+}
+
+function boundedErrorLog(text: string): CustomNodeErrorLog {
+	const clean = stripVTControlCharacters(text);
+	let start = Math.max(0, clean.length - LOG_TAIL_LENGTH);
+	if (start > 0 && /[\uDC00-\uDFFF]/u.test(clean[start] ?? "")) start += 1;
+	return { text: clean.slice(start), truncated: start > 0 };
+}
+
+function metadataFailure(
+	errors: unknown[],
+): Pick<InstalledCustomNode, "workerSyncIssue" | "workerSyncErrorLog"> {
+	const logs = errors.map((error) =>
+		error instanceof GitInspectionError
+			? error.log
+			: boundedErrorLog(error instanceof Error ? error.message : String(error)),
+	);
+	return {
+		workerSyncIssue: GIT_METADATA_ISSUE,
+		workerSyncErrorLog: {
+			text: logs.map((log) => log.text).join("\n\n"),
+			truncated: logs.some((log) => log.truncated),
+		},
+	};
 }
 
 function gitEnvironment(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
