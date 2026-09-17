@@ -31,6 +31,7 @@ test("shows failed startup output and copies it through the OS clipboard", async
 			sha256: manifest.sha256,
 			pythonVersion: manifest.pythonVersion,
 			managerVersion,
+			pygit2Version: manifest.pygit2Version,
 			dependencyLockSha256: manifest.dependencyLock.sha256,
 			uvVersion: manifest.uv.version,
 			platform: manifest.platform,

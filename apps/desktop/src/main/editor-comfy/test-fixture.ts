@@ -15,6 +15,7 @@ export const runtimeManifest = {
 	sha256: "backend-sha",
 	pythonVersion: "3.12.13",
 	managerVersion: "4.2.2",
+	pygit2Version: "1.20.1",
 	dependencyLock: { sha256: "runtime-lock-sha" },
 	platform: "darwin-arm64",
 	uv: { version: "0.12.4" },

@@ -25,6 +25,7 @@ type BackendManifest = {
 	license: string;
 	pythonVersion: string;
 	managerVersion: string;
+	pygit2Version: string;
 	dependencyLock: {
 		path: string;
 		sha256: string;
@@ -58,6 +59,7 @@ async function readManifest(): Promise<BackendManifest> {
 		typeof parsed.license !== "string" ||
 		typeof parsed.pythonVersion !== "string" ||
 		typeof parsed.managerVersion !== "string" ||
+		typeof parsed.pygit2Version !== "string" ||
 		!isRecord(parsed.dependencyLock) ||
 		typeof parsed.dependencyLock.path !== "string" ||
 		typeof parsed.dependencyLock.sha256 !== "string" ||
@@ -100,6 +102,7 @@ async function isCurrent(manifest: BackendManifest): Promise<boolean> {
 			sha256?: unknown;
 			pythonVersion?: unknown;
 			managerVersion?: unknown;
+			pygit2Version?: unknown;
 			dependencyLock?: { sha256?: unknown };
 			platform?: unknown;
 			uv?: { version?: unknown };
@@ -109,6 +112,7 @@ async function isCurrent(manifest: BackendManifest): Promise<boolean> {
 			stamp.sha256 === manifest.sha256 &&
 			stamp.pythonVersion === manifest.pythonVersion &&
 			stamp.managerVersion === manifest.managerVersion &&
+			stamp.pygit2Version === manifest.pygit2Version &&
 			stamp.dependencyLock?.sha256 === manifest.dependencyLock.sha256 &&
 			stamp.platform === platformKey &&
 			stamp.uv?.version === manifest.uv.version
@@ -162,6 +166,12 @@ async function main(): Promise<void> {
 		manifest.dependencyLock.sha256,
 		"ComfyUI runtime dependency lock",
 	);
+	const lockedPygit2Version = /^pygit2==([^\s]+)/mu.exec(
+		dependencyLock.toString("utf8"),
+	)?.[1];
+	if (lockedPygit2Version !== manifest.pygit2Version) {
+		throw new Error("ComfyUI runtime pygit2 requirement does not match its manifest.");
+	}
 	const artifact = manifest.uv.artifacts[platformKey];
 	if (artifact === undefined)
 		throw new Error(`Unsupported ComfyUI runtime platform: ${platformKey}.`);
